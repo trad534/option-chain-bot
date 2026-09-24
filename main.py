@@ -8,7 +8,7 @@ from upstox_client.rest import ApiException
 from datetime import datetime
 
 # ==========================================
-# CONFIGURATION & LOGIN PARAMETERS (Aapke)
+# CONFIGURATION & LOGIN PARAMETERS
 # ==========================================
 API_KEY = "399fd5d0-cb80-4983-bdd8-bcfc05091459"
 API_SECRET = "3ll8j7cxaf"
@@ -17,7 +17,7 @@ REDIRECT_URI = "https://127.0.0"
 USER_ID = "3CAGY5"
 PIN = "011996"
 
-# Environment Variable se TOTP Secret uthayega (Render ke liye safe)
+# Environment Variable ya Direct TOTP Key
 TOTP_SECRET = os.getenv("TOTP_SECRET", "YOUR_TOTP_SECRET_KEY_HERE")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
@@ -35,55 +35,68 @@ except Exception as e:
     exit()
 
 # ==========================================
-# TEST CONNECTION FUNCTION (A1 & A2 Update)
-# ==========================================
-def test_connection():
-    try:
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Cell A1 me Time / Token status
-        data_sheet.update_acell('A1', f"Test Active: {current_time}")
-        # Cell A2 me Confirmation Message
-        data_sheet.update_acell('A2', "Hi - Render Script Working!")
-        print("✅ Success: Cell A1 aur A2 me test message update ho gaya hai!")
-    except Exception as e:
-        print(f"❌ Test Message Error: {e}")
-
-# ==========================================
-# 100% AUTOMATIC DAILY LOGIN FUNCTION (TOTP)
+# AUTOMATIC DAILY LOGIN FUNCTION (TOTP)
 # ==========================================
 def generate_automatic_access_token():
     if "YOUR_TOTP_SECRET" in TOTP_SECRET or not TOTP_SECRET:
-        print("🔴 Cannot Auto-Login: TOTP Secret Key abhi nahi dali gayi hai!")
+        print("🔴 Cannot Auto-Login: TOTP Secret Key abhi dali nahi gayi hai!")
         return None
         
     print("🔄 Initiating Auto-Login via Upstox API & TOTP...")
     
     try:
+        # Step 1: TOTP Code Generate
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", ""))
-        current_totp = totp.now()
+        otp_code = totp.now()
         
-        # NOTE: Yahan Upstox Login API se fresh token fetch hokar A1 me set hota hai
-        # fresh_access_token = "YOUR_FETCHED_TOKEN"
-        # data_sheet.update_acell('A1', fresh_access_token)
-        print("🟩 Access Token automatically updated in Cell A1!")
-        return True
+        # Step 2: Login Payload (Upstox Auth API)
+        # Note: Upstox API key aur TOTP authentication request
+        session_url = "https://api.upstox.com/v2/login/auth/token"
+        headers = {
+            'accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        data = {
+            'code': otp_code,
+            'client_id': API_KEY,
+            'client_secret': API_SECRET,
+            'redirect_uri': REDIRECT_URI,
+            'grant_type': 'authorization_code'
+        }
+        
+        response = requests.post(session_url, headers=headers, data=data)
+        res_data = response.json()
+        
+        if 'access_token' in res_data:
+            fresh_token = res_data['access_token']
+            data_sheet.update_acell('A1', fresh_token)
+            data_sheet.update_acell('A2', f"Status: Auto-Token Generated at {datetime.now().strftime('%H:%M:%S')}")
+            print("🟩 Access Token automatically generated and updated in Cell A1!")
+            return fresh_token
+        else:
+            print(f"❌ Auto-Login API Response: {res_data}")
+            return None
+
     except Exception as e:
-        print(f"❌ Auto-Login Failed: {e}")
-        return False
+        print(f"❌ Auto-Login Error: {e}")
+        return None
 
 # ==========================================
-# LIVE DATA PROCESS ENGINE (10 Seconds)
+# LIVE OPTION CHAIN DATA PROCESS ENGINE
 # ==========================================
 def fetch_and_update_option_chain():
     try:
         access_token = data_sheet.acell('A1').value
-        if not access_token or "Test Active" in str(access_token):
-            print("⚠️ Cell A1 me valid Access Token nahi hai! Running Auto-Login...")
-            generate_automatic_access_token()
-            return
+        
+        # Agar Cell A1 me token nahi hai ya expire / invalid hai
+        if not access_token or "Test Active" in str(access_token) or len(str(access_token).strip()) < 10:
+            print("⚠️ Cell A1 me Access Token nahi hai! Auto-Login triggering...")
+            access_token = generate_automatic_access_token()
+            if not access_token:
+                return
 
         configuration = upstox_client.Configuration()
-        configuration.access_token = access_token
+        configuration.access_token = str(access_token).strip()
         api_instance = upstox_client.OptionChainApi(upstox_client.ApiClient(configuration))
 
         instrument_key = "NSE_INDEX|Nifty 50" 
@@ -125,11 +138,14 @@ def fetch_and_update_option_chain():
             
         data_sheet.batch_clear(["A10:M1000"])
         data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-        print("🎯 Google Sheet updated at A10! (10s Sync Active)")
+        
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        data_sheet.update_acell('A2', f"Status: Live Updated at {current_time}")
+        print(f"🎯 Google Sheet updated at A10! (Last Sync: {current_time})")
         
     except ApiException as e:
         if "Unauthorized" in str(e) or e.status == 401:
-            print("🔄 Access Token Expired or Invalid! Forcing Re-Login...")
+            print("🔄 Access Token Expired! Auto-generating new Token...")
             generate_automatic_access_token()
         else:
             print(f"❌ Upstox API Exception: {e}")
@@ -139,10 +155,7 @@ def fetch_and_update_option_chain():
 # ==========================================
 # RUN LOOPER
 # ==========================================
-print("Upstox Fully Automated Engine Shuru ho raha hai...")
-
-# Sabse pehle A1 aur A2 test message update karega
-test_connection()
+print("Upstox Live Engine Starting...")
 
 while True:
     fetch_and_update_option_chain()
