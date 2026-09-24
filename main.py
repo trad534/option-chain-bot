@@ -3,8 +3,6 @@ import time
 import requests
 import pyotp
 import gspread
-from google.oauth2.service_account import Credentials
-import google.auth.transport.requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -13,7 +11,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Option Chain Bot is Running Live!")
+        self.wfile.write(b"Option Chain Bot Running Live!")
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 8080))
@@ -22,7 +20,7 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# CONFIGURATION & LOGIN PARAMETERS
+# CONFIGURATION
 API_KEY = "399fd5d0-cb80-4983-bdd8-bcfc0509180b"
 API_SECRET = "3ll8j7cxaf"
 REDIRECT_URI = "https://127.0.0.1"
@@ -35,22 +33,8 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
 
 try:
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
-    # Clock skew handle karne ke liye Google Credentials setup
-    creds = Credentials.from_service_account_file('Credentials.json', scopes=scopes)
-    
-    # 60 second ka time tolerance add karna (Time Sync Fix)
-    creds._clock_skew_in_seconds = 60
-    
-    request = google.auth.transport.requests.Request()
-    creds.refresh(request)
-    
-    gc = gspread.authorize(creds)
-
+    # Service Account Authentication directly via gspread
+    gc = gspread.service_account(filename='Credentials.json')
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     print("==================================================")
@@ -101,6 +85,12 @@ else:
     print("WARNING: Running without active Upstox token. Check TOTP configuration.")
 
 print("Bot deployed and active...")
+
+# Loop running every 10 seconds
 while True:
-    # 10 second update cycle
+    try:
+        # Data update logic runs here
+        pass
+    except Exception as err:
+        print(f"Execution Error: {err}")
     time.sleep(10)
