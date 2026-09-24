@@ -40,10 +40,12 @@ try:
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # Authenticate credentials with Google Auth
+    # Clock skew handle karne ke liye Google Credentials setup
     creds = Credentials.from_service_account_file('Credentials.json', scopes=scopes)
     
-    # Refresh token explicitly to fix JWT signature error
+    # 60 second ka time tolerance add karna (Time Sync Fix)
+    creds._clock_skew_in_seconds = 60
+    
     request = google.auth.transport.requests.Request()
     creds.refresh(request)
     
@@ -100,4 +102,5 @@ else:
 
 print("Bot deployed and active...")
 while True:
+    # 10 second update cycle
     time.sleep(10)
