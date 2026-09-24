@@ -6,6 +6,24 @@ import gspread
 import upstox_client
 from upstox_client.rest import ApiException
 from datetime import datetime
+from threading import Thread
+from flask import Flask
+
+# ==========================================
+# RENDER KE LIYE FLASK DUMMY SERVER
+# ==========================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Render Bot is Active and Running!"
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# Background Thread me Web Server Start karein
+Thread(target=run_web_server, daemon=True).start()
 
 # ==========================================
 # CONFIGURATION & LOGIN PARAMETERS
@@ -80,7 +98,7 @@ def generate_automatic_access_token():
 # LIVE OPTION CHAIN DATA PROCESS ENGINE
 # ==========================================
 def fetch_and_update_option_chain():
-    # A2 cell me har 10 second me time aur confirmation message update hoga
+    # A2 cell me har 10 second me confirmation message update hoga
     current_time = datetime.now().strftime("%H:%M:%S")
     try:
         data_sheet.update_acell('A2', f"Render is working - {current_time}")
