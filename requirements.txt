@@ -2,3 +2,4 @@ requests
 pyotp
 gspread
 upstox-python-sdk
+flask
