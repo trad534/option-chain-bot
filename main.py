@@ -17,7 +17,6 @@ REDIRECT_URI = "https://127.0.0"
 USER_ID = "3CAGY5"
 PIN = "011996"
 
-# Environment Variable ya Direct TOTP Key
 TOTP_SECRET = os.getenv("TOTP_SECRET", "YOUR_TOTP_SECRET_KEY_HERE")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
@@ -45,12 +44,9 @@ def generate_automatic_access_token():
     print("🔄 Initiating Auto-Login via Upstox API & TOTP...")
     
     try:
-        # Step 1: TOTP Code Generate
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", ""))
         otp_code = totp.now()
         
-        # Step 2: Login Payload (Upstox Auth API)
-        # Note: Upstox API key aur TOTP authentication request
         session_url = "https://api.upstox.com/v2/login/auth/token"
         headers = {
             'accept': 'application/json',
@@ -70,7 +66,6 @@ def generate_automatic_access_token():
         if 'access_token' in res_data:
             fresh_token = res_data['access_token']
             data_sheet.update_acell('A1', fresh_token)
-            data_sheet.update_acell('A2', f"Status: Auto-Token Generated at {datetime.now().strftime('%H:%M:%S')}")
             print("🟩 Access Token automatically generated and updated in Cell A1!")
             return fresh_token
         else:
@@ -85,10 +80,16 @@ def generate_automatic_access_token():
 # LIVE OPTION CHAIN DATA PROCESS ENGINE
 # ==========================================
 def fetch_and_update_option_chain():
+    # A2 cell me har 10 second me time aur confirmation message update hoga
+    current_time = datetime.now().strftime("%H:%M:%S")
+    try:
+        data_sheet.update_acell('A2', f"Render is working - {current_time}")
+    except Exception as status_err:
+        print(f"⚠️ A2 Update Error: {status_err}")
+
     try:
         access_token = data_sheet.acell('A1').value
         
-        # Agar Cell A1 me token nahi hai ya expire / invalid hai
         if not access_token or "Test Active" in str(access_token) or len(str(access_token).strip()) < 10:
             print("⚠️ Cell A1 me Access Token nahi hai! Auto-Login triggering...")
             access_token = generate_automatic_access_token()
@@ -138,9 +139,6 @@ def fetch_and_update_option_chain():
             
         data_sheet.batch_clear(["A10:M1000"])
         data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-        
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        data_sheet.update_acell('A2', f"Status: Live Updated at {current_time}")
         print(f"🎯 Google Sheet updated at A10! (Last Sync: {current_time})")
         
     except ApiException as e:
