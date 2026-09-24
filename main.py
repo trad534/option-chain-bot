@@ -44,22 +44,24 @@ MAIN_SHEET_NAME = "upstox get data"
 try:
     from google.oauth2.service_account import Credentials
 
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
 
-creds = Credentials.from_service_account_file('Credentials.json', scopes=scopes)
-gc = gspread.authorize(creds)
+    creds = Credentials.from_service_account_file('Credentials.json', scopes=scopes)
+    gc = gspread.authorize(creds)
 
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     print("==================================================")
-    print("SUCCESS: Google Sheet Connected Successfully!!!")
+    print("SUCCESS: Google Sheet Connected Successfully!")
     print("==================================================")
 except Exception as e:
     print(f"Google Sheet Connection Error: {e}")
     exit()
+
+
 
 # ==========================================
 # 100% AUTOMATIC DAILY LOGIN FUNCTION (TOTP)
