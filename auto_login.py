@@ -1,91 +1,86 @@
 import os
-import requests
+import time
 import pyotp
+import asyncio
 import urllib.parse
 import gspread
 from google.oauth2.service_account import Credentials
+from playwright.async_api import async_playwright
 
-def get_access_token():
+async def run():
     user_id = os.environ.get("UPSTOX_USER_ID")
     pin = os.environ.get("UPSTOX_PIN")
-    totp_secret = os.environ.get("TOTP_SECRET").strip()
-    api_key = os.environ.get("UPSTOX_API_KEY")
-    api_secret = os.environ.get("UPSTOX_SECRET_KEY")
+    totp_secret = os.environ.get("TOTP_SECRET")
+    client_id = os.environ.get("UPSTOX_API_KEY")
     redirect_uri = os.environ.get("UPSTOX_REDIRECT_URI")
-
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json"
-    })
-
-    print("Step 1: Sending Mobile/User ID...")
-    # Step 1: Send OTP request
-    otp_res = session.post(
-        "https://api.upstox.com/v2/login/open/v4/auth/1fa/otp/generate",
-        json={"mobileNumber": user_id}
-    )
     
-    if otp_res.status_code != 200:
-        print("Error sending OTP request:", otp_res.text)
-        raise Exception("OTP generation failed")
+    if totp_secret:
+        totp_secret = totp_secret.strip()
 
-    print("Step 2: Validating TOTP...")
-    totp = pyotp.TOTP(totp_secret)
-    current_otp = totp.now()
+    async with async_playwright() as p:
+        # Launch browser with anti-bot evasion settings
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-web-security"
+            ]
+        )
+        
+        # Emulate Real Mobile Browser (Upstox serves simple DOM for mobile)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+            viewport={"width": 390, "height": 844},
+            is_mobile=True,
+            has_touch=True
+        )
+        page = await context.new_page()
 
-    # Step 2: Validate TOTP
-    val_res = session.post(
-        "https://api.upstox.com/v2/login/open/v4/auth/1fa/otp/validate",
-        json={"otp": current_otp}
-    )
+        print("Navigating to Upstox Login Page...")
+        login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}"
+        
+        await page.goto(login_url, wait_until="commit", timeout=60000)
+        await asyncio.sleep(5)
 
-    if val_res.status_code != 200:
-        print("Error validating TOTP:", val_res.text)
-        raise Exception("TOTP validation failed")
+        print("Filling Mobile / User ID...")
+        # Mobile view input selector
+        mobile_input = page.locator('input').first
+        await mobile_input.wait_for(state="visible", timeout=30000)
+        await mobile_input.fill(user_id)
 
-    print("Step 3: Validating PIN...")
-    # Step 3: Validate PIN
-    pin_res = session.post(
-        "https://api.upstox.com/v2/login/open/v4/auth/2fa/pin/validate",
-        json={"pin": pin}
-    )
+        # Click Get OTP
+        print("Clicking Get OTP...")
+        btn = page.locator('button').first
+        await btn.click()
+        await asyncio.sleep(3)
 
-    if pin_res.status_code != 200:
-        print("Error validating PIN:", pin_res.text)
-        raise Exception("PIN validation failed")
+        print("Entering TOTP...")
+        totp = pyotp.TOTP(totp_secret)
+        current_otp = totp.now()
 
-    print("Step 4: Authorizing API Token...")
-    # Step 4: OAuth Authorization
-    auth_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={api_key}&redirect_uri={redirect_uri}"
-    auth_res = session.get(auth_url, allow_redirects=False)
+        otp_input = page.locator('input').first
+        await otp_input.wait_for(state="visible", timeout=30000)
+        await otp_input.fill(current_otp)
 
-    location = auth_res.headers.get("Location")
-    if not location:
-        raise Exception("Failed to get authorization code redirect")
+        btn = page.locator('button').first
+        await btn.click()
+        await asyncio.sleep(3)
 
-    parsed_url = urllib.parse.urlparse(location)
-    code = urllib.parse.parse_qs(parsed_url.query).get("code")[0]
+        print("Entering PIN...")
+        pin_input = page.locator('input').first
+        await pin_input.wait_for(state="visible", timeout=30000)
+        await pin_input.fill(pin)
 
-    print("Step 5: Fetching Access Token...")
-    # Step 5: Get Access Token
-    token_url = "https://api.upstox.com/v2/login/authorization/token"
-    token_payload = {
-        "code": code,
-        "client_id": api_key,
-        "client_secret": api_secret,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code"
-    }
+        btn = page.locator('button').first
+        await btn.click()
 
-    token_res = session.post(token_url, data=token_payload)
-    token_data = token_res.json()
+        print("Waiting for final redirect...")
+        await page.wait_for_url("https://*", timeout=60000)
+        final_url = page.url
+        print("Successfully Logged In! Final URL:", final_url)
 
-    access_token = token_data.get("access_token")
-    print("Access Token Generated Successfully!")
-    return access_token
+        await browser.close()
 
-if __name__ == "__main__":
-    token = get_access_token()
-    print("TOKEN_LENGTH:", len(token))
+asyncio.run(run())
