@@ -15,46 +15,60 @@ async def run():
         totp_secret = totp_secret.strip()
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        # Launch browser without headless detection
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"]
+        )
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 720}
         )
         page = await context.new_page()
 
         print("Navigating to Upstox API Auth URL...")
         login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}"
         
-        # Load page with domcontentloaded instead of networkidle
         await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_timeout(3000)
+        await asyncio.sleep(5)
 
-        print("Waiting for Mobile/User ID input field...")
-        # Broad selectors for input field
-        user_input = await page.wait_for_selector('input[type="tel"], input[type="text"], input[name="userId"], input[type="mobileNum"]', timeout=30000)
-        await user_input.fill(user_id)
-        
-        # Click Get OTP / Continue
-        get_otp_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Get OTP"), button:has-text("Continue")', timeout=30000)
-        await get_otp_btn.click()
-        await page.wait_for_timeout(2000)
+        # Save screenshot to debug exact UI
+        await page.screenshot(path="login_page_debug.png")
+        print("Saved debug screenshot: login_page_debug.png")
 
-        print("Generating and Entering TOTP...")
+        # Generic locator strategy: find any visible input element
+        print("Searching for any visible input field...")
+        inputs = page.locator("input")
+        count = await inputs.count()
+        print(f"Total inputs found: {count}")
+
+        if count > 0:
+            first_input = inputs.first
+            await first_input.fill(user_id)
+            print("Filled User ID successfully.")
+        else:
+            raise Exception("No input elements found on page.")
+
+        # Click Get OTP / Submit
+        button = page.locator("button").first
+        await button.click()
+        await asyncio.sleep(3)
+
+        # Enter TOTP
+        print("Entering TOTP...")
         totp = pyotp.TOTP(totp_secret)
         current_otp = totp.now()
 
-        otp_input = await page.wait_for_selector('input[type="tel"], input[type="text"], input[name="otp"], input[type="otpNum"]', timeout=30000)
+        otp_input = page.locator("input").first
         await otp_input.fill(current_otp)
+        await page.locator("button").first.click()
+        await asyncio.sleep(3)
 
-        continue_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Continue")', timeout=30000)
-        await continue_btn.click()
-        await page.wait_for_timeout(2000)
-
+        # Enter PIN
         print("Entering PIN...")
-        pin_input = await page.wait_for_selector('input[type="password"]', timeout=30000)
+        pin_input = page.locator("input").first
         await pin_input.fill(pin)
-
-        pin_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Continue")', timeout=30000)
-        await pin_btn.click()
+        await page.locator("button").first.click()
 
         print("Waiting for final redirect...")
         await page.wait_for_url("https://*", timeout=60000)
