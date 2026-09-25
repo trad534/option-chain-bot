@@ -1,5 +1,5 @@
 import os
-import time
+import json
 import pyotp
 import gspread
 import requests
@@ -8,6 +8,7 @@ from playwright.sync_api import sync_playwright
 USER_ID = os.getenv("UPSTOX_USER_ID")
 PIN = os.getenv("UPSTOX_PIN")
 TOTP_SECRET = os.getenv("TOTP_SECRET")
+GOOGLE_CREDS_ENV = os.getenv("GOOGLE_CREDENTIALS")
 
 API_KEY = "399fd5d0-cb80-4983-bdd8-bcfc05091459"
 API_SECRET = "3ll8j7cxaf"
@@ -19,7 +20,9 @@ MAIN_SHEET_NAME = "upstox get data"
 def run_auto_login():
     print("🚀 Starting Headless Browser Auto-Login...")
     
-    gc = gspread.service_account(filename="Credentials.json")
+    # Environment variable se Google credentials load kar rahe hain
+    creds_dict = json.loads(GOOGLE_CREDS_ENV)
+    gc = gspread.service_account_from_dict(creds_dict)
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
 
