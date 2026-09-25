@@ -1,76 +1,63 @@
 import os
-import json
+import time
 import pyotp
 import gspread
-import requests
-from playwright.sync_api import sync_playwright
+from google.oauth2.service_account import Credentials
+from playwright.async_api import async_playwright
+import asyncio
 
-USER_ID = os.getenv("UPSTOX_USER_ID")
-PIN = os.getenv("UPSTOX_PIN")
-TOTP_SECRET = os.getenv("TOTP_SECRET")
-GOOGLE_CREDS_ENV = os.getenv("GOOGLE_CREDENTIALS")
-
-API_KEY = "399fd5d0-cb80-4983-bdd8-bcfc05091459"
-API_SECRET = "3ll8j7cxaf"
-REDIRECT_URI = "https://127.0.0"
-
-GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
-
-def run_auto_login():
-    print("🚀 Starting Headless Browser Auto-Login...")
+async def run():
+    user_id = os.environ.get("UPSTOX_USER_ID")
+    pin = os.environ.get("UPSTOX_PIN")
+    totp_secret = os.environ.get("TOTP_SECRET")
     
-    # Environment variable se Google credentials load kar rahe hain
-    creds_dict = json.loads(GOOGLE_CREDS_ENV)
-    gc = gspread.service_account_from_dict(creds_dict)
-    spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
+    # Clean secret key from any spaces/newlines
+    if totp_secret:
+        totp_secret = totp_secret.strip()
 
-    totp = pyotp.TOTP(TOTP_SECRET.replace(" ", ""))
-    otp_code = totp.now()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-    auth_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri={REDIRECT_URI}"
+        print("Navigating to Upstox Login Page...")
+        # Login page URL
+        login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={os.environ.get('UPSTOX_API_KEY')}&redirect_uri={os.environ.get('UPSTOX_REDIRECT_URI')}"
+        await page.goto(login_url)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(auth_url)
-
-        page.wait_for_selector('input[type="mobileNum"]', timeout=20000)
-        page.fill('input[type="mobileNum"]', USER_ID)
-        page.click('button[type="submit"]')
-
-        page.wait_for_selector('input[type="text"]', timeout=15000)
-        page.fill('input[type="text"]', otp_code)
-        page.click('button[type="submit"]')
-
-        page.wait_for_selector('input[type="password"]', timeout=15000)
-        page.fill('input[type="password"]', PIN)
-        page.click('button[type="submit"]')
-
-        page.wait_for_url("https://127.0.0*", timeout=20000)
-        final_url = page.url
-        code = final_url.split("code=")[1].split("&")[0]
-
-        token_url = "https://api.upstox.com/v2/login/auth/token"
-        headers = {'accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}
-        payload = {
-            'code': code,
-            'client_id': API_KEY,
-            'client_secret': API_SECRET,
-            'redirect_uri': REDIRECT_URI,
-            'grant_type': 'authorization_code'
-        }
-        res = requests.post(token_url, headers=headers, data=payload).json()
+        print("Waiting for Mobile/User ID input field...")
+        # Increase timeout to 60 seconds and support multiple selectors
+        user_input = await page.wait_for_selector('input[type="mobileNum"], input[name="userId"], #mobileNum', timeout=60000)
+        await user_input.fill(user_id)
         
-        access_token = res.get('access_token')
-        if access_token:
-            data_sheet.update_acell('A1', access_token)
-            print("🎉 SUCCESS: Fresh Access Token Google Sheet Cell A1 me update ho gaya hai!")
-        else:
-            print(f"❌ Token error: {res}")
+        # Click Get OTP / Continue button
+        get_otp_btn = await page.wait_for_selector('button[type="submit"], #getOtp', timeout=30000)
+        await get_otp_btn.click()
 
-        browser.close()
+        print("Entering OTP / TOTP...")
+        totp = pyotp.TOTP(totp_secret)
+        current_otp = totp.now()
 
-if __name__ == "__main__":
-    run_auto_login()
+        otp_input = await page.wait_for_selector('input[type="otpNum"], input[name="otp"]', timeout=30000)
+        await otp_input.fill(current_otp)
+
+        # Submit OTP
+        continue_btn = await page.wait_for_selector('button[type="submit"]', timeout=30000)
+        await continue_btn.click()
+
+        print("Entering PIN...")
+        pin_input = await page.wait_for_selector('input[type="password"], input[name="pin"]', timeout=30000)
+        await pin_input.fill(pin)
+
+        pin_btn = await page.wait_for_selector('button[type="submit"]', timeout=30000)
+        await pin_btn.click()
+
+        # Wait for redirect and extract auth code
+        print("Waiting for redirect...")
+        await page.wait_for_url("https://*", timeout=60000)
+        final_url = page.url
+
+        print("Successfully logged in!")
+        await browser.close()
+
+asyncio.run(run())
