@@ -1,0 +1,29 @@
+name: Daily Upstox Auto Token Generator
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily Subah 8:30 AM IST (3:00 AM UTC)
+  workflow_dispatch:
+
+jobs:
+  auto-login:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install pyotp gspread requests playwright
+          playwright install chromium
+
+      - name: Run Auto Login Script
+        env:
+          UPSTOX_USER_ID: ${{ secrets.UPSTOX_USER_ID }}
+          UPSTOX_PIN: ${{ secrets.UPSTOX_PIN }}
+          TOTP_SECRET: ${{ secrets.TOTP_SECRET }}
+        run: python auto_login.py
