@@ -1,35 +1,51 @@
 import os
+import json
+import urllib.request
+import pandas as pd
 import pyotp
 from SmartApi import SmartConnect
 
-# Fetch credentials from GitHub Secrets
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
-def run_login():
+def get_option_chain():
     try:
-        # Initialize SmartConnect API
+        # 1. Initialize & Login
         smart_api = SmartConnect(api_key=API_KEY)
-        
-        # Generate TOTP dynamically
         totp = pyotp.TOTP(TOTP_SECRET).now()
-        
-        # Authenticate Session
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
         
-        if data.get('status'):
-            print("✅ Angel One Login Successful!")
-            print(f"JWT Token Generated: {data['data']['jwtToken'][:15]}...")
-            return smart_api
-        else:
+        if not data.get('status'):
             print(f"❌ Login Failed: {data.get('message')}")
-            return None
+            return
+            
+        print("✅ Login Successful!")
+
+        # 2. Fetch Master Scrip List from Angel One
+        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
+        print("📥 Downloading Scrip Master Data...")
+        response = urllib.request.urlopen(url)
+        scrip_data = json.loads(response.read().decode())
+        df = pd.DataFrame(scrip_data)
+
+        # 3. Filter for NIFTY Options
+        nifty_options = df[
+            (df['name'] == 'NIFTY') & 
+            (df['instrumenttype'].isin(['OPTIDX'])) &
+            (df['exch_seg'] == 'NFO')
+        ].copy()
+
+        print(f"📊 Total Active NIFTY Option Contracts Found: {len(nifty_options)}")
+
+        # 4. Save to CSV
+        output_file = "nifty_option_chain.csv"
+        nifty_options[['token', 'symbol', 'name', 'expiry', 'strike', 'lotsize', 'instrumenttype']].to_csv(output_file, index=False)
+        print(f"🎉 Option Chain master dataset saved successfully to '{output_file}'!")
 
     except Exception as e:
-        print(f"❌ Exception during authentication: {str(e)}")
-        return None
+        print(f"❌ Error during processing: {str(e)}")
 
 if __name__ == "__main__":
-    run_login()
+    get_option_chain()
