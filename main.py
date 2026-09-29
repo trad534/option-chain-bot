@@ -1,5 +1,11 @@
+import time
 import subprocess
 
-if __name__ == "__main__":
-    print("🚀 Starting Angel One Live Option Chain Engine on Render...")
-    subprocess.run(["python", "angel_login.py"])
+print("Starting Angel One Live Option Chain Engine on Render...")
+
+while True:
+    try:
+        subprocess.run(["python", "angel_login.py"])
+    except Exception as e:
+        print(f"Error running script: {e}")
+    time.sleep(10)
