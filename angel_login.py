@@ -21,8 +21,21 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
 
+def get_gspread_client():
+    # 1. Try Credentials.json file first
+    if os.path.exists("Credentials.json"):
+        return gspread.service_account(filename="Credentials.json")
+    
+    # 2. Try GOOGLE_CREDENTIALS env variable for Render
+    env_creds = os.getenv("GOOGLE_CREDENTIALS")
+    if env_creds:
+        creds_dict = json.loads(env_creds)
+        return gspread.service_account_from_dict(creds_dict)
+        
+    raise Exception("No Credentials found for Google Sheets!")
+
 try:
-    gc = gspread.service_account(filename="Credentials.json")
+    gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     print("==================================================")
@@ -39,10 +52,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0:
         return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
-    # Implied Volatility (IV) Calculation via Bisection Method
     low_sigma, high_sigma = 0.01, 3.0
     sigma = 0.20
-    for _ in range(20):
+    for _ in range(15):
         mid_sigma = (low_sigma + high_sigma) / 2
         d1 = (np.log(S / K) + (r + 0.5 * mid_sigma ** 2) * t) / (mid_sigma * np.sqrt(t))
         d2 = d1 - mid_sigma * np.sqrt(t)
@@ -59,7 +71,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     else:
         sigma = mid_sigma
 
-    # Greeks Calculation
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
@@ -82,11 +93,10 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# ANGEL ONE DATA FETCH & GOOGLE SHEET SYNC
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_angel_option_chain():
     try:
-        # 1. Login to Angel One
         smart_api = SmartConnect(api_key=API_KEY)
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
@@ -95,21 +105,15 @@ def fetch_and_update_angel_option_chain():
             print(f"❌ Angel One Login Failed: {data.get('message')}")
             return
 
-        print("✅ Angel One Login Successful!")
-
-        # 2. Fetch Master Scrip File
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         response = urllib.request.urlopen(url)
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
-        # 3. Get NIFTY Live Spot Price
         nifty_spot = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'AMXIDX') & (df['exch_seg'] == 'NSE')].iloc[0]
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(nifty_spot['token'])]})
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
-        print(f"📌 NIFTY Live Spot Price: {spot_price}")
 
-        # 4. Filter Options (Current Expiry & ATM +- 500)
         nifty_opts = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX') & (df['exch_seg'] == 'NFO')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
@@ -119,7 +123,6 @@ def fetch_and_update_angel_option_chain():
         atm_strike = round(spot_price / 50) * 50
         filtered_opts = expiry_opts[(expiry_opts['strike'] >= atm_strike - 500) & (expiry_opts['strike'] <= atm_strike + 500)].copy()
 
-        # 5. Fetch Live Quotes
         tokens_nfo = list(filtered_opts['token'].unique())
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
@@ -132,7 +135,6 @@ def fetch_and_update_angel_option_chain():
                           quotes_df[['tradingSymbol', 'ltp']], 
                           left_on='symbol', right_on='tradingSymbol', how='inner')
 
-        # 6. Separate Call & Put Data by Strike
         exp_date = datetime.strptime(earliest_expiry, "%d%b%Y")
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
@@ -158,13 +160,19 @@ def fetch_and_update_angel_option_chain():
                 pe_ltp, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        # 7. Update Google Sheet at A10
-        data_sheet.batch_clear(["A10:M1000"])
+        # Write to Google Sheet (Cell A10)
+        data_sheet.batch_clear(["A10:M100"])
         data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-        print("🎯 Google Sheet Updated Successfully at Cell A10!")
+        print(f"🎯 Google Sheet Updated at {datetime.now().strftime('%H:%M:%S')}!")
 
     except Exception as ex:
         print(f"❌ Exception in Process: {ex}")
 
+# ==========================================
+# REAL-TIME CONTINUOUS LOOP (Render & Local)
+# ==========================================
 if __name__ == "__main__":
-    fetch_and_update_angel_option_chain()
+    print("🚀 Starting Real-Time Angel One Option Chain Sync...")
+    while True:
+        fetch_and_update_angel_option_chain()
+        time.sleep(10)  # 10 Seconds Real-Time Refresh
