@@ -7,7 +7,7 @@ import numpy as np
 import pyotp
 import gspread
 from scipy.stats import norm
-from datetime import datetime
+from datetime import datetime, time as dtime
 from SmartApi import SmartConnect
 
 # ==========================================
@@ -22,20 +22,14 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
 
 def get_gspread_client():
-    # 1. Try Render Secret Files path first
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
-    
-    # 2. Try local Credentials.json file
     if os.path.exists("Credentials.json"):
         return gspread.service_account(filename="Credentials.json")
-    
-    # 3. Try GOOGLE_CREDENTIALS env variable
     env_creds = os.getenv("GOOGLE_CREDENTIALS")
     if env_creds:
         creds_dict = json.loads(env_creds)
         return gspread.service_account_from_dict(creds_dict)
-        
     raise Exception("No Credentials found for Google Sheets!")
 
 try:
@@ -106,7 +100,16 @@ def fetch_and_update_angel_option_chain():
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
         print(f"🟢 Heartbeat updated in A2 at {current_time_str}")
 
-        # 2. Login to Angel One SmartAPI
+        # 2. Check if current time is between 09:10 AM and 03:35 PM
+        now_time = datetime.now().time()
+        start_market_time = dtime(9, 10)
+        end_market_time = dtime(15, 35)
+
+        if not (start_market_time <= now_time <= end_market_time):
+            print(f"⏳ Outside market hours ({now_time}). Waiting for 09:10 AM...")
+            return
+
+        # 3. Login to Angel One SmartAPI
         smart_api = SmartConnect(api_key=API_KEY)
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
@@ -115,7 +118,7 @@ def fetch_and_update_angel_option_chain():
             print(f"❌ Angel One Login Failed: {data.get('message')}")
             return
 
-        # 3. Download Scrip Master & Fetch Spot Price
+        # 4. Download Scrip Master & Fetch Spot Price
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         response = urllib.request.urlopen(url)
         scrip_data = json.loads(response.read().decode())
@@ -125,7 +128,7 @@ def fetch_and_update_angel_option_chain():
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(nifty_spot['token'])]})
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
-        # 4. Filter Options & Get Quotes
+        # 5. Filter Options & Get Quotes
         nifty_opts = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX') & (df['exch_seg'] == 'NFO')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
@@ -139,7 +142,7 @@ def fetch_and_update_angel_option_chain():
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print("❌ Market Closed / Failed to fetch Market Quotes (Heartbeat A2 is still running)")
+            print("❌ Failed to fetch Market Quotes")
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
@@ -184,7 +187,7 @@ def fetch_and_update_angel_option_chain():
 # REAL-TIME CONTINUOUS LOOP
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 Starting Real-Time Angel One Option Chain Sync with Heartbeat...")
+    print("🚀 Starting Real-Time Angel One Option Chain Sync with 9:10 AM Filter...")
     while True:
         fetch_and_update_angel_option_chain()
         time.sleep(10)  # 10 Seconds Refresh Interval
