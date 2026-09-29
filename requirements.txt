@@ -1,5 +1,2 @@
-requests
+smartapi-python
 pyotp
-gspread
-upstox-python-sdk
-flask
