@@ -101,6 +101,12 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 def fetch_and_update_angel_option_chain():
     try:
+        # 1. Always update A2 cell to show script is active with current time
+        current_time_str = datetime.now().strftime('%H:%M:%S')
+        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        print(f"🟢 Heartbeat updated in A2 at {current_time_str}")
+
+        # 2. Login to Angel One SmartAPI
         smart_api = SmartConnect(api_key=API_KEY)
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
@@ -109,6 +115,7 @@ def fetch_and_update_angel_option_chain():
             print(f"❌ Angel One Login Failed: {data.get('message')}")
             return
 
+        # 3. Download Scrip Master & Fetch Spot Price
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         response = urllib.request.urlopen(url)
         scrip_data = json.loads(response.read().decode())
@@ -118,6 +125,7 @@ def fetch_and_update_angel_option_chain():
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(nifty_spot['token'])]})
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
+        # 4. Filter Options & Get Quotes
         nifty_opts = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX') & (df['exch_seg'] == 'NFO')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
@@ -131,7 +139,7 @@ def fetch_and_update_angel_option_chain():
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print("❌ Failed to fetch Market Quotes")
+            print("❌ Market Closed / Failed to fetch Market Quotes (Heartbeat A2 is still running)")
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
@@ -164,19 +172,19 @@ def fetch_and_update_angel_option_chain():
                 pe_ltp, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        # Write to Google Sheet (Cell A10)
+        # Write Option Chain to Google Sheet (Cell A10 onwards)
         data_sheet.batch_clear(["A10:M100"])
         data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-        print(f"🎯 Google Sheet Updated at {datetime.now().strftime('%H:%M:%S')}!")
+        print(f"🎯 Option Chain Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
 
     except Exception as ex:
         print(f"❌ Exception in Process: {ex}")
 
 # ==========================================
-# REAL-TIME CONTINUOUS LOOP (Render & Local)
+# REAL-TIME CONTINUOUS LOOP
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 Starting Real-Time Angel One Option Chain Sync...")
+    print("🚀 Starting Real-Time Angel One Option Chain Sync with Heartbeat...")
     while True:
         fetch_and_update_angel_option_chain()
-        time.sleep(10)  # 10 Seconds Real-Time Refresh
+        time.sleep(10)  # 10 Seconds Refresh Interval
