@@ -1,9 +1,9 @@
 name: Angel One Daily Login & Fetch
 
 on:
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: '30 3 * * 1-5' # Runs automatically Mon-Fri at 9:00 AM IST
+    - cron: '30 3 * * 1-5'
 
 jobs:
   run-angel-bot:
@@ -21,7 +21,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install smartapi-python pyotp
+          pip install smartapi-python pyotp logzero websocket-client
 
       - name: Run Angel One Login Script
         env:
