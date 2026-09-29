@@ -5,3 +5,4 @@ pyotp
 scipy
 logzero
 websocket-client
+flask
