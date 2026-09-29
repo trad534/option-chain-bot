@@ -3,3 +3,4 @@ smartapi-python
 gspread
 pyotp
 scipy
+logzero
