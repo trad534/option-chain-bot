@@ -1,30 +1,33 @@
-name: Daily Upstox Auto Token Generator
+name: Angel One Daily Login & Fetch
 
 on:
+  workflow_dispatch: # Allows manual trigger
   schedule:
-    - cron: '0 3 * * *'  # Daily Subah 8:30 AM IST (3:00 AM UTC)
-  workflow_dispatch:
+    - cron: '30 3 * * 1-5' # Runs automatically Mon-Fri at 9:00 AM IST
 
 jobs:
-  auto-login:
+  run-angel-bot:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - name: Check out repo content
+        uses: actions/checkout@v3
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install Dependencies
         run: |
-          pip install pyotp gspread requests playwright
-          playwright install chromium
+          python -m pip install --upgrade pip
+          pip install smartapi-python pyotp
 
-      - name: Run Auto Login Script
+      - name: Run Angel One Login Script
         env:
-          UPSTOX_USER_ID: ${{ secrets.UPSTOX_USER_ID }}
-          UPSTOX_PIN: ${{ secrets.UPSTOX_PIN }}
-          TOTP_SECRET: ${{ secrets.TOTP_SECRET }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: python auto_login.py
+          ANGEL_CLIENT_ID: ${{ secrets.ANGEL_CLIENT_ID }}
+          ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
+          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+        run: |
+          python angel_login.py
