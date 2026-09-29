@@ -1,4 +1,4 @@
-name: Angel One Live Option Chain Auto-Runner
+name: Angel One Live Option Chain Auto-Sync
 
 on:
   workflow_dispatch:
@@ -21,9 +21,9 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install smartapi-python pyotp logzero websocket-client pandas scipy numpy
+          pip install smartapi-python pyotp logzero websocket-client pandas scipy numpy gspread google-auth
 
-      - name: Run Live Option Chain Script
+      - name: Run Angel Option Chain Engine
         env:
           ANGEL_CLIENT_ID: ${{ secrets.ANGEL_CLIENT_ID }}
           ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
@@ -31,11 +31,3 @@ jobs:
           ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
         run: |
           python angel_login.py
-
-      - name: Commit & Push Updated Live CSV
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add live_nifty_option_chain.csv
-          git commit -m "Auto-update Real-Time Option Chain with Greeks" || echo "No changes to commit"
-          git push
