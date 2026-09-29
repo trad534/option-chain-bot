@@ -1,3 +1,4 @@
 pandas
 smartapi-python
 gspread
+pyotp
