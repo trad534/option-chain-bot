@@ -1,2 +1,4 @@
+pandas
 smartapi-python
-pyotp
+gspread
+
