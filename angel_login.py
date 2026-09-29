@@ -5,6 +5,7 @@ import pandas as pd
 import pyotp
 from SmartApi import SmartConnect
 
+# Secrets
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
