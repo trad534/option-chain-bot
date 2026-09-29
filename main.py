@@ -22,11 +22,15 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
 
 def get_gspread_client():
-    # 1. Try Credentials.json file first
+    # 1. Try Render Secret Files path first
+    if os.path.exists("/etc/secrets/Credentials.json"):
+        return gspread.service_account(filename="/etc/secrets/Credentials.json")
+    
+    # 2. Try local Credentials.json file
     if os.path.exists("Credentials.json"):
         return gspread.service_account(filename="Credentials.json")
     
-    # 2. Try GOOGLE_CREDENTIALS env variable for Render
+    # 3. Try GOOGLE_CREDENTIALS env variable
     env_creds = os.getenv("GOOGLE_CREDENTIALS")
     if env_creds:
         creds_dict = json.loads(env_creds)
