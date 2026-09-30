@@ -126,8 +126,11 @@ def initialize_scrip_master(smart_api):
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
+            print(f"📊 Total Scrips fetched: {len(df)}")
             
             nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
+            print(f"📊 Filtered OPTIDX count: {len(nifty_opts)}")
+            
             if not nifty_opts.empty:
                 if 'strike' in nifty_opts.columns:
                     nifty_opts['strike'] = nifty_opts['strike'].astype(float)
@@ -135,19 +138,26 @@ def initialize_scrip_master(smart_api):
                         nifty_opts['strike'] = nifty_opts['strike'] / 100
                 
                 if 'expiry' in nifty_opts.columns:
+                    print(f"📅 Sample Expiry values from API: {nifty_opts['expiry'].dropna().unique()[:5]}")
+                    # Try parsing with format first, if fails let pandas infer
                     nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+                    if nifty_opts['parsed_expiry'].isna().all():
+                        nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
+                        
                     valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+                    print(f"📅 Valid parsed expiry count: {len(valid_opts)}")
                     
                     if not valid_opts.empty:
-                        earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
-                        cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+                        min_exp_dt = valid_opts['parsed_expiry'].min()
+                        earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
+                        cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
                         
                         if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
                             cached_options_df['token'] = cached_options_df['symboltoken']
                         if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
                             cached_options_df['symbol'] = cached_options_df['tradingsymbol']
 
-            print(f"✅ Scrip Master Loaded via API! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+            print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
         print(f"⚠️ Scrip Master API Error: {e}")
 
@@ -243,8 +253,8 @@ def fetch_and_update_option_chain(smart_api):
         ]
 
         for st in strikes:
-            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()
-            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()
+            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()     
+            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()     
 
             ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
             ce_vol = float(ce_row['volume'].values[0]) if not ce_row.empty and 'volume' in ce_row.columns else 0.0
