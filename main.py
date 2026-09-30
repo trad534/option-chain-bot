@@ -149,7 +149,7 @@ def initialize_scrip_master(smart_api):
 
             print(f"✅ Scrip Master Loaded via API! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️ Scrip Master API Error: {e}")
+        print(f"⚠️️ Scrip Master API Error: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -186,7 +186,8 @@ def fetch_and_update_option_chain(smart_api):
         atm_strike = round(spot_price / 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 200) & (cached_options_df['strike'] <= atm_strike + 200)].copy()
+            # 39 Strikes total range (ATM ke upar aur neeche 19 strikes = 19 * 50 = 950 points range on each side)
+            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 950) & (cached_options_df['strike'] <= atm_strike + 950)].copy()
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         else:
             tokens_nfo = []
@@ -232,7 +233,7 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 200), int(atm_strike + 250), 50)
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
         
         # Exact Header Sequence matching user request
         output_rows = [
@@ -270,7 +271,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with Exact Column Layout!")
+            print(f"🎯 Google Sheet Successfully Updated with 39 Strike Prices & Exact Layout!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
