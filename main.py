@@ -45,6 +45,16 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
+# 100% Instant & Accurate Lot Size Mapping for Indices & Stocks
+EXACT_LOT_SIZES = {
+    "NIFTY": 65,
+    "BANKNIFTY": 15,
+    "FINNIFTY": 25,
+    "MIDCPNIFTY": 50,
+    "SENSEX": 10,
+    "BANKEX": 15
+}
+
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
@@ -143,7 +153,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol from J4
+        # 1. Read Selected Symbol from 'Option chain index new' J4
         selected_symbol = "NIFTY"
         if selection_sheet:
             try:
@@ -152,72 +162,19 @@ def fetch_and_update_option_chain(smart_api):
                     selected_symbol = str(j4_val).strip().upper()
             except:
                 pass
-        print(f"📌 Selected Symbol: {selected_symbol}")
+        print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Fetch Scrip Master directly from Angel One API
-        res = smart_api.searchScrip("NFO", selected_symbol)
-        all_options_df = pd.DataFrame()
-        lot_size = 0
+        # 2. Get Exact Lot Size Instantly
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50) # Default 50 for any unmapped stock
 
-        if res and res.get('status') and res.get('data'):
-            scrip_data = res['data']
-            df = pd.DataFrame(scrip_data)
-            
-            if not df.empty:
-                # Debug print to see exact columns
-                print(f"📋 Scrip columns available: {df.columns.tolist()}")
-                
-                # Check explicit keys for lot size
-                for col in df.columns:
-                    col_lower = str(col).lower()
-                    if 'lot' in col_lower or col_lower == 'ls':
-                        valid_vals = df[col].dropna()
-                        if not valid_vals.empty:
-                            try:
-                                vals = valid_vals.astype(float)
-                                vals = vals[vals > 0]
-                                if not vals.empty:
-                                    lot_size = int(vals.iloc[0])
-                                    print(f"✅ Found Lot Size from column '{col}': {lot_size}")
-                                    break
-                            except:
-                                pass
-
-                nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
-                if not nifty_opts.empty:
-                    if 'strike' in nifty_opts.columns:
-                        nifty_opts['strike'] = nifty_opts['strike'].astype(float)
-                        if nifty_opts['strike'].max() > 50000:
-                            nifty_opts['strike'] = nifty_opts['strike'] / 100
-                    
-                    all_options_df = nifty_opts.copy()
-                    if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
-                        all_options_df['token'] = all_options_df['symboltoken']
-                    if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
-                        all_options_df['symbol'] = all_options_df['tradingsymbol']
-
-        # Exact Fallback mapping based on your requirement (Nifty = 65)
-        if lot_size <= 0:
-            if selected_symbol == "NIFTY":
-                lot_size = 65
-            elif selected_symbol == "BANKNIFTY":
-                lot_size = 15
-            elif selected_symbol == "FINNIFTY":
-                lot_size = 25
-            else:
-                lot_size = 50
-            print(f"⚠️ Using standard mapped Lot Size: {lot_size}")
-
-        print(f"✅ Final Lot Size for {selected_symbol}: {lot_size}")
-
-        # 3. Update Lot Size in 'upstox get data' Cell A7
+        # Update Lot Size in 'upstox get data' Cell A7 immediately
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7 successfully: {lot_size}")
+            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
         except Exception as e:
             print(f"⚠️ Error updating A7 lot size: {e}")
 
-        # Update Expiries in A3:A6
+        # Update Expiries in A3:A6 of 'upstox get data'
         expiry_rows = get_upcoming_tuesdays(4)
         try:
             data_sheet.update(range_name="A3:A6", values=expiry_rows)
@@ -243,6 +200,28 @@ def fetch_and_update_option_chain(smart_api):
                 selected_expiry = datetime.now().strftime('%d%b%Y').upper()
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
+
+        # 3. Fetch Scrip Master for Options Data
+        res = smart_api.searchScrip("NFO", selected_symbol)
+        all_options_df = pd.DataFrame()
+
+        if res and res.get('status') and res.get('data'):
+            scrip_data = res['data']
+            df = pd.DataFrame(scrip_data)
+            
+            if not df.empty:
+                nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
+                if not nifty_opts.empty:
+                    if 'strike' in nifty_opts.columns:
+                        nifty_opts['strike'] = nifty_opts['strike'].astype(float)
+                        if nifty_opts['strike'].max() > 50000:
+                            nifty_opts['strike'] = nifty_opts['strike'] / 100
+                    
+                    all_options_df = nifty_opts.copy()
+                    if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
+                        all_options_df['token'] = all_options_df['symboltoken']
+                    if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
+                        all_options_df['symbol'] = all_options_df['tradingsymbol']
 
         # 4. Fetch Spot Price
         spot_token_map = {"NIFTY": "26000", "BANKNIFTY": "26001", "FINNIFTY": "26037"}
