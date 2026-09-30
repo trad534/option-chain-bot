@@ -121,10 +121,13 @@ def initialize_scrip_master():
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
-        nifty_spot = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'AMXIDX') & (df['exch_seg'] == 'NSE')].iloc[0]
+        # Correct filtering for Nifty Spot Token on NSE
+        nifty_spot = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))].iloc[0]
         cached_nifty_spot_token = str(nifty_spot['token'])
+        print(f"✅ Nifty Spot Token Found: {cached_nifty_spot_token}")
 
-        nifty_opts = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX') & (df['exch_seg'] == 'NFO')].copy()
+        # Correct filtering for Nifty Options on NFO
+        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
         earliest_expiry = nifty_opts['expiry'].min()
@@ -152,6 +155,10 @@ def fetch_and_update_angel_option_chain(smart_api):
 
         # Fetch Spot Price using cached token
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [cached_nifty_spot_token]})
+        if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
+            print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
+            return
+            
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
         atm_strike = round(spot_price / 50) * 50
