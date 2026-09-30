@@ -117,6 +117,19 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 all_nifty_options_df = pd.DataFrame()
 nifty_spot_token = "26000"
 
+def get_upcoming_tuesdays(count=4):
+    tuesdays = []
+    today = datetime.now()
+    days_ahead = (1 - today.weekday() + 7) % 7
+    if days_ahead == 0 and today.hour >= 15:
+        days_ahead = 7
+    first_tuesday = today + timedelta(days=days_ahead)
+    
+    for i in range(count):
+        tues = first_tuesday + timedelta(weeks=i)
+        tuesdays.append([tues.strftime('%d%b%Y').upper()])
+    return tuesdays
+
 def initialize_scrip_master(smart_api):
     global all_nifty_options_df
     try:
@@ -133,36 +146,25 @@ def initialize_scrip_master(smart_api):
                     if nifty_opts['strike'].max() > 50000:
                         nifty_opts['strike'] = nifty_opts['strike'] / 100
                 
-                if 'expiry' in nifty_opts.columns:
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
-                    valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-                    
-                    if not valid_opts.empty:
-                        all_nifty_options_df = valid_opts.copy()
-                        
-                        if 'symboltoken' in all_nifty_options_df.columns and 'token' not in all_nifty_options_df.columns:
-                            all_nifty_options_df['token'] = all_nifty_options_df['symboltoken']
-                        if 'tradingsymbol' in all_nifty_options_df.columns and 'symbol' not in all_nifty_options_df.columns:
-                            all_nifty_options_df['symbol'] = all_nifty_options_df['tradingsymbol']
-                            
-                        # Extract unique sorted expiries for 1 month
-                        unique_dates = sorted(all_nifty_options_df['parsed_expiry'].unique())
-                        formatted_dates = [pd.to_datetime(d).strftime('%d%b%Y').upper() for d in unique_dates[:4]] # Top 4 expiries
-                        
-                        # Push expiries to A3, A4, A5, A6
-                        expiry_rows = [[d] for d in formatted_dates]
-                        while len(expiry_rows) < 4:
-                            expiry_rows.append([""])
-                        
-                        try:
-                            data_sheet.update(range_name="A3:A6", values=expiry_rows)
-                            print(f"✅ Updated Expiries in A3:A6 -> {formatted_dates}")
-                        except Exception as e:
-                            print(f"⚠️ Error updating expiry cells A3:A6: {e}")
+                all_nifty_options_df = nifty_opts.copy()
+                if 'symboltoken' in all_nifty_options_df.columns and 'token' not in all_nifty_options_df.columns:
+                    all_nifty_options_df['token'] = all_nifty_options_df['symboltoken']
+                if 'tradingsymbol' in all_nifty_options_df.columns and 'symbol' not in all_nifty_options_df.columns:
+                    all_nifty_options_df['symbol'] = all_nifty_options_df['tradingsymbol']
+
+        # Push 4 upcoming Tuesdays directly to A3:A6
+        expiry_rows = get_upcoming_tuesdays(4)
+        try:
+            data_sheet.update(range_name="A3:A6", values=expiry_rows)
+            print(f"✅ Updated Expiries in A3:A6 -> {expiry_rows}")
+        except Exception as e:
+            print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
         print(f"✅ Scrip Master Loaded! Total Options: {len(all_nifty_options_df)}")
     except Exception as e:
         print(f"⚠️ Scrip Master API Error: {e}")
+        expiry_rows = get_upcoming_tuesdays(4)
+        data_sheet.update(range_name="A3:A6", values=expiry_rows)
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -177,7 +179,7 @@ def fetch_and_update_option_chain(smart_api):
         if all_nifty_options_df is None or all_nifty_options_df.empty:
             initialize_scrip_master(smart_api)
 
-        # Read selected expiry from cell L9 (or user can change it, default to A3 if blank)
+        # Read selected expiry from cell L9 (default to A3 if blank)
         selected_expiry = "N/A"
         try:
             l9_val = data_sheet.acell('L9').value
@@ -187,7 +189,6 @@ def fetch_and_update_option_chain(smart_api):
             pass
 
         if selected_expiry == "N/A" or not selected_expiry:
-            # Fallback to first available expiry from A3 if L9 is empty
             try:
                 a3_val = data_sheet.acell('A3').value
                 if a3_val:
@@ -210,7 +211,6 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Spot Price: {spot_price}")
 
-        # Update Spot Price in K9 safely
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
         except Exception as sheet_err:
@@ -218,17 +218,14 @@ def fetch_and_update_option_chain(smart_api):
 
         atm_strike = round(spot_price / 50) * 50
 
-        # Filter options for the selected expiry date
+        # Filter options
         if all_nifty_options_df is not None and not all_nifty_options_df.empty:
-            # Match expiry string format
-            expiry_filtered = all_nifty_options_df[all_nifty_options_df['expiry'].str.upper() == selected_expiry].copy()
-            if expiry_filtered.empty:
-                # Try matching parsed expiry
-                try:
-                    dt_obj = datetime.strptime(selected_expiry, '%d%b%Y')
-                    expiry_filtered = all_nifty_options_df[all_nifty_options_df['parsed_expiry'] == dt_obj].copy()
-                except:
+            if 'expiry' in all_nifty_options_df.columns:
+                expiry_filtered = all_nifty_options_df[all_nifty_options_df['expiry'].str.upper() == selected_expiry].copy()
+                if expiry_filtered.empty:
                     expiry_filtered = all_nifty_options_df.copy()
+            else:
+                expiry_filtered = all_nifty_options_df.copy()
 
             filtered_opts = expiry_filtered[(expiry_filtered['strike'] >= atm_strike - 950) & (expiry_filtered['strike'] <= atm_strike + 950)].copy()
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()] if not filtered_opts.empty else []
