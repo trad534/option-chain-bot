@@ -45,10 +45,10 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
-# 100% Instant & Accurate Lot Size Mapping for Indices & Stocks
+# Real-time Broker Accurate Lot Sizes (Bank Nifty = 30, Nifty = 65)
 EXACT_LOT_SIZES = {
     "NIFTY": 65,
-    "BANKNIFTY": 15,
+    "BANKNIFTY": 30,
     "FINNIFTY": 25,
     "MIDCPNIFTY": 50,
     "SENSEX": 10,
@@ -164,8 +164,8 @@ def fetch_and_update_option_chain(smart_api):
                 pass
         print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Get Exact Lot Size Instantly
-        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50) # Default 50 for any unmapped stock
+        # 2. Get Exact Lot Size Instantly based on Selection
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
 
         # Update Lot Size in 'upstox get data' Cell A7 immediately
         try:
