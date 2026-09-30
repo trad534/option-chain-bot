@@ -108,7 +108,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 # GLOBAL VARIABLES & LIGHTWEIGHT SCRIP LOADER
 # ==========================================
-cached_nifty_spot_token = "99926000"
+cached_nifty_spot_token = "26000"  # Nifty 50 NSE Spot Token standard for Angel One
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
 
@@ -121,18 +121,23 @@ def initialize_scrip_master():
         with urllib.request.urlopen(req, timeout=30) as response:
             scrip_data = json.loads(response.read().decode())
         
-        nifty_items = [item for item in scrip_data if item.get('name') == 'NIFTY' or item.get('symbol') == 'NIFTY']
-        df = pd.DataFrame(nifty_items)
+        df = pd.DataFrame(scrip_data)
         
         if df.empty:
             print("⚠️ Scrip filter returned empty data.")
             return
 
-        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['symbol'] == 'NIFTY')]
+        # Find exact Nifty Spot Token
+        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['symbol'] == 'NIFTY') & (df['instrumenttype'] == '')]
+        if nifty_spot_row.empty:
+            nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['name'] == 'NIFTY') & (df['symbol'] == 'NIFTY')]
+            
         if not nifty_spot_row.empty:
             cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
+            print(f"🎯 Found Nifty Spot Token: {cached_nifty_spot_token}")
         
-        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == 'OPTIDX')].copy()
+        # Filter Nifty Options
+        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         if not nifty_opts.empty:
             nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
             nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
@@ -160,19 +165,24 @@ def fetch_and_update_angel_option_chain(smart_api):
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master()
 
-        # 1. Fetch Spot Price
+        # 1. Fetch Spot Price safely
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(cached_nifty_spot_token)]})
-        if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
+        if not spot_quote or not spot_quote.get('status') or not spot_quote.get('data') or not spot_quote['data'].get('fetched'):
             print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
             return
             
-        spot_price = float(spot_quote['data']['fetched'][0].get('ltp', spot_quote['data']['fetched'][0].get('LTP', 0)))
-        print(f"🎯 Spot Price: {spot_price}")
+        spot_item = spot_quote['data']['fetched'][0]
+        spot_price = float(spot_item.get('ltp', spot_item.get('LTP', spot_item.get('close', 0))))
+        print(f"🎯 Live Spot Price: {spot_price}")
+
+        if spot_price <= 1000:
+            print("⚠️ Spot price looks invalid, defaulting to 25000 for safety")
+            spot_price = 25000.0
 
         atm_strike = round(spot_price / 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 250) & (cached_options_df['strike'] <= atm_strike + 250)].copy()
+            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 300) & (cached_options_df['strike'] <= atm_strike + 300)].copy()
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         else:
             tokens_nfo = []
@@ -183,15 +193,20 @@ def fetch_and_update_angel_option_chain(smart_api):
             initialize_scrip_master()
             return
 
-        # 2. Fetch Market Quotes for all tokens
-        quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
-        if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print(f"❌ Failed to fetch Market Quotes: {quotes}")
+        # 2. Fetch Market Quotes for all tokens in batches of 50 to avoid API limit errors
+        all_fetched_quotes = []
+        for i in range(0, len(tokens_nfo), 50):
+            batch_tokens = tokens_nfo[i:i+50]
+            quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+            if quotes and quotes.get('status') and quotes.get('data') and quotes['data'].get('fetched'):
+                all_fetched_quotes.extend(quotes['data']['fetched'])
+
+        if not all_fetched_quotes:
+            print("❌ Failed to fetch NFO Market Quotes.")
             return
 
-        fetched_list = quotes['data']['fetched']
         quotes_data = []
-        for item in fetched_list:
+        for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
             val = float(item.get('ltp', item.get('LTP', item.get('netPrice', 0))))
             quotes_data.append({'token': tok, 'ltp': val})
