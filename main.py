@@ -157,27 +157,24 @@ def fetch_and_update_option_chain(smart_api):
         # 2. Fetch Scrip Master directly from Angel One API
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
-        lot_size = 0 # Default starting zero to catch API value
+        lot_size = 0
 
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                # Print all columns found in API response to debug logs
-                print(f"📋 Angel API Columns: {df.columns.tolist()}")
-                
-                # Check all possible keys for lot size from Angel API response
+                # Look for lot size column dynamically
                 for col in df.columns:
                     if 'lot' in str(col).lower():
-                        print(f"🔍 Found potential lot column: {col}")
                         valid_lots = df[col].dropna()
                         if not valid_lots.empty:
                             try:
-                                val = int(float(valid_lots.iloc[0]))
-                                if val > 0:
-                                    lot_size = val
-                                    print(f"✅ Extracted Lot Size from API column '{col}': {lot_size}")
+                                # Find the most frequent or first valid positive lot size from options/futures
+                                vals = valid_lots.astype(float)
+                                vals = vals[vals > 0]
+                                if not vals.empty:
+                                    lot_size = int(vals.iloc[0])
                                     break
                             except:
                                 pass
@@ -195,10 +192,18 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
-        # Fallback agar API se lot size na mile toh Nifty ke liye default 25 ya jo bhi selected ho
+        # Agar API se lot size na mile, toh symbol ke hisab se exact standard default set karein
         if lot_size <= 0:
-            lot_size = 25 if selected_symbol == "NIFTY" else 15
-            print(f"⚠️ API lot size not found, using fallback: {lot_size}")
+            if selected_symbol == "NIFTY":
+                lot_size = 75
+            elif selected_symbol == "BANKNIFTY":
+                lot_size = 15
+            elif selected_symbol == "FINNIFTY":
+                lot_size = 25
+            else:
+                lot_size = 50
+
+        print(f"✅ Final Lot Size for {selected_symbol}: {lot_size}")
 
         # 3. Update Lot Size in 'upstox get data' Cell A7
         try:
