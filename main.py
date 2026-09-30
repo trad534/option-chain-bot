@@ -106,7 +106,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# GLOBAL CACHE FOR SCRIP MASTER
+# GLOBAL VARIABLES
 # ==========================================
 cached_nifty_spot_token = "99926000"
 cached_options_df = pd.DataFrame()
@@ -115,14 +115,13 @@ earliest_expiry = "01OCT2026"
 def initialize_scrip_master():
     global cached_nifty_spot_token, cached_options_df, earliest_expiry
     try:
-        print("📥 Downloading Scrip Master...")
+        print("📥 Attempting to load Scrip Master...")
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=20) as response:
             scrip_data = json.loads(response.read().decode())
         
         df = pd.DataFrame(scrip_data)
-
         nifty_spot_row = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))]
         if not nifty_spot_row.empty:
             cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
@@ -141,7 +140,7 @@ def initialize_scrip_master():
 
         print(f"✅ Scrip Master Loaded Successfully! Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"❌ Error loading Scrip Master (Using Fallback Mode): {e}")
+        print(f"⚠️ Scrip Master Load Skipped/Failed (Running safe mode): {e}")
         cached_nifty_spot_token = "99926000"
         cached_options_df = pd.DataFrame()
 
@@ -152,7 +151,7 @@ def fetch_and_update_angel_option_chain(smart_api):
     global cached_options_df, cached_nifty_spot_token, earliest_expiry
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
-        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        data_sheet.update(range_name="A2", values[[f"Render is working - {current_time_str}"]])
 
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master()
@@ -173,18 +172,11 @@ def fetch_and_update_angel_option_chain(smart_api):
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         else:
             tokens_nfo = []
+            filtered_opts = pd.DataFrame()
 
         if not tokens_nfo:
-            print("⚠️ Fallback: Generating NFO tokens manually based on ATM strike...")
-            # Fallback direct generation if scrip master dataframe is empty
-            tokens_nfo = []
-            filtered_opts = pd.DataFrame(columns=['token', 'symbol', 'strike', 'symbolname'])
-            for st in range(int(atm_strike - 250), int(atm_strike + 300), 50):
-                # Placeholder fallback logic if needed, but let's check market data directly
-                pass
-
-        if not tokens_nfo:
-            print("❌ No tokens to fetch!")
+            print("❌ No NFO tokens available in cache. Retrying scrip master...")
+            initialize_scrip_master()
             return
 
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
@@ -233,8 +225,6 @@ def fetch_and_update_angel_option_chain(smart_api):
 
     except Exception as ex:
         print(f"❌ Exception in Process: {str(ex)}")
-        import traceback
-        traceback.print_exc()
 
 # ==========================================
 # MAIN EXECUTION THREADS
@@ -243,7 +233,6 @@ def run_bot_loop():
     print("🚀 Starting Option Chain Loop...")
     smart_api = SmartConnect(api_key=API_KEY)
     
-    # Login & Initial Setup
     while True:
         try:
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
@@ -259,7 +248,6 @@ def run_bot_loop():
             print(f"❌ Login Error: {e}, retrying in 10s...")
             time.sleep(10)
 
-    # Continuous Loop
     while True:
         try:
             fetch_and_update_angel_option_chain(smart_api)
