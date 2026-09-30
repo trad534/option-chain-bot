@@ -106,47 +106,56 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# GLOBAL CACHE FOR SCRIP MASTER
 # ==========================================
-def fetch_and_update_angel_option_chain():
+cached_nifty_spot_token = None
+cached_options_df = None
+earliest_expiry = None
+
+def initialize_scrip_master():
+    global cached_nifty_spot_token, cached_options_df, earliest_expiry
     try:
-        current_time_str = datetime.now().strftime('%H:%M:%S')
-        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
-        print(f"🟢 Heartbeat updated in A2 at {current_time_str}")
-
-        now_time = datetime.now().time()
-        start_market_time = dtime(9, 10)
-        end_market_time = dtime(15, 35)
-
-        if not (start_market_time <= now_time <= end_market_time):
-            print(f"⏳ Outside market hours ({now_time}). Waiting for 09:10 AM...")
-            return
-
-        smart_api = SmartConnect(api_key=API_KEY)
-        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
-        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
-        
-        if not data.get('status'):
-            print(f"❌ Angel One Login Failed: {data.get('message')}")
-            return
-
+        print("📥 Downloading Scrip Master (One-time setup)...")
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         response = urllib.request.urlopen(url)
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
         nifty_spot = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'AMXIDX') & (df['exch_seg'] == 'NSE')].iloc[0]
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(nifty_spot['token'])]})
-        spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
+        cached_nifty_spot_token = str(nifty_spot['token'])
 
         nifty_opts = df[(df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX') & (df['exch_seg'] == 'NFO')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
         earliest_expiry = nifty_opts['expiry'].min()
-        expiry_opts = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+        cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+        print("✅ Scrip Master Loaded Successfully into Memory!")
+    except Exception as e:
+        print(f"❌ Error loading Scrip Master: {e}")
+
+# ==========================================
+# FETCH & UPDATE LOOP
+# ==========================================
+def fetch_and_update_angel_option_chain(smart_api):
+    global cached_options_df, cached_nifty_spot_token, earliest_expiry
+    try:
+        current_time_str = datetime.now().strftime('%H:%M:%S')
+        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+
+        now_time = datetime.now().time()
+        start_market_time = dtime(9, 10)
+        end_market_time = dtime(15, 35)
+
+        if not (start_market_time <= now_time <= end_market_time):
+            print(f"⏳ Outside market hours ({now_time}). Waiting...")
+            return
+
+        # Fetch Spot Price using cached token
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": [cached_nifty_spot_token]})
+        spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
         atm_strike = round(spot_price / 50) * 50
-        filtered_opts = expiry_opts[(expiry_opts['strike'] >= atm_strike - 500) & (expiry_opts['strike'] <= atm_strike + 500)].copy()
+        filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 500) & (cached_options_df['strike'] <= atm_strike + 500)].copy()
 
         tokens_nfo = list(filtered_opts['token'].unique())
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
@@ -196,16 +205,36 @@ def fetch_and_update_angel_option_chain():
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Option Chain Loop with Web Server Integration...")
+    print("🚀 Starting Option Chain Loop...")
+    smart_api = SmartConnect(api_key=API_KEY)
+    
+    # Login & Initial Setup
     while True:
-        fetch_and_update_angel_option_chain()
+        try:
+            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
+            data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+            if data.get('status'):
+                print("✅ Angel One Session Generated Successfully")
+                initialize_scrip_master()
+                break
+            else:
+                print(f"❌ Login failed: {data.get('message')}, retrying in 10s...")
+                time.sleep(10)
+        except Exception as e:
+            print(f"❌ Login Error: {e}, retrying in 10s...")
+            time.sleep(10)
+
+    # Continuous Loop
+    while True:
+        try:
+            fetch_and_update_angel_option_chain(smart_api)
+        except Exception as e:
+            print(f"❌ Loop Error: {e}")
         time.sleep(10)
 
 if __name__ == "__main__":
-    # Start Flask server in background thread so Render port check passes
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Start the actual option chain syncing loop
     run_bot_loop()
