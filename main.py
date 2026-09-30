@@ -164,17 +164,21 @@ def fetch_and_update_option_chain(smart_api):
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                # Look for lot size column dynamically
+                # Debug print to see exact columns
+                print(f"📋 Scrip columns available: {df.columns.tolist()}")
+                
+                # Check explicit keys for lot size
                 for col in df.columns:
-                    if 'lot' in str(col).lower():
-                        valid_lots = df[col].dropna()
-                        if not valid_lots.empty:
+                    col_lower = str(col).lower()
+                    if 'lot' in col_lower or col_lower == 'ls':
+                        valid_vals = df[col].dropna()
+                        if not valid_vals.empty:
                             try:
-                                # Find the most frequent or first valid positive lot size from options/futures
-                                vals = valid_lots.astype(float)
+                                vals = valid_vals.astype(float)
                                 vals = vals[vals > 0]
                                 if not vals.empty:
                                     lot_size = int(vals.iloc[0])
+                                    print(f"✅ Found Lot Size from column '{col}': {lot_size}")
                                     break
                             except:
                                 pass
@@ -192,16 +196,17 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
-        # Agar API se lot size na mile, toh symbol ke hisab se exact standard default set karein
+        # Exact Fallback mapping based on your requirement (Nifty = 65)
         if lot_size <= 0:
             if selected_symbol == "NIFTY":
-                lot_size = 75
+                lot_size = 65
             elif selected_symbol == "BANKNIFTY":
                 lot_size = 15
             elif selected_symbol == "FINNIFTY":
                 lot_size = 25
             else:
                 lot_size = 50
+            print(f"⚠️ Using standard mapped Lot Size: {lot_size}")
 
         print(f"✅ Final Lot Size for {selected_symbol}: {lot_size}")
 
