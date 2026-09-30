@@ -219,9 +219,16 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
 
-        # 4. Fetch Spot Price
-        spot_token_map = {"NIFTY": "26000", "BANKNIFTY": "26001", "FINNIFTY": "26037"}
-        spot_token = spot_token_map.get(selected_symbol, "26000")
+        # 4. Fetch Spot Price (Corrected Angel One Spot Tokens with 999 prefix)
+        spot_token_map = {
+            "NIFTY": "99926000", 
+            "BANKNIFTY": "99926001", 
+            "FINNIFTY": "99926037",
+            "MIDCPNIFTY": "99926074",
+            "SENSEX": "99911",
+            "BANKEX": "99912"
+        }
+        spot_token = spot_token_map.get(selected_symbol, "99926000")
         
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [spot_token]})
         spot_price = 0.0
@@ -296,8 +303,14 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        # Correct absolute strike prices generation
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + i) for i in range(-950, 1000, 50)]
+        # Fixed Strike Generation (Safe Absolute Strike Prices)
+        if not merged.empty and 'strike' in merged.columns:
+            strikes = sorted(merged['strike'].unique())
+        else:
+            if atm_strike > 0:
+                strikes = [float(atm_strike + i) for i in range(-950, 1000, 50)]
+            else:
+                strikes = []
         
         output_rows = [
             [
