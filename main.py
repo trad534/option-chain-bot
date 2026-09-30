@@ -129,10 +129,9 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol robustly from any matching sheet or cell J4
+        # 1. Read Selected Symbol from J4 (Checking multiple worksheets if needed)
         selected_symbol = "NIFTY"
         try:
-            # Try finding the selection worksheet dynamically
             target_ws = None
             for ws in spreadsheet.worksheets():
                 if "index" in ws.title.lower() or "chain" in ws.title.lower():
@@ -145,8 +144,7 @@ def fetch_and_update_option_chain(smart_api):
             if j4_val and str(j4_val).strip():
                 selected_symbol = str(j4_val).strip().upper()
         except Exception as sel_err:
-            print(f"⚠️ Warning reading J4 from selection sheet: {sel_err}")
-            # Fallback to data_sheet J4 if selection sheet fails
+            print(f"⚠️ Warning reading J4: {sel_err}")
             try:
                 j4_fallback = data_sheet.acell('J4').value
                 if j4_fallback and str(j4_fallback).strip():
@@ -154,17 +152,17 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 pass
 
-        print(f"📌 Final Read Selected Symbol: {selected_symbol}")
+        print(f"📌 Active Selected Symbol: {selected_symbol}")
 
-        # 2. Update Exact Lot Size in A7 immediately
+        # 2. Update Exact Lot Size in A7
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
+            print(f"✅ Lot Size Updated in A7: {lot_size}")
         except Exception as e:
-            print(f"⚠️ Error updating A7 lot size: {e}")
+            print(f"⚠️ Error updating A7: {e}")
 
-        # 3. Fetch Scrip Master from Angel API for Expiries & Options
+        # 3. Fetch Scrip Master from Angel API
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
         available_expiries = []
@@ -187,6 +185,7 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
                     
+                    # Clean and strictly sort upcoming expiries chronologically
                     if 'expiry' in all_options_df.columns:
                         raw_expiries = all_options_df['expiry'].dropna().unique()
                         parsed_exps = []
@@ -194,11 +193,15 @@ def fetch_and_update_option_chain(smart_api):
                             cleaned_exp = str(exp).strip().upper()
                             try:
                                 dt = datetime.strptime(cleaned_exp, "%d%b%Y")
-                                if dt.date() >= datetime.now().date():
+                                # Accept current or future dates
+                                if dt.date() >= datetime.now().date() - timedelta(days=1):
                                     parsed_exps.append((dt, cleaned_exp))
                             except:
                                 pass
+                        
+                        # Sort strictly by date (oldest upcoming to farthest)
                         parsed_exps.sort(key=lambda x: x[0])
+                        
                         seen = set()
                         for dt, exp_str in parsed_exps:
                             if exp_str not in seen:
@@ -207,15 +210,18 @@ def fetch_and_update_option_chain(smart_api):
                             if len(available_expiries) >= 4:
                                 break
 
+        # Fallback if API expiries aren't captured properly
         if not available_expiries:
-            available_expiries = [["01OCT2026"], ["08OCT2026"], ["15OCT2026"], ["22OCT2026"]]
+            available_expiries = [["06OCT2026"], ["13OCT2026"], ["20OCT2026"], ["27OCT2026"]]
 
+        # Update Expiries in A3:A6 precisely
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
-            print(f"✅ Expiries Updated in A3:A6")
+            print(f"✅ Expiries Updated in A3:A6: {available_expiries}")
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
+        # Check and set selected expiry in L9
         flat_expiries = [item[0] for item in available_expiries]
         selected_expiry = "N/A"
         try:
@@ -234,7 +240,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
 
-        # 4. Fetch Spot Price (Spot token map for indices)
+        # 4. Fetch Spot Price
         spot_token_map = {
             "NIFTY": "26000", 
             "BANKNIFTY": "26001", 
