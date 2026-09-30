@@ -136,28 +136,28 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol strictly from 'Option chain index new' J4
+        # 1. Read Selected Symbol directly from 'Option chain index new' J4 with fallback
         selected_symbol = "NIFTY"
-        if selection_sheet:
+        try:
+            if selection_sheet:
+                val = selection_sheet.acell('J4').value
+                if val and str(val).strip():
+                    selected_symbol = str(val).strip().upper()
+        except Exception as e:
+            print(f"⚠️ Error reading selection sheet J4: {e}")
+
+        # If not found, try reading from data_sheet J4 just in case
+        if selected_symbol == "NIFTY":
             try:
-                j4_val = selection_sheet.acell('J4').value
-                if j4_val and str(j4_val).strip():
-                    selected_symbol = str(j4_val).strip().upper()
-            except:
-                pass
-        
-        # Fallback to data_sheet J4 if selection_sheet J4 is empty
-        if not selected_symbol or selected_symbol == "NIFTY":
-            try:
-                j4_data_val = data_sheet.acell('J4').value
-                if j4_data_val and str(j4_data_val).strip():
-                    selected_symbol = str(j4_data_val).strip().upper()
+                val2 = data_sheet.acell('J4').value
+                if val2 and str(val2).strip():
+                    selected_symbol = str(val2).strip().upper()
             except:
                 pass
 
-        print(f"📌 Active Selected Symbol: {selected_symbol}")
+        print(f"📌 Active Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Update Exact Lot Size in A7 based on dictionary lookup
+        # 2. Update Exact Lot Size in A7
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
