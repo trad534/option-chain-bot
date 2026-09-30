@@ -121,7 +121,6 @@ def initialize_scrip_master():
         with urllib.request.urlopen(req, timeout=30) as response:
             scrip_data = json.loads(response.read().decode())
         
-        # Filter only Nifty items instantly to prevent memory overhead
         nifty_items = [item for item in scrip_data if item.get('name') == 'NIFTY' or item.get('symbol') == 'NIFTY']
         df = pd.DataFrame(nifty_items)
         
@@ -184,14 +183,14 @@ def fetch_and_update_angel_option_chain(smart_api):
             initialize_scrip_master()
             return
 
-        # 2. Fetch Market Quotes for all tokens in one single API call
+        # 2. Fetch Market Quotes for all tokens
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
             print(f"❌ Failed to fetch Market Quotes: {quotes}")
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
-        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
+        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], 
                           quotes_df[['tradingSymbol', 'ltp']], 
                           left_on='symbol', right_on='tradingSymbol', how='inner')
 
