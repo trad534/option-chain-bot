@@ -45,7 +45,6 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
-# Master Accurate Lot Sizes Dictionary
 EXACT_LOT_SIZES = {
     "NIFTY": 65,
     "BANKNIFTY": 30,
@@ -137,7 +136,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol from 'Option chain index new' J4
+        # 1. Read Selected Symbol from J4
         selected_symbol = "NIFTY"
         if selection_sheet:
             try:
@@ -148,7 +147,7 @@ def fetch_and_update_option_chain(smart_api):
                 pass
         print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Set Exact Lot Size instantly based on J4 symbol
+        # 2. Update Exact Lot Size in A7
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
@@ -156,7 +155,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as e:
             print(f"⚠️ Error updating A7 lot size: {e}")
 
-        # 3. Fetch Scrip Master from Angel API for Expiries & Option Contracts
+        # 3. Fetch Scrip Master from Angel API
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
         available_expiries = []
@@ -179,7 +178,6 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
                     
-                    # Extract unique expiries directly from API data
                     if 'expiry' in all_options_df.columns:
                         raw_expiries = all_options_df['expiry'].dropna().unique()
                         parsed_exps = []
@@ -192,21 +190,17 @@ def fetch_and_update_option_chain(smart_api):
                         parsed_exps.sort(key=lambda x: x[0])
                         available_expiries = [[item[1]] for item in parsed_exps[:4]]
 
-        # Fallback expiries if API list is empty
         if not available_expiries:
             today = datetime.now()
             for i in range(4):
                 d = today + timedelta(days=7*i)
                 available_expiries.append([d.strftime('%d%b%Y').upper()])
 
-        # Update Expiries in A3:A6 of 'upstox get data'
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
-            print(f"✅ Expiries Updated in A3:A6 successfully!")
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
-        # Read selected expiry from cell L9
         selected_expiry = "N/A"
         try:
             l9_val = data_sheet.acell('L9').value
@@ -236,7 +230,7 @@ def fetch_and_update_option_chain(smart_api):
             item = spot_quote['data']['fetched'][0]
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
             if spot_price <= 0:
-                spot_price = float(item.get('close', 22620.45))
+                spot_price = float(item.get('close', 24600.0))
 
         print(f"🎯 Spot Price for {selected_symbol}: {spot_price}")
 
@@ -247,7 +241,7 @@ def fetch_and_update_option_chain(smart_api):
 
         atm_strike = round(spot_price / 50) * 50
 
-        # Filter options
+        # Filter options for the selected expiry
         if all_options_df is not None and not all_options_df.empty:
             if 'expiry' in all_options_df.columns:
                 expiry_filtered = all_options_df[all_options_df['expiry'].str.upper() == selected_expiry].copy()
@@ -262,7 +256,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 5. Fetch NFO Option Quotes from Angel API
+        # 5. Fetch NFO Option Quotes
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -302,7 +296,8 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
+        # Correct absolute strike prices generation
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + i) for i in range(-950, 1000, 50)]
         
         output_rows = [
             [
