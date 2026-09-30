@@ -23,7 +23,6 @@ def home():
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    print(f"🌐 Starting Flask server on port {port}...")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
@@ -109,8 +108,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     try:
-        print("\n--------------------------------------------------")
-        print(f"🔄 Loop executed at: {datetime.now().strftime('%H:%M:%S')}")
+        print(f"\n🔄 Loop executed at: {datetime.now().strftime('%H:%M:%S')}")
         current_time_str = datetime.now().strftime('%H:%M:%S')
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
@@ -127,7 +125,6 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Spot Price Used: {spot_price}")
         atm_strike = round(spot_price / 50) * 50
 
-        # 2. Generate sample/active strike rows around ATM for testing & display
         t = 7 / 365.0  # 7 days to expiry
         r = 0.07
 
@@ -135,10 +132,11 @@ def fetch_and_update_option_chain(smart_api):
             ["CE Delta", "CE Gamma", "CE Theta", "CE Vega", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]
         ]
 
-        # Generate strikes from ATM - 200 to ATM + 200
+        # Generate realistic dynamic option chain values for strikes around ATM
         for st in range(int(atm_strike - 200), int(atm_strike + 250), 50):
-            ce_ltp = max(10.0, spot_price - st + 50) if spot_price >= st else 50.0
-            pe_ltp = max(10.0, st - spot_price + 50) if st >= spot_price else 50.0
+            # Dynamic calculation for realistic premium simulation based on distance from spot
+            ce_ltp = round(max(15.0, (spot_price - st) + max(50.0, 150.0 - abs(spot_price - st)*0.2)), 2) if spot_price >= st else round(max(15.0, 150.0 - (st - spot_price)*0.3), 2)
+            pe_ltp = round(max(15.0, (st - spot_price) + max(50.0, 150.0 - abs(st - spot_price)*0.2)), 2) if st >= spot_price else round(max(15.0, 150.0 - (spot_price - st)*0.3), 2)
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
