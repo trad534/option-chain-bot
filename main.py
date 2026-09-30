@@ -176,6 +176,13 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Spot Price: {spot_price}")
 
+        # Update Spot Price in K9 and Expiry in L9
+        try:
+            data_sheet.update(range_name="K9", values=[[spot_price]])
+            data_sheet.update(range_name="L9", values=[[earliest_expiry]])
+        except Exception as sheet_err:
+            print(f"⚠️ Error updating K9/L9: {sheet_err}")
+
         atm_strike = round(spot_price / 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
@@ -185,7 +192,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API (Including Volume, OI, Change)
+        # 2. Fetch NFO Option Quotes from Angel API
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -227,9 +234,13 @@ def fetch_and_update_option_chain(smart_api):
 
         strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 200), int(atm_strike + 250), 50)
         
-        # Updated Header including Volume, OI, and Change (LTP Change)
+        # Exact Header Sequence matching user request
         output_rows = [
-            ["CE OI", "CE Change", "CE Vol", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Vol", "PE Change", "PE OI"]
+            [
+                "CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP",
+                "Strike Price",
+                "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"
+            ]
         ]
 
         for st in strikes:
@@ -249,16 +260,17 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
+            # CE Side, Strike Price, PE Side exact ordering
             output_rows.append([
-                ce_oi, ce_change, ce_vol, f"{ce_gks['iv']}%", ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", 0, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
-                pe_ltp, f"{pe_gks['iv']}%", pe_vol, pe_change, pe_oi
+                pe_ltp, pe_change, pe_vol, pe_oi, 0, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
-            data_sheet.batch_clear(["A10:K100"])
-            data_sheet.update(range_name=f"A10:K{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with OI, Volume & Change!")
+            data_sheet.batch_clear(["A10:U100"])
+            data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
+            print(f"🎯 Google Sheet Successfully Updated with Exact Column Layout!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
