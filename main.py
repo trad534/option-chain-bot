@@ -190,13 +190,23 @@ def fetch_and_update_angel_option_chain(smart_api):
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
-        if 'symbolToken' in quotes_df.columns:
-            quotes_df['token'] = quotes_df['symbolToken'].astype(str)
-        
-        filtered_opts['token'] = filtered_opts['token'].astype(str)
-        quotes_df['token'] = quotes_df['token'].astype(str)
+        print("🔍 Quotes columns found:", quotes_df.columns.tolist())
 
-        # Merge directly using TOKEN for 100% accurate LTP mapping
+        # Safe token column detection from Angel response
+        token_col = None
+        for col in ['symbolToken', 'symboltoken', 'token', 'exchangeToken']:
+            if col in quotes_df.columns:
+                token_col = col
+                break
+        
+        if token_col:
+            quotes_df['token'] = quotes_df[token_col].astype(str)
+        else:
+            quotes_df['token'] = quotes_df.iloc[:, 0].astype(str) # Fallback to first column
+
+        filtered_opts['token'] = filtered_opts['token'].astype(str)
+
+        # Merge directly using TOKEN
         merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
                           quotes_df[['token', 'ltp']], 
                           on='token', how='inner')
@@ -218,8 +228,8 @@ def fetch_and_update_angel_option_chain(smart_api):
             ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))]
             pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))]
 
-            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty else 0.0
-            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty else 0.0
+            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
+            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
