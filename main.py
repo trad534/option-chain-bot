@@ -45,6 +45,15 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
+# Standard Lot Size Backup Dictionary
+DEFAULT_LOT_SIZES = {
+    "NIFTY": 25,
+    "BANKNIFTY": 15,
+    "FINNIFTY": 25,
+    "MIDCPNIFTY": 50,
+    "SENSEX": 10
+}
+
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
@@ -142,24 +151,25 @@ def fetch_and_update_option_chain(smart_api):
         selected_symbol = "NIFTY"
         try:
             j4_val = selection_sheet.acell('J4').value
-            if j4_val and j4_val.strip():
-                selected_symbol = j4_val.strip().upper()
-        except:
-            pass
-        print(f"📌 Selected Symbol from J4: {selected_symbol}")
+            if j4_val and str(j4_val).strip():
+                selected_symbol = str(j4_val).strip().upper()
+        except Exception as e:
+            print(f"⚠️ Error reading J4 from selection sheet: {e}")
+        
+        print(f"📌 Selected Symbol from J4 ('Option chain index new'): {selected_symbol}")
 
-        # 2. Fetch Scrip Master for Selected Symbol to get Lot Size & Options
+        # 2. Determine Lot Size (Check dictionary first, then API search)
+        lot_size = DEFAULT_LOT_SIZES.get(selected_symbol, 25)
+
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
-        lot_size = 25 # Default fallback
 
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                print(f"📋 Available columns in scrip data: {df.columns.tolist()}")
-                # Check various possible keys for lot size
+                # Check various possible keys for lot size from API
                 lot_column = None
                 for col in ['lotsize', 'lotSize', 'LOTSIZE', 'laslotsize']:
                     if col in df.columns:
@@ -170,7 +180,9 @@ def fetch_and_update_option_chain(smart_api):
                     valid_lots = df[lot_column].dropna()
                     if not valid_lots.empty:
                         try:
-                            lot_size = int(float(valid_lots.iloc[0]))
+                            api_lot = int(float(valid_lots.iloc[0]))
+                            if api_lot > 0:
+                                lot_size = api_lot
                         except:
                             pass
 
@@ -187,7 +199,7 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
-        print(f"✅ Detected Lot Size for {selected_symbol}: {lot_size}")
+        print(f"✅ Final Lot Size for {selected_symbol}: {lot_size}")
 
         # 3. Update Lot Size in 'upstox get data' Cell A7
         try:
@@ -208,7 +220,7 @@ def fetch_and_update_option_chain(smart_api):
         try:
             l9_val = data_sheet.acell('L9').value
             if l9_val and l9_val != "N/A":
-                selected_expiry = l9_val.strip().upper()
+                selected_expiry = str(l9_val).strip().upper()
         except:
             pass
 
@@ -216,7 +228,7 @@ def fetch_and_update_option_chain(smart_api):
             try:
                 a3_val = data_sheet.acell('A3').value
                 if a3_val:
-                    selected_expiry = a3_val.strip().upper()
+                    selected_expiry = str(a3_val).strip().upper()
                     data_sheet.update(range_name="L9", values=[[selected_expiry]])
             except:
                 selected_expiry = datetime.now().strftime('%d%b%Y').upper()
@@ -368,7 +380,7 @@ def run_bot_loop():
             print(f"❌ Session Generation Exception: {e}")
             time.sleep(10)
 
-    while True:
+    while Thread:= True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as e:
