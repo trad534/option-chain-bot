@@ -130,7 +130,11 @@ def initialize_scrip_master():
         nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
-        earliest_expiry = nifty_opts['expiry'].min()
+        # Find nearest future expiry
+        nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+        valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+        earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
+        
         cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
         print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
@@ -146,30 +150,28 @@ def fetch_and_update_angel_option_chain(smart_api):
         current_time_str = datetime.now().strftime('%H:%M:%S')
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        now_time = datetime.now().time()
-        start_market_time = dtime(9, 10)
-        end_market_time = dtime(15, 35)
-
-        if not (start_market_time <= now_time <= end_market_time):
-            print(f"⏳ Outside market hours ({now_time}). Waiting...")
-            return
-
         # Fetch Spot Price using cached token
+        print(f"🔍 Fetching Spot Price for token: {cached_nifty_spot_token}")
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(cached_nifty_spot_token)]})
+        print(f"📦 Spot Quote Response: {spot_quote}")
+        
         if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
-            print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
+            print(f"❌ Failed to fetch Spot Quote!")
             return
             
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
+        print(f"🎯 Current Nifty Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
         filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 250) & (cached_options_df['strike'] <= atm_strike + 250)].copy()
+        print(f"📊 Filtered Options Count for strikes around {atm_strike}: {len(filtered_opts)}")
 
         tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         if not tokens_nfo:
             print("❌ No NFO tokens found for current strike range!")
             return
 
+        print(f"🔍 Fetching market data for {len(tokens_nfo)} NFO tokens...")
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
@@ -180,8 +182,8 @@ def fetch_and_update_angel_option_chain(smart_api):
         merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
                           quotes_df[['tradingSymbol', 'ltp']], 
                           left_on='symbol', right_on='tradingSymbol', how='inner')
+        print(f"✅ Merged Data Rows: {len(merged)}")
 
-        # Fixed expiry date parsing (.title() handles uppercase month strings like 'OCT')
         exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
@@ -209,10 +211,12 @@ def fetch_and_update_angel_option_chain(smart_api):
 
         data_sheet.batch_clear(["A10:M100"])
         data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-        print(f"🎯 Option Chain Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
+        print(f"🎯 Option Chain Successfully Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
 
     except Exception as ex:
-        print(f"❌ Exception in Process: {ex}")
+        print(f"❌ Exception in Process: {str(ex)}")
+        import traceback
+        traceback.print_exc()
 
 # ==========================================
 # MAIN EXECUTION THREADS
