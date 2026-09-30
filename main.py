@@ -1,7 +1,7 @@
 import time
 import os
 import json
-import urllib.request
+import requests
 import pandas as pd
 import numpy as np
 import pyotp
@@ -112,7 +112,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER (UPDATED URL)
+# SCRIP MASTER LOADER (REQUESTS FIX)
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
@@ -122,10 +122,9 @@ def initialize_scrip_master():
     global cached_options_df, earliest_expiry
     try:
         print("📥 Downloading Nifty Scrip Master...")
-        url = "https://ulcdn.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as response:
-            scrip_data = json.loads(response.read().decode())
+        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
+        scrip_data = response.json()
         
         df = pd.DataFrame(scrip_data)
         if df.empty:
