@@ -151,7 +151,7 @@ def fetch_and_update_angel_option_chain(smart_api):
     global cached_options_df, cached_nifty_spot_token, earliest_expiry
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
-        data_sheet.update(range_name="A2", values[[f"Render is working - {current_time_str}"]])
+        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master()
