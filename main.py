@@ -2,10 +2,9 @@ import time
 import os
 import json
 import pandas as pd
-import numpy as np
 import pyotp
 import gspread
-from datetime import datetime, timedelta
+from datetime import datetime
 from SmartApi import SmartConnect
 from flask import Flask
 import threading
@@ -26,12 +25,9 @@ def run_flask():
 # ==========================================
 # GOOGLE SHEET CONFIG
 # ==========================================
-GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
-
 gc = gspread.service_account(filename="Credentials.json")
-spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
+spreadsheet = gc.open("6 LTP CALCULATOR")
+data_sheet = spreadsheet.worksheet("upstox get data")
 option_chain_sheet = spreadsheet.worksheet("Option chain index new")
 
 # ==========================================
@@ -73,7 +69,7 @@ def initialize_scrip_master(smart_api):
         print(f"⚠️ Error in scrip master: {e}")
 
 # ==========================================
-# LOT SIZE & EXPIRY UPDATE
+# LOT SIZE & EXPIRY UPDATE (gspread fix)
 # ==========================================
 def update_lot_and_expiry():
     global cached_options_df, earliest_expiry
@@ -85,8 +81,9 @@ def update_lot_and_expiry():
             if not match.empty:
                 lot_size = int(match['lotsize'].values[0])
 
-        data_sheet.update("A7", [[lot_size]])
-        data_sheet.update("L9", [[str(earliest_expiry)]])
+        # ✅ gspread update fix (values first, then range)
+        data_sheet.update([[lot_size]], "A7")
+        data_sheet.update([[str(earliest_expiry)]], "L9")
         print(f"✅ Updated Lot Size {lot_size}, Expiry {earliest_expiry}")
     except Exception as e:
         print(f"⚠️ Error updating lot/expiry: {e}")
@@ -98,7 +95,7 @@ def fetch_and_update_option_chain(smart_api):
     global cached_options_df, earliest_expiry, nifty_spot_token
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
-        data_sheet.update("A2", [[f"Render is working - {current_time_str}"]])
+        data_sheet.update([[f"Render is working - {current_time_str}"]], "A2")
 
         if cached_options_df.empty or not nifty_spot_token:
             initialize_scrip_master(smart_api)
@@ -123,10 +120,28 @@ def fetch_and_update_option_chain(smart_api):
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
 # ==========================================
-# MAIN LOOP
+# MAIN LOOP (SmartAPI token fix)
 # ==========================================
 def run_bot_loop():
     smart_api = SmartConnect(api_key=os.getenv("ANGEL_API_KEY"))
+    while True:
+        try:
+            print("🔄 Attempting to generate session...")
+            totp = pyotp.TOTP(os.getenv("ANGEL_TOTP_SECRET").replace(" ", "")).now()
+            session = smart_api.generateSession(os.getenv("ANGEL_CLIENT_ID"), os.getenv("ANGEL_PIN"), totp)
+            if session and session.get('status'):
+                print("✅ Angel One Session Generated Successfully!")
+                # ✅ Token set fix
+                smart_api.setToken(session['data']['jwtToken'])
+                initialize_scrip_master(smart_api)
+                break
+            else:
+                print(f"⚠ Session Failed Response: {session}")
+                time.sleep(10)
+        except Exception as e:
+            print(f"❌ Session Generation Exception: {e}")
+            time.sleep(10)
+
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
