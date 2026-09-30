@@ -118,7 +118,10 @@ def fetch_and_update_option_chain(smart_api):
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
-        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        try:
+            data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        except:
+            pass
 
         # 1. Read Selected Symbol from J4 dynamically across worksheets
         selected_symbol = "NIFTY"
@@ -135,7 +138,6 @@ def fetch_and_update_option_chain(smart_api):
             if j4_val and str(j4_val).strip():
                 selected_symbol = str(j4_val).strip().upper()
         except Exception as sel_err:
-            print(f"⚠️ Warning reading J4: {sel_err}")
             try:
                 j4_fallback = data_sheet.acell('J4').value
                 if j4_fallback and str(j4_fallback).strip():
@@ -145,29 +147,30 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📌 Active Selected Symbol: {selected_symbol}")
 
-        # 2. Determine Segment (MCX vs NSE/NFO) & Exchange
+        # 2. Determine Segment & Exchange
         is_mcx = any(comm in selected_symbol for comm in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER", "ZINC", "LEAD", "NICKEL", "ALUMINIUM"])
         exchange = "MCX" if is_mcx else "NFO"
         spot_exchange = "MCX" if is_mcx else "NSE"
 
-        # 3. Robust Scrip Master Fetch with error handling
+        # 3. Safe Scrip Master Fetch with zero-crash handling
         all_options_df = pd.DataFrame()
         available_expiries = []
-        lot_size = 50  # Default fallback
+        lot_size = 50
 
         scrip_data = []
         try:
-            res = smart_api.searchScrip(exchange, selected_symbol)
+            search_ex = "MCX" if is_mcx else "NSE"
+            res = smart_api.searchScrip(search_ex, selected_symbol)
             if res and res.get('status') and res.get('data'):
                 scrip_data = res['data']
-        except Exception as e:
-            print(f"⚠️ searchScrip primary exception: {e}")
+        except Exception:
+            pass
 
         if not scrip_data:
             try:
-                res_alt = smart_api.searchScrip("NFO" if not is_mcx else "MCX", "NIFTY" if "NIFTY" in selected_symbol else selected_symbol)
-                if res_alt and res_alt.get('status'):
-                    scrip_data = res_alt.get('data', [])
+                res_nfo = smart_api.searchScrip("NFO" if not is_mcx else "MCX", selected_symbol)
+                if res_nfo and res_nfo.get('status') and res_nfo.get('data'):
+                    scrip_data = res_nfo.get('data', [])
             except:
                 pass
 
@@ -201,7 +204,6 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
                     
-                    # Extract symbol-specific expiries strictly
                     if 'expiry' in all_options_df.columns:
                         raw_expiries = all_options_df['expiry'].dropna().unique()
                         parsed_exps = []
@@ -223,7 +225,7 @@ def fetch_and_update_option_chain(smart_api):
                             if len(available_expiries) >= 4:
                                 break
 
-        # Manual Lot Size & Expiry Fallback maps if API list is empty
+        # Manual Lot Size Fallback maps
         if lot_size == 50 or lot_size <= 0:
             lot_map = {
                 "NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 25, "MIDCPNIFTY": 50, 
@@ -232,20 +234,18 @@ def fetch_and_update_option_chain(smart_api):
             }
             lot_size = lot_map.get(selected_symbol, 50)
 
-        # Update Lot Size in A7
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
+            print(f"✅ Lot Size Updated in A7: {lot_size}")
         except Exception as e:
             print(f"⚠️ Error updating A7: {e}")
 
         if not available_expiries:
             available_expiries = [["29OCT2026"], ["26NOV2026"], ["31DEC2026"], ["28JAN2027"]]
 
-        # Update Expiries in A3:A6 specifically for this symbol
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
-            print(f"✅ Expiries Updated in A3:A6 for {selected_symbol}: {available_expiries}")
+            print(f"✅ Expiries Updated in A3:A6: {available_expiries}")
         except Exception as e:
             print(f"⚠️ Error updating expiry A3:A6: {e}")
 
@@ -265,7 +265,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 pass
 
-        print(f"📅 Active Selected Expiry for {selected_symbol}: {selected_expiry}")
+        print(f"📅 Active Selected Expiry: {selected_expiry}")
 
         # 4. Fetch Spot/Underlying Price accurately
         spot_token_map = {
