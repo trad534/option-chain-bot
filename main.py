@@ -112,7 +112,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER (REQUESTS FIX)
+# SCRIP MASTER LOADER (CLEAN JSON FIX)
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
@@ -124,7 +124,12 @@ def initialize_scrip_master():
         print("📥 Downloading Nifty Scrip Master...")
         url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
-        scrip_data = response.json()
+        
+        raw_text = response.text.strip()
+        if raw_text.startswith('\ufeff'):
+            raw_text = raw_text[1:]
+            
+        scrip_data = json.loads(raw_text)
         
         df = pd.DataFrame(scrip_data)
         if df.empty:
@@ -259,7 +264,7 @@ def run_bot_loop():
                 initialize_scrip_master()
                 break
             else:
-                print(f"⚠️️ Session Failed Response: {data}")
+                print(f"⚠ Session Failed Response: {data}")
                 time.sleep(10)
         except Exception as e:
             print(f"❌ Session Generation Exception: {e}")
