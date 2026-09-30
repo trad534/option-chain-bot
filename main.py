@@ -163,12 +163,13 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📌 Active Selected Symbol: {selected_symbol}")
 
-        # 2. Determine Segment & Exchange
+        is_index = selected_symbol in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]
         is_mcx = any(comm in selected_symbol for comm in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER", "ZINC", "LEAD", "NICKEL", "ALUMINIUM"])
+        
         exchange = "MCX" if is_mcx else "NFO"
         spot_exchange = "MCX" if is_mcx else "NSE"
 
-        # 3. Universal Scrip Master Fetch for any Symbol (Indices, Stocks, MCX)
+        # 2. Correct Scrip Master Fetch based on Index vs Stock
         all_options_df = pd.DataFrame()
         available_expiries = []
         
@@ -181,19 +182,14 @@ def fetch_and_update_option_chain(smart_api):
         except Exception:
             pass
 
-        if not scrip_data:
-            try:
-                res_nse = smart_api.searchScrip("NSE", selected_symbol)
-                if res_nse and res_nse.get('status') and res_nse.get('data'):
-                    scrip_data = res_nse.get('data', [])
-            except:
-                pass
-
         if scrip_data:
             df = pd.DataFrame(scrip_data)
             if not df.empty:
                 if 'tradingsymbol' in df.columns:
-                    exact_match = df[df['tradingsymbol'].str.contains(selected_symbol, case=False, na=False)].copy()
+                    if is_index:
+                        exact_match = df[df['tradingsymbol'].str.startswith(selected_symbol, na=False)].copy()
+                    else:
+                        exact_match = df[df['tradingsymbol'].str.contains(selected_symbol, case=False, na=False)].copy()
                     if not exact_match.empty:
                         df = exact_match
 
@@ -238,23 +234,21 @@ def fetch_and_update_option_chain(smart_api):
                             if len(available_expiries) >= 4:
                                 break
 
-        # Lot Size from dictionary map
-        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 1000)
+        # Lot Size
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50 if is_index else 1000)
 
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7: {lot_size}")
-        except Exception as e:
-            print(f"⚠️ Error updating A7: {e}")
+        except:
+            pass
 
         if not available_expiries:
-            available_expiries = [["29OCT2026"], ["26NOV2026"], ["31DEC2026"], ["28JAN2027"]]
+            available_expiries = [["08OCT2026"], ["15OCT2026"], ["22OCT2026"], ["29OCT2026"]]
 
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
-            print(f"✅ Expiries Updated in A3:A6: {available_expiries}")
-        except Exception as e:
-            print(f"⚠️ Error updating expiry A3:A6: {e}")
+        except:
+            pass
 
         flat_expiries = [item[0] for item in available_expiries]
         selected_expiry = "N/A"
@@ -272,9 +266,9 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 pass
 
-        print(f"📅 Active Selected Expiry: {selected_expiry}")
+        print(f"📅 Active Expiry: {selected_expiry}")
 
-        # 4. Fetch Spot/Underlying Price accurately
+        # 3. Spot Price
         spot_token_map = {
             "NIFTY": "26000", 
             "BANKNIFTY": "26009", 
@@ -296,17 +290,6 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 pass
 
-        if is_mcx and not spot_token:
-            try:
-                mcx_res = smart_api.searchScrip("MCX", selected_symbol)
-                if mcx_res and mcx_res.get('status') and mcx_res.get('data'):
-                    for item in mcx_res['data']:
-                        if item.get('instrumenttype') == 'FUTCOM':
-                            spot_token = str(item.get('symboltoken', item.get('token', '')))
-                            break
-            except:
-                pass
-
         spot_price = 0.0
         if spot_token:
             try:
@@ -321,21 +304,21 @@ def fetch_and_update_option_chain(smart_api):
             spot_price = float(all_options_df['strike'].median())
 
         if spot_price <= 0:
-            spot_price = 500.0 if "AARTI" in selected_symbol else 24600.0
+            spot_price = 22600.0 if selected_symbol == "NIFTY" else 500.0
 
-        print(f"🎯 Spot Price for {selected_symbol}: {spot_price}")
+        print(f"🎯 Spot Price: {spot_price}")
 
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
-        except Exception as sheet_err:
-            print(f"⚠️ Error updating K9: {sheet_err}")
+        except:
+            pass
 
-        # 5. Determine Strike Interval (Step Size) dynamically
-        if "BANKNIFTY" in selected_symbol:
+        # 4. Strict Strike Gap (Step Size)
+        if selected_symbol == "BANKNIFTY":
             strike_gap = 100
-        elif "FINNIFTY" in selected_symbol or "MIDCPNIFTY" in selected_symbol:
+        elif selected_symbol in ["NIFTY", "FINNIFTY", "MIDCPNIFTY"]:
             strike_gap = 50
-        elif "SENSEX" in selected_symbol or "BANKEX" in selected_symbol:
+        elif selected_symbol in ["SENSEX", "BANKEX"]:
             strike_gap = 100
         elif is_mcx:
             strike_gap = 100 if spot_price > 10000 else 10
@@ -360,7 +343,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 6. Fetch Option Quotes
+        # 5. Fetch Quotes
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -398,7 +381,7 @@ def fetch_and_update_option_chain(smart_api):
         try:
             exp_date = datetime.strptime(str(selected_expiry).title(), "%d%b%Y")
         except:
-            exp_date = datetime.now() + timedelta(days=30)
+            exp_date = datetime.now() + timedelta(days=7)
 
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
