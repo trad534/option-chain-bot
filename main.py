@@ -44,6 +44,21 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 DATA_SHEET_NAME = "upstox get data"
 
+EXACT_LOT_SIZES = {
+    "NIFTY": 65,
+    "BANKNIFTY": 30,
+    "FINNIFTY": 25,
+    "MIDCPNIFTY": 50,
+    "SENSEX": 10,
+    "BANKEX": 15,
+    "GOLD": 100,
+    "SILVER": 30,
+    "CRUDEOIL": 100,
+    "NATURALGAS": 1250,
+    "COPPER": 2500,
+    "AARTITRADE": 1000
+}
+
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
@@ -137,7 +152,7 @@ def fetch_and_update_option_chain(smart_api):
             j4_val = target_ws.acell('J4').value
             if j4_val and str(j4_val).strip():
                 selected_symbol = str(j4_val).strip().upper()
-        except Exception:
+        except:
             try:
                 j4_fallback = data_sheet.acell('J4').value
                 if j4_fallback and str(j4_fallback).strip():
@@ -152,51 +167,28 @@ def fetch_and_update_option_chain(smart_api):
         exchange = "MCX" if is_mcx else "NFO"
         spot_exchange = "MCX" if is_mcx else "NSE"
 
-        # 3. 100% Safe Scrip Master Fetch (No Crash on invalid stock search)
+        # 3. Safe Scrip Master Fetch (Bypassing searchScrip for stocks to prevent red errors)
         all_options_df = pd.DataFrame()
         available_expiries = []
-        lot_size = 50
-
+        
         scrip_data = []
-        try:
-            # Try searching safely without throwing uncaught cache errors
-            res = smart_api.searchScrip("NSE" if not is_mcx else "MCX", selected_symbol)
-            if res and res.get('status') and res.get('data'):
-                scrip_data = res['data']
-        except Exception:
-            pass
-
-        if not scrip_data:
+        if selected_symbol in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]:
             try:
-                res_nfo = smart_api.searchScrip("NFO" if not is_mcx else "MCX", selected_symbol)
-                if res_nfo and res_nfo.get('status') and res_nfo.get('data'):
-                    scrip_data = res_nfo.get('data', [])
+                res = smart_api.searchScrip("NFO", selected_symbol)
+                if res and res.get('status') and res.get('data'):
+                    scrip_data = res['data']
             except:
                 pass
-
+        
         if scrip_data:
             df = pd.DataFrame(scrip_data)
             if not df.empty:
-                if 'tradingsymbol' in df.columns:
-                    exact_match = df[df['tradingsymbol'].str.contains(selected_symbol, case=False, na=False)].copy()
-                    if not exact_match.empty:
-                        df = exact_match
-
                 opt_df = df[df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTOM'])].copy() if 'instrumenttype' in df.columns else df.copy()
-                if opt_df.empty:
-                    opt_df = df.copy()
-
                 if not opt_df.empty:
                     if 'strike' in opt_df.columns:
                         opt_df['strike'] = opt_df['strike'].astype(float)
                         if opt_df['strike'].max() > 500000:
                             opt_df['strike'] = opt_df['strike'] / 100
-                    
-                    if 'lotsize' in opt_df.columns and not opt_df['lotsize'].dropna().empty:
-                        try:
-                            lot_size = int(opt_df['lotsize'].dropna().iloc[0])
-                        except:
-                            pass
                     
                     all_options_df = opt_df.copy()
                     if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
@@ -215,7 +207,6 @@ def fetch_and_update_option_chain(smart_api):
                                     parsed_exps.append((dt, cleaned_exp))
                             except:
                                 pass
-                        
                         parsed_exps.sort(key=lambda x: x[0])
                         seen = set()
                         for dt, exp_str in parsed_exps:
@@ -225,14 +216,8 @@ def fetch_and_update_option_chain(smart_api):
                             if len(available_expiries) >= 4:
                                 break
 
-        # Manual Lot Size Fallback maps
-        if lot_size == 50 or lot_size <= 0:
-            lot_map = {
-                "NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 25, "MIDCPNIFTY": 50, 
-                "SENSEX": 10, "BANKEX": 15, "GOLD": 100, "SILVER": 30, "CRUDEOIL": 100,
-                "NATURALGAS": 1250, "COPPER": 2500, "AARTITRADE": 1000
-            }
-            lot_size = lot_map.get(selected_symbol, 50)
+        # Lot Size from dictionary map
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 1000)
 
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
