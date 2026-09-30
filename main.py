@@ -136,28 +136,19 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol directly from 'Option chain index new' J4 with fallback
+        # 1. Read Selected Symbol from J4
         selected_symbol = "NIFTY"
         try:
             if selection_sheet:
                 val = selection_sheet.acell('J4').value
                 if val and str(val).strip():
                     selected_symbol = str(val).strip().upper()
-        except Exception as e:
-            print(f"⚠️ Error reading selection sheet J4: {e}")
+        except:
+            pass
 
-        # If not found, try reading from data_sheet J4 just in case
-        if selected_symbol == "NIFTY":
-            try:
-                val2 = data_sheet.acell('J4').value
-                if val2 and str(val2).strip():
-                    selected_symbol = str(val2).strip().upper()
-            except:
-                pass
+        print(f"📌 Active Selected Symbol: {selected_symbol}")
 
-        print(f"📌 Active Selected Symbol from J4: {selected_symbol}")
-
-        # 2. Update Exact Lot Size in A7
+        # 2. Update Lot Size in A7
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
@@ -165,7 +156,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as e:
             print(f"⚠️ Error updating A7 lot size: {e}")
 
-        # 3. Fetch Scrip Master from Angel API
+        # 3. Fetch Scrip Master and Extract Exact API Expiries
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
         available_expiries = []
@@ -192,40 +183,49 @@ def fetch_and_update_option_chain(smart_api):
                         raw_expiries = all_options_df['expiry'].dropna().unique()
                         parsed_exps = []
                         for exp in raw_expiries:
+                            cleaned_exp = str(exp).strip().upper()
                             try:
-                                dt = datetime.strptime(str(exp).strip().title(), "%d%b%Y")
-                                parsed_exps.append((dt, str(exp).strip().upper()))
+                                dt = datetime.strptime(cleaned_exp, "%d%b%Y")
+                                if dt.date() >= datetime.now().date():
+                                    parsed_exps.append((dt, cleaned_exp))
                             except:
                                 pass
                         parsed_exps.sort(key=lambda x: x[0])
-                        available_expiries = [[item[1]] for item in parsed_exps[:4]]
+                        # Unique list maintain karte hue top 4 expiries lo
+                        seen = set()
+                        for dt, exp_str in parsed_exps:
+                            if exp_str not in seen:
+                                seen.add(exp_str)
+                                available_expiries.append([exp_str])
+                            if len(available_expiries) >= 4:
+                                break
 
         if not available_expiries:
-            today = datetime.now()
-            for i in range(4):
-                d = today + timedelta(days=7*i)
-                available_expiries.append([d.strftime('%d%b%Y').upper()])
+            available_expiries = [["01OCT2026"], ["08OCT2026"], ["15OCT2026"], ["22OCT2026"]]
 
+        # Update Expiries in A3:A6 strictly
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
+            print(f"✅ Expiries Updated in A3:A6: {available_expiries}")
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
+        # Handle Selected Expiry in L9
+        flat_expiries = [item[0] for item in available_expiries]
         selected_expiry = "N/A"
         try:
             l9_val = data_sheet.acell('L9').value
-            if l9_val and l9_val != "N/A":
+            if l9_val and str(l9_val).strip().upper() in flat_expiries:
                 selected_expiry = str(l9_val).strip().upper()
         except:
             pass
 
-        valid_expiry_list = [item[0] for item in available_expiries]
-        if selected_expiry == "N/A" or not selected_expiry or selected_expiry not in valid_expiry_list:
+        if selected_expiry == "N/A" or selected_expiry not in flat_expiries:
+            selected_expiry = flat_expiries[0]
             try:
-                selected_expiry = available_expiries[0][0]
                 data_sheet.update(range_name="L9", values=[[selected_expiry]])
             except:
-                selected_expiry = datetime.now().strftime('%d%b%Y').upper()
+                pass
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
 
