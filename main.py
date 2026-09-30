@@ -182,8 +182,6 @@ def fetch_and_update_option_chain(smart_api):
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
-            
-            # Print item keys to inspect in Render logs
             print("API Item Keys & Values:", item)
             
             val = float(item.get('ltp', item.get('LTP', item.get('close', item.get('netPrice', item.get('fiveDayChange', 0))))))
@@ -245,13 +243,15 @@ def run_bot_loop():
         try:
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
-            if data.get('status'):
+            if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
                 initialize_scrip_master()
                 break
             else:
+                print(f"⚠️ Session Failed Response: {data}")
                 time.sleep(10)
-        except Exception:
+        except Exception as e:
+            print(f"❌ Session Generation Exception: {e}")
             time.sleep(10)
 
     while True:
