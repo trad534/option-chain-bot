@@ -112,7 +112,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER
+# SCRIP MASTER LOADER (UPDATED URL)
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
@@ -122,7 +122,7 @@ def initialize_scrip_master():
     global cached_options_df, earliest_expiry
     try:
         print("📥 Downloading Nifty Scrip Master...")
-        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
+        url = "https://ulcdn.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=30) as response:
             scrip_data = json.loads(response.read().decode())
@@ -190,8 +190,6 @@ def fetch_and_update_option_chain(smart_api):
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
-            print("API Item Keys & Values:", item)
-            
             val = float(item.get('ltp', item.get('LTP', item.get('close', item.get('netPrice', item.get('fiveDayChange', 0))))))
             quotes_data.append({'token': tok, 'ltp': val})
 
@@ -262,7 +260,7 @@ def run_bot_loop():
                 initialize_scrip_master()
                 break
             else:
-                print(f"⚠️ Session Failed Response: {data}")
+                print(f"⚠️️ Session Failed Response: {data}")
                 time.sleep(10)
         except Exception as e:
             print(f"❌ Session Generation Exception: {e}")
