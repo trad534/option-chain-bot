@@ -106,47 +106,114 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# FETCH & UPDATE LOOP WITH FULL CHAIN DATA
+# GLOBAL VARIABLES & LIGHTWEIGHT SCRIP LOADER
+# ==========================================
+cached_nifty_spot_token = "99926000"
+cached_options_df = pd.DataFrame()
+earliest_expiry = ""
+
+def initialize_scrip_master():
+    global cached_nifty_spot_token, cached_options_df, earliest_expiry
+    try:
+        print("📥 Downloading lightweight Nifty Scrip Master...")
+        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            scrip_data = json.loads(response.read().decode())
+        
+        # Filter only Nifty items instantly to prevent memory overhead
+        nifty_items = [item for item in scrip_data if item.get('name') == 'NIFTY' or item.get('symbol') == 'NIFTY']
+        df = pd.DataFrame(nifty_items)
+        
+        if df.empty:
+            print("⚠️ Scrip filter returned empty data.")
+            return
+
+        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['symbol'] == 'NIFTY')]
+        if not nifty_spot_row.empty:
+            cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
+        
+        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == 'OPTIDX')].copy()
+        if not nifty_opts.empty:
+            nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
+            nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+            valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+            
+            if not valid_opts.empty:
+                earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
+                cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+            else:
+                cached_options_df = nifty_opts
+
+        print(f"✅ Nifty Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Options: {len(cached_options_df)}")
+    except Exception as e:
+        print(f"⚠️ Scrip Master Error: {e}")
+
+# ==========================================
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_angel_option_chain(smart_api):
+    global cached_options_df, cached_nifty_spot_token
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Fetch Nifty Spot Price
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": ["99926000"]})
+        if cached_options_df is None or cached_options_df.empty:
+            initialize_scrip_master()
+
+        # 1. Fetch Spot Price
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(cached_nifty_spot_token)]})
         if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
             print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
             return
             
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
-        print(f"🎯 Nifty Spot Price: {spot_price}")
+        print(f"🎯 Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
-        strikes = [atm_strike + i for i in range(-250, 300, 50)]
 
-        # 2. Dynamic token search / fallback generation for Nifty Weekly/Monthly options
-        # We can query searching symbol via SmartAPI or use standard naming convention search tokens
-        # Let's fetch live quotes for calculated strikes using searchScrip if available or standard tokens mapping
-        
+        if cached_options_df is not None and not cached_options_df.empty:
+            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 250) & (cached_options_df['strike'] <= atm_strike + 250)].copy()
+            tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
+        else:
+            tokens_nfo = []
+            filtered_opts = pd.DataFrame()
+
+        if not tokens_nfo:
+            print("❌ No NFO tokens available. Re-initializing scrip master...")
+            initialize_scrip_master()
+            return
+
+        # 2. Fetch Market Quotes for all tokens in one single API call
+        quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
+        if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
+            print(f"❌ Failed to fetch Market Quotes: {quotes}")
+            return
+
+        quotes_df = pd.DataFrame(quotes['data']['fetched'])
+        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
+                          quotes_df[['tradingSymbol', 'ltp']], 
+                          left_on='symbol', right_on='tradingSymbol', how='inner')
+
+        try:
+            exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+        except:
+            exp_date = datetime.now()
+
+        t = max((exp_date - datetime.now()).days / 365.0, 0.001)
+        r = 0.07
+
+        strikes = sorted(merged['strike'].unique())
         output_rows = [
             ["CE Delta", "CE Gamma", "CE Theta", "CE Vega", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]
         ]
 
-        t = 7 / 365.0  # Approx expiry time estimation for weekly
-        r = 0.07
-
         for st in strikes:
-            # For each strike, we can query or put calculated placeholders if tokens aren't pre-loaded,
-            # Let's search scrip for this specific strike to get live LTP instantly without heavy master download!
-            try:
-                ce_search = smart_api.searchScrip("NFO", f"NIFTY OCT 2026 {st} CE") # Dynamic search fallback
-                pe_search = smart_api.searchScrip("NFO", f"NIFTY OCT 2026 {st} PE")
-                
-                # Fetch LTP if tokens found
-                ce_ltp, pe_ltp = 50.0, 50.0 # Default fallback simulation if network search varies, but let's use real API data fetch
-            except:
-                ce_ltp, pe_ltp = 0.0, 0.0
+            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))]
+            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))]
+
+            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty else 0.0
+            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty else 0.0
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
@@ -158,9 +225,9 @@ def fetch_and_update_angel_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            data_sheet.batch_clear(["A10:M30"])
+            data_sheet.batch_clear(["A10:M100"])
             data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Full Option Chain Updated Successfully at {current_time_str}!")
+            print(f"🎯 Option Chain Successfully Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
 
     except Exception as ex:
         print(f"❌ Exception in Process: {str(ex)}")
@@ -169,7 +236,7 @@ def fetch_and_update_angel_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Complete Option Chain Loop...")
+    print("🚀 Starting Option Chain Loop...")
     smart_api = SmartConnect(api_key=API_KEY)
     
     while True:
@@ -178,6 +245,7 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data.get('status'):
                 print("✅ Angel One Session Generated Successfully")
+                initialize_scrip_master()
                 break
             else:
                 print(f"❌ Login failed: {data.get('message')}, retrying in 10s...")
