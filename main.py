@@ -136,7 +136,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol from J4
+        # 1. Read Selected Symbol strictly from 'Option chain index new' J4
         selected_symbol = "NIFTY"
         if selection_sheet:
             try:
@@ -145,9 +145,19 @@ def fetch_and_update_option_chain(smart_api):
                     selected_symbol = str(j4_val).strip().upper()
             except:
                 pass
-        print(f"📌 Selected Symbol from J4: {selected_symbol}")
+        
+        # Fallback to data_sheet J4 if selection_sheet J4 is empty
+        if not selected_symbol or selected_symbol == "NIFTY":
+            try:
+                j4_data_val = data_sheet.acell('J4').value
+                if j4_data_val and str(j4_data_val).strip():
+                    selected_symbol = str(j4_data_val).strip().upper()
+            except:
+                pass
 
-        # 2. Update Exact Lot Size in A7
+        print(f"📌 Active Selected Symbol: {selected_symbol}")
+
+        # 2. Update Exact Lot Size in A7 based on dictionary lookup
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
@@ -296,7 +306,6 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        # Correct absolute strike prices generation
         strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + i) for i in range(-950, 1000, 50)]
         
         output_rows = [
