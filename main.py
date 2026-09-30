@@ -138,7 +138,7 @@ def initialize_scrip_master():
         print(f"⚠️ Scrip Master Error: {e}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (PURE REAL-TIME API)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global cached_options_df
@@ -150,18 +150,17 @@ def fetch_and_update_option_chain(smart_api):
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master()
 
-        # 1. Fetch Spot Price from Angel One API
+        # 1. Fetch Spot Price (Fallback to last close if live ltp is 0)
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
         spot_price = 0.0
         
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
             item = spot_quote['data']['fetched'][0]
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+            if spot_price <= 0:
+                spot_price = float(item.get('close', 22620.45))
 
-        print(f"🎯 Live Spot Price: {spot_price}")
-        if spot_price <= 0:
-            print("⚠️ Market is closed or spot price is 0.")
-            return
+        print(f"🎯 Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
 
@@ -172,7 +171,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API
+        # 2. Fetch NFO Option Quotes from Angel API (checking ltp, netPrice, and close)
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -183,7 +182,10 @@ def fetch_and_update_option_chain(smart_api):
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
-            val = float(item.get('ltp', item.get('LTP', item.get('netPrice', item.get('close', 0)))))
+            # Extract ltp, if 0 then fallback to close price so band market me bhi 3:30 PM ki value mile
+            val = float(item.get('ltp', item.get('LTP', 0)))
+            if val <= 0:
+                val = float(item.get('close', item.get('netPrice', 0)))
             quotes_data.append({'token': tok, 'ltp': val})
 
         quotes_df = pd.DataFrame(quotes_data)
@@ -226,7 +228,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:M100"])
             data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with Real API Data!")
+            print(f"🎯 Google Sheet Successfully Updated with API Close Data!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
