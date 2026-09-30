@@ -108,7 +108,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 # GLOBAL CACHE FOR SCRIP MASTER
 # ==========================================
-cached_nifty_spot_token = "99926000"  # Default fallback
+cached_nifty_spot_token = "99926000"
 cached_options_df = None
 earliest_expiry = None
 
@@ -121,14 +121,12 @@ def initialize_scrip_master():
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
-        # Nifty Spot token extraction with fallback
         nifty_spot_row = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))]
         if not nifty_spot_row.empty:
             cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
         
         print(f"✅ Nifty Spot Token Set: {cached_nifty_spot_token}")
 
-        # Robust Nifty Options extraction
         nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
@@ -140,7 +138,7 @@ def initialize_scrip_master():
         cached_nifty_spot_token = "99926000"
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP WITH CHUNKING
 # ==========================================
 def fetch_and_update_angel_option_chain(smart_api):
     global cached_options_df, cached_nifty_spot_token, earliest_expiry
@@ -165,20 +163,28 @@ def fetch_and_update_angel_option_chain(smart_api):
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
         atm_strike = round(spot_price / 50) * 50
-        filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 500) & (cached_options_df['strike'] <= atm_strike + 500)].copy()
+        filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 300) & (cached_options_df['strike'] <= atm_strike + 300)].copy()
 
         tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         if not tokens_nfo:
             print("❌ No NFO tokens found for current strike range!")
             return
 
-        quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
-        
-        if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print(f"❌ Failed to fetch Market Quotes: {quotes}")
+        # Chunk tokens into batches of 15 to avoid Read Timeouts
+        chunk_size = 15
+        all_fetched_quotes = []
+        for i in range(0, len(tokens_nfo), chunk_size):
+            chunk = tokens_nfo[i:i + chunk_size]
+            quotes = smart_api.getMarketData("FULL", {"NFO": chunk})
+            if quotes and quotes.get('status') and quotes['data']['fetched']:
+                all_fetched_quotes.extend(quotes['data']['fetched'])
+            time.sleep(0.2)  # chota sa pause between chunks
+
+        if not all_fetched_quotes:
+            print("❌ Failed to fetch Market Quotes from NFO")
             return
 
-        quotes_df = pd.DataFrame(quotes['data']['fetched'])
+        quotes_df = pd.DataFrame(all_fetched_quotes)
         merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
                           quotes_df[['tradingSymbol', 'ltp']], 
                           left_on='symbol', right_on='tradingSymbol', how='inner')
@@ -252,3 +258,4 @@ if __name__ == "__main__":
     flask_thread.start()
 
     run_bot_loop()
+
