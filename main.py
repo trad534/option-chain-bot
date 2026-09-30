@@ -56,6 +56,7 @@ EXACT_LOT_SIZES = {
     "CRUDEOIL": 100,
     "NATURALGAS": 1250,
     "COPPER": 2500,
+    "AARTIIND": 1000,
     "AARTITRADE": 1000
 }
 
@@ -167,23 +168,39 @@ def fetch_and_update_option_chain(smart_api):
         exchange = "MCX" if is_mcx else "NFO"
         spot_exchange = "MCX" if is_mcx else "NSE"
 
-        # 3. Safe Scrip Master Fetch (Bypassing searchScrip for stocks to prevent red errors)
+        # 3. Universal Scrip Master Fetch for any Symbol (Indices, Stocks, MCX)
         all_options_df = pd.DataFrame()
         available_expiries = []
         
         scrip_data = []
-        if selected_symbol in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"]:
+        try:
+            search_ex = "MCX" if is_mcx else "NFO"
+            res = smart_api.searchScrip(search_ex, selected_symbol)
+            if res and res.get('status') and res.get('data'):
+                scrip_data = res['data']
+        except Exception:
+            pass
+
+        if not scrip_data:
             try:
-                res = smart_api.searchScrip("NFO", selected_symbol)
-                if res and res.get('status') and res.get('data'):
-                    scrip_data = res['data']
+                res_nse = smart_api.searchScrip("NSE", selected_symbol)
+                if res_nse and res_nse.get('status') and res_nse.get('data'):
+                    scrip_data = res_nse.get('data', [])
             except:
                 pass
-        
+
         if scrip_data:
             df = pd.DataFrame(scrip_data)
             if not df.empty:
+                if 'tradingsymbol' in df.columns:
+                    exact_match = df[df['tradingsymbol'].str.contains(selected_symbol, case=False, na=False)].copy()
+                    if not exact_match.empty:
+                        df = exact_match
+
                 opt_df = df[df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTOM'])].copy() if 'instrumenttype' in df.columns else df.copy()
+                if opt_df.empty:
+                    opt_df = df.copy()
+
                 if not opt_df.empty:
                     if 'strike' in opt_df.columns:
                         opt_df['strike'] = opt_df['strike'].astype(float)
@@ -191,10 +208,15 @@ def fetch_and_update_option_chain(smart_api):
                             opt_df['strike'] = opt_df['strike'] / 100
                     
                     all_options_df = opt_df.copy()
-                    if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
+                    if 'symboltoken' in all_options_df.columns:
                         all_options_df['token'] = all_options_df['symboltoken']
-                    if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
+                    elif 'token' not in all_options_df.columns and 'symbolToken' in all_options_df.columns:
+                        all_options_df['token'] = all_options_df['symbolToken']
+
+                    if 'tradingsymbol' in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
+                    elif 'symbol' not in all_options_df.columns and 'tradingSymbol' in all_options_df.columns:
+                        all_options_df['symbol'] = all_options_df['tradingSymbol']
                     
                     if 'expiry' in all_options_df.columns:
                         raw_expiries = all_options_df['expiry'].dropna().unique()
@@ -258,7 +280,8 @@ def fetch_and_update_option_chain(smart_api):
             "BANKNIFTY": "26009", 
             "FINNIFTY": "26037",
             "MIDCPNIFTY": "26074",
-            "SENSEX": "1"
+            "SENSEX": "1",
+            "BANKEX": "13"
         }
         
         spot_token = spot_token_map.get(selected_symbol, "")
@@ -268,6 +291,17 @@ def fetch_and_update_option_chain(smart_api):
                 if st_res and st_res.get('status') and st_res.get('data'):
                     for item in st_res['data']:
                         if item.get('tradingsymbol') == selected_symbol or item.get('symbol') == selected_symbol:
+                            spot_token = str(item.get('symboltoken', item.get('token', '')))
+                            break
+            except:
+                pass
+
+        if is_mcx and not spot_token:
+            try:
+                mcx_res = smart_api.searchScrip("MCX", selected_symbol)
+                if mcx_res and mcx_res.get('status') and mcx_res.get('data'):
+                    for item in mcx_res['data']:
+                        if item.get('instrumenttype') == 'FUTCOM':
                             spot_token = str(item.get('symboltoken', item.get('token', '')))
                             break
             except:
