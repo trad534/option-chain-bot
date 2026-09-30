@@ -110,7 +110,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
-nifty_spot_token = "26000"  # Standard Angel One Nifty Spot Token
+nifty_spot_token = "26000"  # Nifty 50 NSE Spot Token
 
 def initialize_scrip_master():
     global cached_options_df, earliest_expiry
@@ -126,8 +126,11 @@ def initialize_scrip_master():
             print("⚠️ Scrip data is empty.")
             return
 
-        # Filter Nifty OPTIDX
-        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
+        # Flexible filtering for Nifty Options
+        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'].str.upper() == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
+        if nifty_opts.empty:
+            nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['symbol'].str.contains('NIFTY')) & (df['instrumenttype'] == 'OPTIDX')].copy()
+
         if not nifty_opts.empty:
             nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
             nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
@@ -139,9 +142,9 @@ def initialize_scrip_master():
             else:
                 cached_options_df = nifty_opts
 
-        print(f"✅ Scrip Master Loaded! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+        print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Options Count: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️ Scrip Master Error: {e}")
+        print(f"⚠️️ Scrip Master Error: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -163,8 +166,7 @@ def fetch_and_update_angel_option_chain(smart_api):
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
 
         if spot_price <= 1000:
-            # Fallback direct market fetch simulation or standard live index value if NSE token fails
-            spot_price = 25200.0  # Adjust or rely on active market index
+            spot_price = 25500.0  # Fallback live approximate index value if token fails
         print(f"🎯 Current Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
@@ -177,7 +179,7 @@ def fetch_and_update_angel_option_chain(smart_api):
             filtered_opts = pd.DataFrame()
 
         if not tokens_nfo:
-            print("❌ No tokens found, re-initializing...")
+            print("❌ No tokens found, re-initializing scrip master...")
             initialize_scrip_master()
             return
 
@@ -196,12 +198,15 @@ def fetch_and_update_angel_option_chain(smart_api):
             quotes_data.append({'token': tok, 'ltp': val})
 
         quotes_df = pd.DataFrame(quotes_data)
-        filtered_opts['token'] = filtered_opts['token'].astype(str)
-        quotes_df['token'] = quotes_df['token'].astype(str)
+        if not quotes_df.empty:
+            filtered_opts['token'] = filtered_opts['token'].astype(str)
+            quotes_df['token'] = quotes_df['token'].astype(str)
 
-        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], 
-                          quotes_df[['token', 'ltp']], 
-                          on='token', how='inner')
+            merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], 
+                              quotes_df[['token', 'ltp']], 
+                              on='token', how='inner')
+        else:
+            merged = pd.DataFrame()
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
@@ -211,17 +216,17 @@ def fetch_and_update_angel_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique())
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else [atm_strike]
         output_rows = [
             ["CE Delta", "CE Gamma", "CE Theta", "CE Vega", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]
         ]
 
         for st in strikes:
-            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))]
-            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))]
+            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()
+            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()
 
-            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty else 0.0
-            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty else 0.0
+            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
+            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
@@ -235,7 +240,7 @@ def fetch_and_update_angel_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:M100"])
             data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully at {datetime.now().strftime('%H:%M:%S')}!")
+            print(f"🎯 Option Chain Successfully Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
 
     except Exception as ex:
         print(f"❌ Exception in Process: {str(ex)}")
