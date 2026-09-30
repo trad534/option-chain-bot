@@ -150,7 +150,7 @@ def fetch_and_update_option_chain(smart_api):
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master()
 
-        # 1. Fetch Spot Price (Fallback to last close if live ltp is 0)
+        # 1. Fetch Spot Price
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
         spot_price = 0.0
         
@@ -171,7 +171,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API (checking ltp, netPrice, and close)
+        # 2. Fetch NFO Option Quotes from Angel API
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -182,10 +182,11 @@ def fetch_and_update_option_chain(smart_api):
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
-            # Extract ltp, if 0 then fallback to close price so band market me bhi 3:30 PM ki value mile
-            val = float(item.get('ltp', item.get('LTP', 0)))
-            if val <= 0:
-                val = float(item.get('close', item.get('netPrice', 0)))
+            
+            # Print item keys to inspect in Render logs
+            print("API Item Keys & Values:", item)
+            
+            val = float(item.get('ltp', item.get('LTP', item.get('close', item.get('netPrice', item.get('fiveDayChange', 0))))))
             quotes_data.append({'token': tok, 'ltp': val})
 
         quotes_df = pd.DataFrame(quotes_data)
@@ -228,7 +229,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:M100"])
             data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with API Close Data!")
+            print(f"🎯 Google Sheet Successfully Updated!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
