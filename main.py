@@ -169,7 +169,54 @@ def fetch_and_update_option_chain(smart_api):
         exchange = "MCX" if is_mcx else "NFO"
         spot_exchange = "MCX" if is_mcx else "NSE"
 
-        # 2. Correct Scrip Master Fetch based on Index vs Stock
+        # 2. Spot Price First (Taaki Spot ke basis par strikes banein)
+        spot_token_map = {
+            "NIFTY": "26000", 
+            "BANKNIFTY": "26009", 
+            "FINNIFTY": "26037",
+            "MIDCPNIFTY": "26074",
+            "SENSEX": "1",
+            "BANKEX": "13"
+        }
+        
+        spot_token = spot_token_map.get(selected_symbol, "")
+        if not spot_token and not is_mcx:
+            try:
+                st_res = smart_api.searchScrip("NSE", selected_symbol)
+                if st_res and st_res.get('status') and st_res.get('data'):
+                    for item in st_res['data']:
+                        if item.get('tradingsymbol') == selected_symbol or item.get('symbol') == selected_symbol:
+                            spot_token = str(item.get('symboltoken', item.get('token', '')))
+                            break
+            except:
+                pass
+
+        spot_price = 0.0
+        if spot_token:
+            try:
+                spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
+                    item = spot_quote['data']['fetched'][0]
+                    spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+            except:
+                pass
+
+        if spot_price <= 0:
+            if selected_symbol == "NIFTY":
+                spot_price = 24600.0
+            elif selected_symbol == "BANKNIFTY":
+                spot_price = 50000.0
+            else:
+                spot_price = 500.0
+
+        print(f"🎯 Spot Price: {spot_price}")
+
+        try:
+            data_sheet.update(range_name="K9", values=[[spot_price]])
+        except:
+            pass
+
+        # 3. Scrip Master Fetch
         all_options_df = pd.DataFrame()
         available_expiries = []
         
@@ -268,52 +315,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📅 Active Expiry: {selected_expiry}")
 
-        # 3. Spot Price
-        spot_token_map = {
-            "NIFTY": "26000", 
-            "BANKNIFTY": "26009", 
-            "FINNIFTY": "26037",
-            "MIDCPNIFTY": "26074",
-            "SENSEX": "1",
-            "BANKEX": "13"
-        }
-        
-        spot_token = spot_token_map.get(selected_symbol, "")
-        if not spot_token and not is_mcx:
-            try:
-                st_res = smart_api.searchScrip("NSE", selected_symbol)
-                if st_res and st_res.get('status') and st_res.get('data'):
-                    for item in st_res['data']:
-                        if item.get('tradingsymbol') == selected_symbol or item.get('symbol') == selected_symbol:
-                            spot_token = str(item.get('symboltoken', item.get('token', '')))
-                            break
-            except:
-                pass
-
-        spot_price = 0.0
-        if spot_token:
-            try:
-                spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
-                if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
-                    item = spot_quote['data']['fetched'][0]
-                    spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-            except:
-                pass
-
-        if spot_price <= 0 and not all_options_df.empty and 'strike' in all_options_df.columns:
-            spot_price = float(all_options_df['strike'].median())
-
-        if spot_price <= 0:
-            spot_price = 22600.0 if selected_symbol == "NIFTY" else 500.0
-
-        print(f"🎯 Spot Price: {spot_price}")
-
-        try:
-            data_sheet.update(range_name="K9", values=[[spot_price]])
-        except:
-            pass
-
-        # 4. Strict Strike Gap (Step Size)
+        # 4. Strike Gap (Step Size)
         if selected_symbol == "BANKNIFTY":
             strike_gap = 100
         elif selected_symbol in ["NIFTY", "FINNIFTY", "MIDCPNIFTY"]:
