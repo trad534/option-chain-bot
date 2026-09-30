@@ -110,7 +110,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
-nifty_spot_token = "26000"  # Nifty 50 NSE Spot Token
+nifty_spot_token = "26000"
 
 def initialize_scrip_master():
     global cached_options_df, earliest_expiry
@@ -126,7 +126,6 @@ def initialize_scrip_master():
             print("⚠️ Scrip data is empty.")
             return
 
-        # Flexible filtering for Nifty Options
         nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'].str.upper() == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         if nifty_opts.empty:
             nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['symbol'].str.contains('NIFTY')) & (df['instrumenttype'] == 'OPTIDX')].copy()
@@ -144,7 +143,7 @@ def initialize_scrip_master():
 
         print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Options Count: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️️ Scrip Master Error: {e}")
+        print(f"⚠️ Scrip Master Error: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -152,24 +151,28 @@ def initialize_scrip_master():
 def fetch_and_update_angel_option_chain(smart_api):
     global cached_options_df, nifty_spot_token
     try:
+        print("🔄 Entering fetch_and_update_angel_option_chain...")
         current_time_str = datetime.now().strftime('%H:%M:%S')
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
         if cached_options_df is None or cached_options_df.empty:
+            print("⚠️ Cache empty, initializing scrip master inside loop...")
             initialize_scrip_master()
 
         # 1. Fetch Spot Price
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
+        print(f"🔍 Raw Spot Quote Response: {spot_quote}")
         spot_price = 0.0
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
             item = spot_quote['data']['fetched'][0]
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
 
         if spot_price <= 1000:
-            spot_price = 25500.0  # Fallback live approximate index value if token fails
-        print(f"🎯 Current Spot Price: {spot_price}")
+            spot_price = 25500.0  # Fallback live index value
+        print(f"🎯 Current Spot Price Used: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
+        print(f"🎯 Calculated ATM Strike: {atm_strike}")
 
         if cached_options_df is not None and not cached_options_df.empty:
             filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 300) & (cached_options_df['strike'] <= atm_strike + 300)].copy()
@@ -178,9 +181,9 @@ def fetch_and_update_angel_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
+        print(f"📊 Filtered NFO Tokens Count: {len(tokens_nfo)}")
         if not tokens_nfo:
-            print("❌ No tokens found, re-initializing scrip master...")
-            initialize_scrip_master()
+            print("❌ No tokens found in range!")
             return
 
         # 2. Fetch NFO Quotes in batches
@@ -191,6 +194,7 @@ def fetch_and_update_angel_option_chain(smart_api):
             if quotes and quotes.get('status') and quotes.get('data') and quotes['data'].get('fetched'):
                 all_fetched_quotes.extend(quotes['data']['fetched'])
 
+        print(f"📦 Total Fetched NFO Quotes: {len(all_fetched_quotes)}")
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
@@ -207,6 +211,8 @@ def fetch_and_update_angel_option_chain(smart_api):
                               on='token', how='inner')
         else:
             merged = pd.DataFrame()
+
+        print(f"🔗 Merged Options Data Count: {len(merged)}")
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
