@@ -151,17 +151,28 @@ def fetch_and_update_option_chain(smart_api):
         # 2. Fetch Scrip Master for Selected Symbol to get Lot Size & Options
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
-        lot_size = 25 # Default fallback lot size
+        lot_size = 25 # Default fallback
 
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                if 'lotsize' in df.columns:
-                    valid_lots = df['lotsize'].dropna()
+                print(f"📋 Available columns in scrip data: {df.columns.tolist()}")
+                # Check various possible keys for lot size
+                lot_column = None
+                for col in ['lotsize', 'lotSize', 'LOTSIZE', 'laslotsize']:
+                    if col in df.columns:
+                        lot_column = col
+                        break
+                
+                if lot_column:
+                    valid_lots = df[lot_column].dropna()
                     if not valid_lots.empty:
-                        lot_size = int(valid_lots.iloc[0])
+                        try:
+                            lot_size = int(float(valid_lots.iloc[0]))
+                        except:
+                            pass
 
                 nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
                 if not nifty_opts.empty:
@@ -176,10 +187,12 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
+        print(f"✅ Detected Lot Size for {selected_symbol}: {lot_size}")
+
         # 3. Update Lot Size in 'upstox get data' Cell A7
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7: {lot_size}")
+            print(f"✅ Lot Size Updated in A7 successfully!")
         except Exception as e:
             print(f"⚠️ Error updating A7 lot size: {e}")
 
