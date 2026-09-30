@@ -112,7 +112,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER (CLEAN JSON FIX)
+# SCRIP MASTER LOADER (SAFE JSON CHECK FIX)
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
@@ -128,6 +128,10 @@ def initialize_scrip_master():
         raw_text = response.text.strip()
         if raw_text.startswith('\ufeff'):
             raw_text = raw_text[1:]
+            
+        if not raw_text.startswith('['):
+            print(f"⚠️ Unexpected response start: {raw_text[:100]}")
+            return
             
         scrip_data = json.loads(raw_text)
         
