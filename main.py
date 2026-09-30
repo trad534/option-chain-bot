@@ -121,18 +121,21 @@ def initialize_scrip_master():
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
-        # Correct filtering for Nifty Spot Token on NSE
-        nifty_spot = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))].iloc[0]
-        cached_nifty_spot_token = str(nifty_spot['token'])
+        # Robust Nifty Spot token extraction
+        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['symbol'] == 'NIFTY') & (df['instrumenttype'] == '')]
+        if nifty_spot_row.empty:
+            nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['name'] == 'NIFTY')]
+        
+        cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
         print(f"✅ Nifty Spot Token Found: {cached_nifty_spot_token}")
 
-        # Correct filtering for Nifty Options on NFO
+        # Robust Nifty Options extraction
         nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
         nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
         
         earliest_expiry = nifty_opts['expiry'].min()
         cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
-        print("✅ Scrip Master Loaded Successfully into Memory!")
+        print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
         print(f"❌ Error loading Scrip Master: {e}")
 
@@ -164,11 +167,15 @@ def fetch_and_update_angel_option_chain(smart_api):
         atm_strike = round(spot_price / 50) * 50
         filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 500) & (cached_options_df['strike'] <= atm_strike + 500)].copy()
 
-        tokens_nfo = list(filtered_opts['token'].unique())
+        tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
+        if not tokens_nfo:
+            print("❌ No NFO tokens found for current strike range!")
+            return
+
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print("❌ Failed to fetch Market Quotes")
+            print(f"❌ Failed to fetch Market Quotes: {quotes}")
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
