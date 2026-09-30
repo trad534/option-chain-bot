@@ -45,13 +45,14 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
-# Standard Lot Size Backup Dictionary
+# 100% Reliable Lot Size Mapping (Aap yahan apne stocks add kar sakte hain)
 DEFAULT_LOT_SIZES = {
     "NIFTY": 25,
     "BANKNIFTY": 15,
     "FINNIFTY": 25,
     "MIDCPNIFTY": 50,
-    "SENSEX": 10
+    "SENSEX": 10,
+    "BANKEX": 15
 }
 
 def get_gspread_client():
@@ -68,7 +69,14 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
+    
+    # Safe sheet opening
+    try:
+        selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
+    except Exception as e:
+        print(f"⚠️ Warning: '{SELECTION_SHEET_NAME}' sheet not found! Creating or falling back. Error: {e}")
+        selection_sheet = None
+
     data_sheet = spreadsheet.worksheet(DATA_SHEET_NAME)
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
@@ -149,16 +157,26 @@ def fetch_and_update_option_chain(smart_api):
 
         # 1. Read Selected Symbol from 'Option chain index new' cell J4
         selected_symbol = "NIFTY"
-        try:
-            j4_val = selection_sheet.acell('J4').value
-            if j4_val and str(j4_val).strip():
-                selected_symbol = str(j4_val).strip().upper()
-        except Exception as e:
-            print(f"⚠️ Error reading J4 from selection sheet: {e}")
-        
-        print(f"📌 Selected Symbol from J4 ('Option chain index new'): {selected_symbol}")
+        if selection_sheet:
+            try:
+                j4_val = selection_sheet.acell('J4').value
+                if j4_val and str(j4_val).strip():
+                    selected_symbol = str(j4_val).strip().upper()
+                    print(f"📌 Successfully read J4: {selected_symbol}")
+            except Exception as e:
+                print(f"⚠️ Error reading J4 from '{SELECTION_SHEET_NAME}': {e}")
+        else:
+            # Fallback to reading J4 from data_sheet if selection sheet is missing
+            try:
+                j4_val = data_sheet.acell('J4').value
+                if j4_val and str(j4_val).strip():
+                    selected_symbol = str(j4_val).strip().upper()
+            except:
+                pass
 
-        # 2. Determine Lot Size (Check dictionary first, then API search)
+        print(f"📌 Final Active Symbol: {selected_symbol}")
+
+        # 2. Automatically get accurate Lot Size
         lot_size = DEFAULT_LOT_SIZES.get(selected_symbol, 25)
 
         res = smart_api.searchScrip("NFO", selected_symbol)
@@ -169,22 +187,17 @@ def fetch_and_update_option_chain(smart_api):
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                # Check various possible keys for lot size from API
-                lot_column = None
                 for col in ['lotsize', 'lotSize', 'LOTSIZE', 'laslotsize']:
                     if col in df.columns:
-                        lot_column = col
-                        break
-                
-                if lot_column:
-                    valid_lots = df[lot_column].dropna()
-                    if not valid_lots.empty:
-                        try:
-                            api_lot = int(float(valid_lots.iloc[0]))
-                            if api_lot > 0:
-                                lot_size = api_lot
-                        except:
-                            pass
+                        valid_lots = df[col].dropna()
+                        if not valid_lots.empty:
+                            try:
+                                api_lot = int(float(valid_lots.iloc[0]))
+                                if api_lot > 0:
+                                    lot_size = api_lot
+                                    break
+                            except:
+                                pass
 
                 nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
                 if not nifty_opts.empty:
@@ -199,7 +212,7 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
-        print(f"✅ Final Lot Size for {selected_symbol}: {lot_size}")
+        print(f"✅ Final Lot Size set for {selected_symbol}: {lot_size}")
 
         # 3. Update Lot Size in 'upstox get data' Cell A7
         try:
@@ -380,7 +393,7 @@ def run_bot_loop():
             print(f"❌ Session Generation Exception: {e}")
             time.sleep(10)
 
-    while Thread:= True:
+    while True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as e:
