@@ -11,6 +11,14 @@ from datetime import datetime
 from SmartApi import SmartConnect
 from flask import Flask
 import threading
+import builtins
+
+# ==========================================
+# FORCE FLUSH LOGS IN RENDER (BUFFERING FIX)
+# ==========================================
+def print(*args, **kwargs):
+    kwargs['flush'] = True
+    builtins.print(*args, **kwargs)
 
 # ==========================================
 # FLASK WEB SERVER FOR RENDER PORT
@@ -237,11 +245,17 @@ def fetch_and_update_option_chain(smart_api):
 # ==========================================
 def run_bot_loop():
     print("🚀 Starting Bot Loop Thread...")
-    smart_api = SmartConnect(api_key=API_KEY)
     
+    try:
+        smart_api = SmartConnect(api_key=API_KEY)
+    except Exception as e:
+        print(f"❌ SmartConnect Init Error: {e}")
+        return
+        
     while True:
         try:
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
+            print("🔄 Attempting to generate session...")
+            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
