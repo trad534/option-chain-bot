@@ -34,7 +34,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
-# CONFIGURATION & GOOGLE SHEET
+# CONFIGURATION & GOOGLE SHEETS
 # ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -42,7 +42,17 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
+SELECTION_SHEET_NAME = "Option chain index new"
+DATA_SHEET_NAME = "upstox get data"
+
+EXACT_LOT_SIZES = {
+    "NIFTY": 65,
+    "BANKNIFTY": 30,
+    "FINNIFTY": 25,
+    "MIDCPNIFTY": 50,
+    "SENSEX": 10,
+    "BANKEX": 15
+}
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -58,8 +68,14 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheet Connected Successfully!")
+    
+    try:
+        selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
+    except:
+        selection_sheet = None
+
+    data_sheet = spreadsheet.worksheet(DATA_SHEET_NAME)
+    print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
@@ -83,7 +99,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if abs(price - ltp) < 0.1:
             sigma = mid_sigma
             break
-        if price > t:
+        if price > ltp:
             high_sigma = mid_sigma
         else:
             low_sigma = mid_sigma
@@ -112,106 +128,135 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER VIA SMARTAPI SEARCH
-# ==========================================
-cached_options_df = pd.DataFrame()
-earliest_expiry = "N/A"
-nifty_spot_token = "26000"
-
-def get_upcoming_tuesday():
-    today = datetime.now()
-    # 1 is Tuesday (Monday=0, Tuesday=1)
-    days_ahead = (1 - today.weekday() + 7) % 7
-    if days_ahead == 0 and today.hour >= 15: # If today is Tuesday after market hours, take next week
-        days_ahead = 7
-    tuesday = today + timedelta(days=days_ahead)
-    return tuesday.strftime('%d%b%Y').upper()
-
-def initialize_scrip_master(smart_api):
-    global cached_options_df, earliest_expiry
-    try:
-        print("📥 Fetching Nifty Options via SmartAPI Search...")
-        res = smart_api.searchScrip("NFO", "NIFTY")
-        if res and res.get('status') and res.get('data'):
-            scrip_data = res['data']
-            df = pd.DataFrame(scrip_data)
-            
-            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
-            if not nifty_opts.empty:
-                if 'strike' in nifty_opts.columns:
-                    nifty_opts['strike'] = nifty_opts['strike'].astype(float)
-                    if nifty_opts['strike'].max() > 50000:
-                        nifty_opts['strike'] = nifty_opts['strike'] / 100
-                
-                if 'expiry' in nifty_opts.columns:
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
-                    valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-                    
-                    if not valid_opts.empty:
-                        min_exp_dt = valid_opts['parsed_expiry'].min()
-                        earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
-                        cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
-                        
-                if cached_options_df.empty and not nifty_opts.empty:
-                    cached_options_df = nifty_opts.copy()
-
-                if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
-                    cached_options_df['token'] = cached_options_df['symboltoken']
-                if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
-                    cached_options_df['symbol'] = cached_options_df['tradingsymbol']
-
-        # Fallback to upcoming Tuesday if expiry is blank
-        if earliest_expiry == "N/A" or not earliest_expiry:
-            earliest_expiry = get_upcoming_tuesday()
-
-        print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
-    except Exception as e:
-        print(f"⚠️ Scrip Master API Error: {e}")
-        if earliest_expiry == "N/A":
-            earliest_expiry = get_upcoming_tuesday()
-
-# ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        if cached_options_df is None or cached_options_df.empty:
-            initialize_scrip_master(smart_api)
+        # 1. Read Selected Symbol from J4
+        selected_symbol = "NIFTY"
+        if selection_sheet:
+            try:
+                j4_val = selection_sheet.acell('J4').value
+                if j4_val and str(j4_val).strip():
+                    selected_symbol = str(j4_val).strip().upper()
+            except:
+                pass
+        print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
-        # 1. Fetch Spot Price
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
+        # 2. Update Exact Lot Size in A7
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
+        try:
+            data_sheet.update(range_name="A7", values=[[lot_size]])
+            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
+        except Exception as e:
+            print(f"⚠️ Error updating A7 lot size: {e}")
+
+        # 3. Fetch Scrip Master from Angel API
+        res = smart_api.searchScrip("NFO", selected_symbol)
+        all_options_df = pd.DataFrame()
+        available_expiries = []
+
+        if res and res.get('status') and res.get('data'):
+            scrip_data = res['data']
+            df = pd.DataFrame(scrip_data)
+            
+            if not df.empty:
+                nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
+                if not nifty_opts.empty:
+                    if 'strike' in nifty_opts.columns:
+                        nifty_opts['strike'] = nifty_opts['strike'].astype(float)
+                        if nifty_opts['strike'].max() > 50000:
+                            nifty_opts['strike'] = nifty_opts['strike'] / 100
+                    
+                    all_options_df = nifty_opts.copy()
+                    if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
+                        all_options_df['token'] = all_options_df['symboltoken']
+                    if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
+                        all_options_df['symbol'] = all_options_df['tradingsymbol']
+                    
+                    if 'expiry' in all_options_df.columns:
+                        raw_expiries = all_options_df['expiry'].dropna().unique()
+                        parsed_exps = []
+                        for exp in raw_expiries:
+                            try:
+                                dt = datetime.strptime(str(exp).strip().title(), "%d%b%Y")
+                                parsed_exps.append((dt, str(exp).strip().upper()))
+                            except:
+                                pass
+                        parsed_exps.sort(key=lambda x: x[0])
+                        available_expiries = [[item[1]] for item in parsed_exps[:4]]
+
+        if not available_expiries:
+            today = datetime.now()
+            for i in range(4):
+                d = today + timedelta(days=7*i)
+                available_expiries.append([d.strftime('%d%b%Y').upper()])
+
+        try:
+            data_sheet.update(range_name="A3:A6", values=available_expiries)
+        except Exception as e:
+            print(f"⚠️ Error updating expiry cells A3:A6: {e}")
+
+        selected_expiry = "N/A"
+        try:
+            l9_val = data_sheet.acell('L9').value
+            if l9_val and l9_val != "N/A":
+                selected_expiry = str(l9_val).strip().upper()
+        except:
+            pass
+
+        valid_expiry_list = [item[0] for item in available_expiries]
+        if selected_expiry == "N/A" or not selected_expiry or selected_expiry not in valid_expiry_list:
+            try:
+                selected_expiry = available_expiries[0][0]
+                data_sheet.update(range_name="L9", values=[[selected_expiry]])
+            except:
+                selected_expiry = datetime.now().strftime('%d%b%Y').upper()
+
+        print(f"📅 Active Selected Expiry: {selected_expiry}")
+
+        # 4. Fetch Spot Price
+        spot_token_map = {"NIFTY": "26000", "BANKNIFTY": "26001", "FINNIFTY": "26037"}
+        spot_token = spot_token_map.get(selected_symbol, "26000")
+        
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": [spot_token]})
         spot_price = 0.0
         
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
             item = spot_quote['data']['fetched'][0]
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
             if spot_price <= 0:
-                spot_price = float(item.get('close', 22620.45))
+                spot_price = float(item.get('close', 24600.0))
 
-        print(f"🎯 Spot Price: {spot_price}")
+        print(f"🎯 Spot Price for {selected_symbol}: {spot_price}")
 
-        # Update Spot Price in K9 and Expiry in L9 safely
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
-            data_sheet.update(range_name="L9", values=[[str(earliest_expiry)]])
         except Exception as sheet_err:
-            print(f"⚠️️ Error updating K9/L9: {sheet_err}")
+            print(f"⚠️ Error updating K9: {sheet_err}")
 
         atm_strike = round(spot_price / 50) * 50
 
-        if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 950) & (cached_options_df['strike'] <= atm_strike + 950)].copy()
-            tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
+        # Filter options for the selected expiry
+        if all_options_df is not None and not all_options_df.empty:
+            if 'expiry' in all_options_df.columns:
+                expiry_filtered = all_options_df[all_options_df['expiry'].str.upper() == selected_expiry].copy()
+                if expiry_filtered.empty:
+                    expiry_filtered = all_options_df.copy()
+            else:
+                expiry_filtered = all_options_df.copy()
+
+            filtered_opts = expiry_filtered[(expiry_filtered['strike'] >= atm_strike - 950) & (expiry_filtered['strike'] <= atm_strike + 950)].copy()
+            tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()] if not filtered_opts.empty else []
         else:
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API
+        # 5. Fetch NFO Option Quotes
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -244,14 +289,15 @@ def fetch_and_update_option_chain(smart_api):
             merged = pd.DataFrame()
 
         try:
-            exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+            exp_date = datetime.strptime(str(selected_expiry).title(), "%d%b%Y")
         except:
             exp_date = datetime.now()
 
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
+        # Correct absolute strike prices generation
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + i) for i in range(-950, 1000, 50)]
         
         output_rows = [
             [
@@ -287,7 +333,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated!")
+            print(f"🎯 Google Sheet Successfully Updated for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -311,7 +357,6 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
-                initialize_scrip_master(smart_api)
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
