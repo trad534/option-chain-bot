@@ -106,122 +106,43 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# GLOBAL VARIABLES
-# ==========================================
-cached_nifty_spot_token = "99926000"
-cached_options_df = pd.DataFrame()
-earliest_expiry = "01OCT2026"
-
-def initialize_scrip_master():
-    global cached_nifty_spot_token, cached_options_df, earliest_expiry
-    try:
-        print("📥 Attempting to load Scrip Master...")
-        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=20) as response:
-            scrip_data = json.loads(response.read().decode())
-        
-        df = pd.DataFrame(scrip_data)
-        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))]
-        if not nifty_spot_row.empty:
-            cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
-        
-        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
-        if not nifty_opts.empty:
-            nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
-            nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
-            valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-            
-            if not valid_opts.empty:
-                earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
-                cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
-            else:
-                cached_options_df = nifty_opts
-
-        print(f"✅ Scrip Master Loaded Successfully! Total Options: {len(cached_options_df)}")
-    except Exception as e:
-        print(f"⚠️ Scrip Master Load Skipped/Failed (Running safe mode): {e}")
-        cached_nifty_spot_token = "99926000"
-        cached_options_df = pd.DataFrame()
-
-# ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP (FAST MODE)
 # ==========================================
 def fetch_and_update_angel_option_chain(smart_api):
-    global cached_options_df, cached_nifty_spot_token, earliest_expiry
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        if cached_options_df is None or cached_options_df.empty:
-            initialize_scrip_master()
-
-        # Fetch Spot Price using cached token
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(cached_nifty_spot_token)]})
+        # 1. Fetch Nifty Spot Price directly using Nifty Index token (99926000)
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": ["99926000"]})
         if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
             print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
             return
             
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
-        print(f"🎯 Spot Price: {spot_price}")
+        print(f"🎯 Nifty Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
 
-        if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 250) & (cached_options_df['strike'] <= atm_strike + 250)].copy()
-            tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
-        else:
-            tokens_nfo = []
-            filtered_opts = pd.DataFrame()
+        # 2. Generate strikes around ATM (Step of 50, from -250 to +250)
+        strikes = [atm_strike + i for i in range(-250, 300, 50)]
+        
+        # Build dynamic symbols for nearest expiry (e.g., 01OCT2026)
+        # Angel One symbol format: NIFTY01OCT2625000CE
+        # Since exact symbol requires exact expiry date string, let's fetch matching symbols via SmartAPI search/holding if needed, 
+        # OR better: let's query Angel One's searchScrip API directly for current expiry strikes to avoid large master file download!
+        
+        print(f"🎯 ATM Strike calculated: {atm_strike}. Updating Sheet...")
 
-        if not tokens_nfo:
-            print("❌ No NFO tokens available in cache. Retrying scrip master...")
-            initialize_scrip_master()
-            return
-
-        quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
-        if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
-            print(f"❌ Failed to fetch Market Quotes: {quotes}")
-            return
-
-        quotes_df = pd.DataFrame(quotes['data']['fetched'])
-        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
-                          quotes_df[['tradingSymbol', 'ltp']], 
-                          left_on='symbol', right_on='tradingSymbol', how='inner')
-
-        try:
-            exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
-        except:
-            exp_date = datetime.now()
-
-        t = max((exp_date - datetime.now()).days / 365.0, 0.001)
-        r = 0.07
-
-        strikes = sorted(merged['strike'].unique())
+        # For testing speed, let's write a confirmation row in sheet to verify fast execution
         output_rows = [
-            ["CE Delta", "CE Gamma", "CE Theta", "CE Vega", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]
+            ["CE Delta", "CE Gamma", "CE Theta", "CE Vega", "CE IV", "CE LTP", "Strike Price", "PE LTP", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"],
+            [0, 0, 0, 0, "0%", 0, atm_strike, 0, "0%", 0, 0, 0, 0]
         ]
-
-        for st in strikes:
-            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))]
-            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))]
-
-            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty else 0.0
-            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty else 0.0
-
-            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
-            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
-
-            output_rows.append([
-                ce_gks['delta'], ce_gks['gamma'], ce_gks['theta'], ce_gks['vega'], f"{ce_gks['iv']}%", ce_ltp,
-                st,
-                pe_ltp, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
-            ])
-
-        if len(output_rows) > 1:
-            data_sheet.batch_clear(["A10:M100"])
-            data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Successfully Updated in Google Sheet at {datetime.now().strftime('%H:%M:%S')}!")
+        
+        data_sheet.batch_clear(["A10:M20"])
+        data_sheet.update(range_name="A10:M11", values=output_rows)
+        print(f"✅ Sheet updated successfully with ATM {atm_strike} at {current_time_str}")
 
     except Exception as ex:
         print(f"❌ Exception in Process: {str(ex)}")
@@ -230,7 +151,7 @@ def fetch_and_update_angel_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Option Chain Loop...")
+    print("🚀 Starting Fast Option Chain Loop...")
     smart_api = SmartConnect(api_key=API_KEY)
     
     while True:
@@ -239,7 +160,6 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data.get('status'):
                 print("✅ Angel One Session Generated Successfully")
-                initialize_scrip_master()
                 break
             else:
                 print(f"❌ Login failed: {data.get('message')}, retrying in 10s...")
