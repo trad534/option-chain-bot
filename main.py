@@ -45,16 +45,6 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
-# 100% Reliable Lot Size Mapping (Aap yahan apne stocks add kar sakte hain)
-DEFAULT_LOT_SIZES = {
-    "NIFTY": 25,
-    "BANKNIFTY": 15,
-    "FINNIFTY": 25,
-    "MIDCPNIFTY": 50,
-    "SENSEX": 10,
-    "BANKEX": 15
-}
-
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
@@ -70,11 +60,9 @@ try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     
-    # Safe sheet opening
     try:
         selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
-    except Exception as e:
-        print(f"⚠️ Warning: '{SELECTION_SHEET_NAME}' sheet not found! Creating or falling back. Error: {e}")
+    except:
         selection_sheet = None
 
     data_sheet = spreadsheet.worksheet(DATA_SHEET_NAME)
@@ -155,46 +143,41 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol from 'Option chain index new' cell J4
+        # 1. Read Selected Symbol from J4
         selected_symbol = "NIFTY"
         if selection_sheet:
             try:
                 j4_val = selection_sheet.acell('J4').value
                 if j4_val and str(j4_val).strip():
                     selected_symbol = str(j4_val).strip().upper()
-                    print(f"📌 Successfully read J4: {selected_symbol}")
-            except Exception as e:
-                print(f"⚠️ Error reading J4 from '{SELECTION_SHEET_NAME}': {e}")
-        else:
-            # Fallback to reading J4 from data_sheet if selection sheet is missing
-            try:
-                j4_val = data_sheet.acell('J4').value
-                if j4_val and str(j4_val).strip():
-                    selected_symbol = str(j4_val).strip().upper()
             except:
                 pass
+        print(f"📌 Selected Symbol: {selected_symbol}")
 
-        print(f"📌 Final Active Symbol: {selected_symbol}")
-
-        # 2. Automatically get accurate Lot Size
-        lot_size = DEFAULT_LOT_SIZES.get(selected_symbol, 25)
-
+        # 2. Fetch Scrip Master directly from Angel One API
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
+        lot_size = 0 # Default starting zero to catch API value
 
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                for col in ['lotsize', 'lotSize', 'LOTSIZE', 'laslotsize']:
-                    if col in df.columns:
+                # Print all columns found in API response to debug logs
+                print(f"📋 Angel API Columns: {df.columns.tolist()}")
+                
+                # Check all possible keys for lot size from Angel API response
+                for col in df.columns:
+                    if 'lot' in str(col).lower():
+                        print(f"🔍 Found potential lot column: {col}")
                         valid_lots = df[col].dropna()
                         if not valid_lots.empty:
                             try:
-                                api_lot = int(float(valid_lots.iloc[0]))
-                                if api_lot > 0:
-                                    lot_size = api_lot
+                                val = int(float(valid_lots.iloc[0]))
+                                if val > 0:
+                                    lot_size = val
+                                    print(f"✅ Extracted Lot Size from API column '{col}': {lot_size}")
                                     break
                             except:
                                 pass
@@ -212,23 +195,26 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
 
-        print(f"✅ Final Lot Size set for {selected_symbol}: {lot_size}")
+        # Fallback agar API se lot size na mile toh Nifty ke liye default 25 ya jo bhi selected ho
+        if lot_size <= 0:
+            lot_size = 25 if selected_symbol == "NIFTY" else 15
+            print(f"⚠️ API lot size not found, using fallback: {lot_size}")
 
         # 3. Update Lot Size in 'upstox get data' Cell A7
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7 successfully!")
+            print(f"✅ Lot Size Updated in A7 successfully: {lot_size}")
         except Exception as e:
             print(f"⚠️ Error updating A7 lot size: {e}")
 
-        # Update Expiries in A3:A6 of 'upstox get data'
+        # Update Expiries in A3:A6
         expiry_rows = get_upcoming_tuesdays(4)
         try:
             data_sheet.update(range_name="A3:A6", values=expiry_rows)
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
-        # Read selected expiry from cell L9 (default to A3 if blank)
+        # Read selected expiry from cell L9
         selected_expiry = "N/A"
         try:
             l9_val = data_sheet.acell('L9').value
