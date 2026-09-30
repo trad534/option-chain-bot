@@ -8,6 +8,14 @@ from datetime import datetime
 from SmartApi import SmartConnect
 from flask import Flask
 import threading
+import builtins
+
+# ==========================================
+# FORCE FLUSH PRINTS
+# ==========================================
+def print(*args, **kwargs):
+    kwargs['flush'] = True
+    builtins.print(*args, **kwargs)
 
 # ==========================================
 # FLASK SERVER
@@ -47,11 +55,9 @@ def initialize_scrip_master(smart_api):
         if res and res.get('status') and res.get('data'):
             df = pd.DataFrame(res['data'])
 
-            # Lot size include
             if 'lotsize' in df.columns:
                 df['lotsize'] = df['lotsize'].astype(int)
 
-            # Expiry handling
             df['parsed_expiry'] = pd.to_datetime(df['expiry'], errors='coerce')
             valid_opts = df.dropna(subset=['parsed_expiry'])
             if not valid_opts.empty:
@@ -59,7 +65,6 @@ def initialize_scrip_master(smart_api):
                 earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
                 cached_options_df = df[df['parsed_expiry'] == min_exp_dt].copy()
 
-            # Spot token fetch
             spot_row = df[df['tradingsymbol'].str.upper() == "NIFTY"]
             if not spot_row.empty:
                 nifty_spot_token = str(spot_row['symboltoken'].iloc[0])
@@ -69,7 +74,7 @@ def initialize_scrip_master(smart_api):
         print(f"⚠️ Error in scrip master: {e}")
 
 # ==========================================
-# LOT SIZE & EXPIRY UPDATE (gspread fix)
+# LOT SIZE & EXPIRY UPDATE
 # ==========================================
 def update_lot_and_expiry():
     global cached_options_df, earliest_expiry
@@ -81,7 +86,7 @@ def update_lot_and_expiry():
             if not match.empty:
                 lot_size = int(match['lotsize'].values[0])
 
-        # ✅ gspread update fix (values first, then range)
+        # ✅ gspread update fix
         data_sheet.update([[lot_size]], "A7")
         data_sheet.update([[str(earliest_expiry)]], "L9")
         print(f"✅ Updated Lot Size {lot_size}, Expiry {earliest_expiry}")
@@ -100,7 +105,6 @@ def fetch_and_update_option_chain(smart_api):
         if cached_options_df.empty or not nifty_spot_token:
             initialize_scrip_master(smart_api)
 
-        # Spot price fetch
         spot_price = 0.0
         if nifty_spot_token:
             spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
@@ -109,18 +113,16 @@ def fetch_and_update_option_chain(smart_api):
                 spot_price = float(item.get('ltp', item.get('close', 0)))
         print(f"🎯 Spot Price: {spot_price}")
 
-        # ATM strike calculation
         atm_strike = round(spot_price / 50) * 50
         print(f"🎯 ATM Strike: {atm_strike}")
 
-        # Update lot size + expiry
         update_lot_and_expiry()
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
 # ==========================================
-# MAIN LOOP (SmartAPI token fix)
+# MAIN LOOP
 # ==========================================
 def run_bot_loop():
     smart_api = SmartConnect(api_key=os.getenv("ANGEL_API_KEY"))
