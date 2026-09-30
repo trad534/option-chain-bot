@@ -190,9 +190,16 @@ def fetch_and_update_angel_option_chain(smart_api):
             return
 
         quotes_df = pd.DataFrame(quotes['data']['fetched'])
-        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], 
-                          quotes_df[['tradingSymbol', 'ltp']], 
-                          left_on='symbol', right_on='tradingSymbol', how='inner')
+        if 'symbolToken' in quotes_df.columns:
+            quotes_df['token'] = quotes_df['symbolToken'].astype(str)
+        
+        filtered_opts['token'] = filtered_opts['token'].astype(str)
+        quotes_df['token'] = quotes_df['token'].astype(str)
+
+        # Merge directly using TOKEN for 100% accurate LTP mapping
+        merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
+                          quotes_df[['token', 'ltp']], 
+                          on='token', how='inner')
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
