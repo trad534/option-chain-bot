@@ -166,7 +166,7 @@ def fetch_and_update_angel_option_chain(smart_api):
             print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
             return
             
-        spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
+        spot_price = float(spot_quote['data']['fetched'][0].get('ltp', spot_quote['data']['fetched'][0].get('LTP', 0)))
         print(f"🎯 Spot Price: {spot_price}")
 
         atm_strike = round(spot_price / 50) * 50
@@ -189,22 +189,16 @@ def fetch_and_update_angel_option_chain(smart_api):
             print(f"❌ Failed to fetch Market Quotes: {quotes}")
             return
 
-        quotes_df = pd.DataFrame(quotes['data']['fetched'])
-        print("🔍 Quotes columns found:", quotes_df.columns.tolist())
+        fetched_list = quotes['data']['fetched']
+        quotes_data = []
+        for item in fetched_list:
+            tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
+            val = float(item.get('ltp', item.get('LTP', item.get('netPrice', 0))))
+            quotes_data.append({'token': tok, 'ltp': val})
 
-        # Safe token column detection from Angel response
-        token_col = None
-        for col in ['symbolToken', 'symboltoken', 'token', 'exchangeToken']:
-            if col in quotes_df.columns:
-                token_col = col
-                break
-        
-        if token_col:
-            quotes_df['token'] = quotes_df[token_col].astype(str)
-        else:
-            quotes_df['token'] = quotes_df.iloc[:, 0].astype(str) # Fallback to first column
-
+        quotes_df = pd.DataFrame(quotes_data)
         filtered_opts['token'] = filtered_opts['token'].astype(str)
+        quotes_df['token'] = quotes_df['token'].astype(str)
 
         # Merge directly using TOKEN
         merged = pd.merge(filtered_opts[['token', 'symbol', 'strike', 'symbolname']], 
