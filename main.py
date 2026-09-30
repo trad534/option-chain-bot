@@ -112,46 +112,44 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER (SAFE JSON CHECK FIX)
+# SCRIP MASTER LOADER VIA SMARTAPI SEARCH
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = ""
 nifty_spot_token = "26000"
 
-def initialize_scrip_master():
+def initialize_scrip_master(smart_api):
     global cached_options_df, earliest_expiry
     try:
-        print("📥 Downloading Nifty Scrip Master...")
-        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
-        
-        raw_text = response.text.strip()
-        if raw_text.startswith('\ufeff'):
-            raw_text = raw_text[1:]
+        print("📥 Fetching Nifty Options via SmartAPI Search...")
+        res = smart_api.searchScrip("NFO", "NIFTY")
+        if res and res.get('status') and res.get('data'):
+            scrip_data = res['data']
+            df = pd.DataFrame(scrip_data)
             
-        if not raw_text.startswith('['):
-            print(f"⚠️ Unexpected response start: {raw_text[:100]}")
-            return
-            
-        scrip_data = json.loads(raw_text)
-        
-        df = pd.DataFrame(scrip_data)
-        if df.empty:
-            return
+            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
+            if not nifty_opts.empty:
+                if 'strike' in nifty_opts.columns:
+                    nifty_opts['strike'] = nifty_opts['strike'].astype(float)
+                    if nifty_opts['strike'].max() > 50000:
+                        nifty_opts['strike'] = nifty_opts['strike'] / 100
+                
+                if 'expiry' in nifty_opts.columns:
+                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+                    valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+                    
+                    if not valid_opts.empty:
+                        earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
+                        cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+                        
+                        if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
+                            cached_options_df['token'] = cached_options_df['symboltoken']
+                        if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
+                            cached_options_df['symbol'] = cached_options_df['tradingsymbol']
 
-        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'].str.upper() == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
-        if not nifty_opts.empty:
-            nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
-            nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
-            valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-            
-            if not valid_opts.empty:
-                earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
-                cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
-
-        print(f"✅ Scrip Master Loaded! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+            print(f"✅ Scrip Master Loaded via API! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️ Scrip Master Error: {e}")
+        print(f"⚠️ Scrip Master API Error: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -164,7 +162,7 @@ def fetch_and_update_option_chain(smart_api):
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
         if cached_options_df is None or cached_options_df.empty:
-            initialize_scrip_master()
+            initialize_scrip_master(smart_api)
 
         # 1. Fetch Spot Price
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
@@ -265,7 +263,7 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
-                initialize_scrip_master()
+                initialize_scrip_master(smart_api)
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
