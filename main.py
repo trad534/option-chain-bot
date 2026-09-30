@@ -45,6 +45,16 @@ GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
+# Master Accurate Lot Sizes Dictionary
+EXACT_LOT_SIZES = {
+    "NIFTY": 65,
+    "BANKNIFTY": 30,
+    "FINNIFTY": 25,
+    "MIDCPNIFTY": 50,
+    "SENSEX": 10,
+    "BANKEX": 15
+}
+
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
         return gspread.service_account(filename="/etc/secrets/Credentials.json")
@@ -119,22 +129,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# EXPIRY & TUESDAYS HELPER
-# ==========================================
-def get_upcoming_tuesdays(count=4):
-    tuesdays = []
-    today = datetime.now()
-    days_ahead = (1 - today.weekday() + 7) % 7
-    if days_ahead == 0 and today.hour >= 15:
-        days_ahead = 7
-    first_tuesday = today + timedelta(days=days_ahead)
-    
-    for i in range(count):
-        tues = first_tuesday + timedelta(weeks=i)
-        tuesdays.append([tues.strftime('%d%b%Y').upper()])
-    return tuesdays
-
-# ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
@@ -154,34 +148,24 @@ def fetch_and_update_option_chain(smart_api):
                 pass
         print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Fetch Scrip Master directly from Angel One API & Extract Lot Size dynamically
+        # 2. Set Exact Lot Size instantly based on J4 symbol
+        lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
+        try:
+            data_sheet.update(range_name="A7", values=[[lot_size]])
+            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
+        except Exception as e:
+            print(f"⚠️ Error updating A7 lot size: {e}")
+
+        # 3. Fetch Scrip Master from Angel API for Expiries & Option Contracts
         res = smart_api.searchScrip("NFO", selected_symbol)
         all_options_df = pd.DataFrame()
-        lot_size = 25 # Fallback default
+        available_expiries = []
 
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
             
             if not df.empty:
-                print(f"📋 API Scrip Columns: {df.columns.tolist()}")
-                
-                # Check all possible column names for lot size returned by Angel API
-                for col in df.columns:
-                    col_str = str(col).lower()
-                    if 'lot' in col_str or col_str == 'ls':
-                        valid_lots = df[col].dropna()
-                        if not valid_lots.empty:
-                            try:
-                                vals = valid_lots.astype(float)
-                                vals = vals[vals > 0]
-                                if not vals.empty:
-                                    lot_size = int(vals.iloc[0])
-                                    print(f"✅ Found Lot Size from API column '{col}': {lot_size}")
-                                    break
-                            except:
-                                pass
-
                 nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
                 if not nifty_opts.empty:
                     if 'strike' in nifty_opts.columns:
@@ -194,18 +178,31 @@ def fetch_and_update_option_chain(smart_api):
                         all_options_df['token'] = all_options_df['symboltoken']
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
+                    
+                    # Extract unique expiries directly from API data
+                    if 'expiry' in all_options_df.columns:
+                        raw_expiries = all_options_df['expiry'].dropna().unique()
+                        parsed_exps = []
+                        for exp in raw_expiries:
+                            try:
+                                dt = datetime.strptime(str(exp).strip().title(), "%d%b%Y")
+                                parsed_exps.append((dt, str(exp).strip().upper()))
+                            except:
+                                pass
+                        parsed_exps.sort(key=lambda x: x[0])
+                        available_expiries = [[item[1]] for item in parsed_exps[:4]]
 
-        # 3. Update Exact Lot Size in 'upstox get data' Cell A7
-        try:
-            data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7: {lot_size}")
-        except Exception as e:
-            print(f"⚠️ Error updating A7 lot size: {e}")
+        # Fallback expiries if API list is empty
+        if not available_expiries:
+            today = datetime.now()
+            for i in range(4):
+                d = today + timedelta(days=7*i)
+                available_expiries.append([d.strftime('%d%b%Y').upper()])
 
         # Update Expiries in A3:A6 of 'upstox get data'
-        expiry_rows = get_upcoming_tuesdays(4)
         try:
-            data_sheet.update(range_name="A3:A6", values=expiry_rows)
+            data_sheet.update(range_name="A3:A6", values=available_expiries)
+            print(f"✅ Expiries Updated in A3:A6 successfully!")
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
@@ -218,12 +215,11 @@ def fetch_and_update_option_chain(smart_api):
         except:
             pass
 
-        if selected_expiry == "N/A" or not selected_expiry:
+        valid_expiry_list = [item[0] for item in available_expiries]
+        if selected_expiry == "N/A" or not selected_expiry or selected_expiry not in valid_expiry_list:
             try:
-                a3_val = data_sheet.acell('A3').value
-                if a3_val:
-                    selected_expiry = str(a3_val).strip().upper()
-                    data_sheet.update(range_name="L9", values=[[selected_expiry]])
+                selected_expiry = available_expiries[0][0]
+                data_sheet.update(range_name="L9", values=[[selected_expiry]])
             except:
                 selected_expiry = datetime.now().strftime('%d%b%Y').upper()
 
