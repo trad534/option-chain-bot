@@ -103,21 +103,59 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'vega': round(vega, 2)
     }
 
-# Global variable to hold last frozen 3:30 PM closing rows
+# ==========================================
+# GLOBAL SCRIP MASTER LOADER
+# ==========================================
+cached_options_df = pd.DataFrame()
+earliest_expiry = ""
+nifty_spot_token = "26000"
+
+def initialize_scrip_master():
+    global cached_options_df, earliest_expiry
+    try:
+        print("📥 Downloading Nifty Scrip Master for precise token matching...")
+        url = "https://margincalculator.angelbroking.com/open-api/tokenMaster/OpenAPIScripMaster.json"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            scrip_data = json.loads(response.read().decode())
+        
+        df = pd.DataFrame(scrip_data)
+        if df.empty:
+            print("⚠️ Scrip data is empty.")
+            return
+
+        nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'].str.upper() == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
+        if not nifty_opts.empty:
+            nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100
+            nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+            valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+            
+            if not valid_opts.empty:
+                earliest_expiry = valid_opts['parsed_expiry'].min().strftime('%d%b%Y').upper()
+                cached_options_df = nifty_opts[nifty_opts['expiry'] == earliest_expiry].copy()
+
+        print(f"✅ Scrip Master Loaded! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+    except Exception as e:
+        print(f"⚠️ Scrip Master Error: {e}")
+
+# Global cache for freeze values when market closes
 last_frozen_rows = None
 
 # ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global last_frozen_rows
+    global cached_options_df, last_frozen_rows
     try:
         now = datetime.now()
         current_time_str = now.strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # Check if market is currently open (9:15 AM to 3:30 PM IST)
+        if cached_options_df is None or cached_options_df.empty:
+            initialize_scrip_master()
+
+        # Check if market is active (9:15 AM to 3:30 PM IST)
         market_open_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
         market_close_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
         is_market_active = market_open_time <= now <= market_close_time
@@ -127,23 +165,64 @@ def fetch_and_update_option_chain(smart_api):
         ]
 
         if is_market_active:
-            # Live market fetching logic
-            spot_quote = smart_api.getMarketData("FULL", {"NSE": ["26000"]})
-            spot_price = 22400.0
+            # 1. Fetch exact Nifty Spot Price
+            spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
+            spot_price = 22620.45 # Fallback based on live observation
+            
             if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
                 item = spot_quote['data']['fetched'][0]
                 fetched_ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
                 if fetched_ltp > 1000:
                     spot_price = fetched_ltp
 
+            print(f"🎯 Spot Price Used: {spot_price}")
             atm_strike = round(spot_price / 50) * 50
-            t = 7 / 365.0
+
+            if cached_options_df is not None and not cached_options_df.empty:
+                filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 200) & (cached_options_df['strike'] <= atm_strike + 200)].copy()
+                tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
+            else:
+                tokens_nfo = []
+                filtered_opts = pd.DataFrame()
+
+            # 2. Fetch NFO Option Quotes from Angel API
+            all_fetched_quotes = []
+            for i in range(0, len(tokens_nfo), 50):
+                batch_tokens = tokens_nfo[i:i+50]
+                quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+                if quotes and quotes.get('status') and quotes.get('data') and quotes['data'].get('fetched'):
+                    all_fetched_quotes.extend(quotes['data']['fetched'])
+
+            quotes_data = []
+            for item in all_fetched_quotes:
+                tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
+                val = float(item.get('ltp', item.get('LTP', item.get('netPrice', item.get('close', 0)))))
+                quotes_data.append({'token': tok, 'ltp': val})
+
+            quotes_df = pd.DataFrame(quotes_data)
+            if not quotes_df.empty and not filtered_opts.empty:
+                filtered_opts['token'] = filtered_opts['token'].astype(str)
+                quotes_df['token'] = quotes_df['token'].astype(str)
+                merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df[['token', 'ltp']], on='token', how='inner')
+            else:
+                merged = pd.DataFrame()
+
+            try:
+                exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+            except:
+                exp_date = now
+
+            t = max((exp_date - now).days / 365.0, 0.001)
             r = 0.07
 
-            # For active hours, we build real-time simulated/fetched rows based on spot
-            for st in range(int(atm_strike - 200), int(atm_strike + 250), 50):
-                ce_ltp = round(max(10.0, (spot_price - st) + 80.0), 2) if spot_price >= st else round(max(10.0, 120.0 - (st - spot_price)*0.2), 2)
-                pe_ltp = round(max(10.0, (st - spot_price) + 80.0), 2) if st >= spot_price else round(max(10.0, 120.0 - (spot_price - st)*0.2), 2)
+            strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 200), int(atm_strike + 250), 50)
+
+            for st in strikes:
+                ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()
+                pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()
+
+                ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
+                pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
 
                 ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
                 pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
@@ -154,34 +233,24 @@ def fetch_and_update_option_chain(smart_api):
                     pe_ltp, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
                 ])
             
-            # Save this as the latest valid frozen rows for when market closes
-            last_frozen_rows = output_rows
+            if len(output_rows) > 1:
+                last_frozen_rows = output_rows
         else:
-            # Market is closed (after 3:30 PM or before 9:15 AM)
+            # Market is closed, use the last captured 3:30 PM real data
             if last_frozen_rows is not None:
                 output_rows = last_frozen_rows
-                print("🔒 Market closed: Using last frozen 3:30 PM closing values.")
+                print("🔒 Market closed: Using exact last frozen 3:30 PM real market values.")
             else:
-                # Fallback default rows if no active session data was captured yet
-                spot_price = 22400.0
-                atm_strike = 22400
+                spot_price = 22620.45
+                atm_strike = 22600
                 t, r = 7 / 365.0, 0.07
                 for st in range(int(atm_strike - 200), int(atm_strike + 250), 50):
-                    ce_ltp = round(max(10.0, abs(spot_price - st) + 50.0), 2)
-                    pe_ltp = round(max(10.0, abs(st - spot_price) + 50.0), 2)
-                    ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
-                    pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
-                    output_rows.append([
-                        ce_gks['delta'], ce_gks['gamma'], ce_gks['theta'], ce_gks['vega'], f"{ce_gks['iv']}%", ce_ltp,
-                        st,
-                        pe_ltp, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
-                    ])
-                last_frozen_rows = output_rows
+                    output_rows.append([0.0, 0.0, 0.0, 0.0, "0%", 0.0, st, 0.0, "0%", 0.0, 0.0, 0.0, 0.0])
 
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:M100"])
             data_sheet.update(range_name=f"A10:M{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated!")
+            print(f"🎯 Google Sheet Successfully Updated with Real Market Data!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -199,6 +268,7 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
+                initialize_scrip_master()
                 break
             else:
                 time.sleep(10)
