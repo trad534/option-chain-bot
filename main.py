@@ -42,6 +42,7 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
+SELECTION_SHEET_NAME = "Option chain index new"
 DATA_SHEET_NAME = "upstox get data"
 
 EXACT_LOT_SIZES = {
@@ -67,6 +68,12 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
+    
+    try:
+        selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
+    except:
+        selection_sheet = None
+
     data_sheet = spreadsheet.worksheet(DATA_SHEET_NAME)
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
@@ -129,38 +136,24 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # 1. Read Selected Symbol from J4 (Checking multiple worksheets if needed)
+        # 1. Read Selected Symbol from J4
         selected_symbol = "NIFTY"
-        try:
-            target_ws = None
-            for ws in spreadsheet.worksheets():
-                if "index" in ws.title.lower() or "chain" in ws.title.lower():
-                    target_ws = ws
-                    break
-            if not target_ws:
-                target_ws = spreadsheet.worksheet("Option chain index new")
-            
-            j4_val = target_ws.acell('J4').value
-            if j4_val and str(j4_val).strip():
-                selected_symbol = str(j4_val).strip().upper()
-        except Exception as sel_err:
-            print(f"⚠️ Warning reading J4: {sel_err}")
+        if selection_sheet:
             try:
-                j4_fallback = data_sheet.acell('J4').value
-                if j4_fallback and str(j4_fallback).strip():
-                    selected_symbol = str(j4_fallback).strip().upper()
+                j4_val = selection_sheet.acell('J4').value
+                if j4_val and str(j4_val).strip():
+                    selected_symbol = str(j4_val).strip().upper()
             except:
                 pass
-
-        print(f"📌 Active Selected Symbol: {selected_symbol}")
+        print(f"📌 Selected Symbol from J4: {selected_symbol}")
 
         # 2. Update Exact Lot Size in A7
         lot_size = EXACT_LOT_SIZES.get(selected_symbol, 50)
         try:
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            print(f"✅ Lot Size Updated in A7: {lot_size}")
+            print(f"✅ Lot Size Updated in A7 for {selected_symbol}: {lot_size}")
         except Exception as e:
-            print(f"⚠️ Error updating A7: {e}")
+            print(f"⚠️ Error updating A7 lot size: {e}")
 
         # 3. Fetch Scrip Master from Angel API
         res = smart_api.searchScrip("NFO", selected_symbol)
@@ -185,69 +178,49 @@ def fetch_and_update_option_chain(smart_api):
                     if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
                         all_options_df['symbol'] = all_options_df['tradingsymbol']
                     
-                    # Clean and strictly sort upcoming expiries chronologically
                     if 'expiry' in all_options_df.columns:
                         raw_expiries = all_options_df['expiry'].dropna().unique()
                         parsed_exps = []
                         for exp in raw_expiries:
-                            cleaned_exp = str(exp).strip().upper()
                             try:
-                                dt = datetime.strptime(cleaned_exp, "%d%b%Y")
-                                # Accept current or future dates
-                                if dt.date() >= datetime.now().date() - timedelta(days=1):
-                                    parsed_exps.append((dt, cleaned_exp))
+                                dt = datetime.strptime(str(exp).strip().title(), "%d%b%Y")
+                                parsed_exps.append((dt, str(exp).strip().upper()))
                             except:
                                 pass
-                        
-                        # Sort strictly by date (oldest upcoming to farthest)
                         parsed_exps.sort(key=lambda x: x[0])
-                        
-                        seen = set()
-                        for dt, exp_str in parsed_exps:
-                            if exp_str not in seen:
-                                seen.add(exp_str)
-                                available_expiries.append([exp_str])
-                            if len(available_expiries) >= 4:
-                                break
+                        available_expiries = [[item[1]] for item in parsed_exps[:4]]
 
-        # Fallback if API expiries aren't captured properly
         if not available_expiries:
-            available_expiries = [["06OCT2026"], ["13OCT2026"], ["20OCT2026"], ["27OCT2026"]]
+            today = datetime.now()
+            for i in range(4):
+                d = today + timedelta(days=7*i)
+                available_expiries.append([d.strftime('%d%b%Y').upper()])
 
-        # Update Expiries in A3:A6 precisely
         try:
             data_sheet.update(range_name="A3:A6", values=available_expiries)
-            print(f"✅ Expiries Updated in A3:A6: {available_expiries}")
         except Exception as e:
             print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
-        # Check and set selected expiry in L9
-        flat_expiries = [item[0] for item in available_expiries]
         selected_expiry = "N/A"
         try:
             l9_val = data_sheet.acell('L9').value
-            if l9_val and str(l9_val).strip().upper() in flat_expiries:
+            if l9_val and l9_val != "N/A":
                 selected_expiry = str(l9_val).strip().upper()
         except:
             pass
 
-        if selected_expiry == "N/A" or selected_expiry not in flat_expiries:
-            selected_expiry = flat_expiries[0]
+        valid_expiry_list = [item[0] for item in available_expiries]
+        if selected_expiry == "N/A" or not selected_expiry or selected_expiry not in valid_expiry_list:
             try:
+                selected_expiry = available_expiries[0][0]
                 data_sheet.update(range_name="L9", values=[[selected_expiry]])
             except:
-                pass
+                selected_expiry = datetime.now().strftime('%d%b%Y').upper()
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
 
         # 4. Fetch Spot Price
-        spot_token_map = {
-            "NIFTY": "26000", 
-            "BANKNIFTY": "26001", 
-            "FINNIFTY": "26037",
-            "MIDCPNIFTY": "26074",
-            "SENSEX": "1"
-        }
+        spot_token_map = {"NIFTY": "26000", "BANKNIFTY": "26001", "FINNIFTY": "26037"}
         spot_token = spot_token_map.get(selected_symbol, "26000")
         
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [spot_token]})
@@ -323,6 +296,7 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
+        # Correct absolute strike prices generation
         strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + i) for i in range(-950, 1000, 50)]
         
         output_rows = [
