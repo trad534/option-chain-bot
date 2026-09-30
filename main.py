@@ -7,7 +7,7 @@ import numpy as np
 import pyotp
 import gspread
 from scipy.stats import norm
-from datetime import datetime
+from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 from flask import Flask
 import threading
@@ -83,7 +83,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if abs(price - ltp) < 0.1:
             sigma = mid_sigma
             break
-        if price > ltp:
+        if price > t:
             high_sigma = mid_sigma
         else:
             low_sigma = mid_sigma
@@ -118,6 +118,15 @@ cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
 nifty_spot_token = "26000"
 
+def get_upcoming_tuesday():
+    today = datetime.now()
+    # 1 is Tuesday (Monday=0, Tuesday=1)
+    days_ahead = (1 - today.weekday() + 7) % 7
+    if days_ahead == 0 and today.hour >= 15: # If today is Tuesday after market hours, take next week
+        days_ahead = 7
+    tuesday = today + timedelta(days=days_ahead)
+    return tuesday.strftime('%d%b%Y').upper()
+
 def initialize_scrip_master(smart_api):
     global cached_options_df, earliest_expiry
     try:
@@ -126,11 +135,8 @@ def initialize_scrip_master(smart_api):
         if res and res.get('status') and res.get('data'):
             scrip_data = res['data']
             df = pd.DataFrame(scrip_data)
-            print(f"📊 Total Scrips fetched: {len(df)}")
             
             nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
-            print(f"📊 Filtered OPTIDX count: {len(nifty_opts)}")
-            
             if not nifty_opts.empty:
                 if 'strike' in nifty_opts.columns:
                     nifty_opts['strike'] = nifty_opts['strike'].astype(float)
@@ -138,28 +144,31 @@ def initialize_scrip_master(smart_api):
                         nifty_opts['strike'] = nifty_opts['strike'] / 100
                 
                 if 'expiry' in nifty_opts.columns:
-                    print(f"📅 Sample Expiry values from API: {nifty_opts['expiry'].dropna().unique()[:5]}")
-                    # Try parsing with format first, if fails let pandas infer
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
-                    if nifty_opts['parsed_expiry'].isna().all():
-                        nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
-                        
+                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
                     valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-                    print(f"📅 Valid parsed expiry count: {len(valid_opts)}")
                     
                     if not valid_opts.empty:
                         min_exp_dt = valid_opts['parsed_expiry'].min()
                         earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
                         cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
                         
-                        if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
-                            cached_options_df['token'] = cached_options_df['symboltoken']
-                        if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
-                            cached_options_df['symbol'] = cached_options_df['tradingsymbol']
+                if cached_options_df.empty and not nifty_opts.empty:
+                    cached_options_df = nifty_opts.copy()
 
-            print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+                if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
+                    cached_options_df['token'] = cached_options_df['symboltoken']
+                if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
+                    cached_options_df['symbol'] = cached_options_df['tradingsymbol']
+
+        # Fallback to upcoming Tuesday if expiry is blank
+        if earliest_expiry == "N/A" or not earliest_expiry:
+            earliest_expiry = get_upcoming_tuesday()
+
+        print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
         print(f"⚠️ Scrip Master API Error: {e}")
+        if earliest_expiry == "N/A":
+            earliest_expiry = get_upcoming_tuesday()
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -191,7 +200,7 @@ def fetch_and_update_option_chain(smart_api):
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(earliest_expiry)]])
         except Exception as sheet_err:
-            print(f"⚠️ Error updating K9/L9: {sheet_err}")
+            print(f"⚠️️ Error updating K9/L9: {sheet_err}")
 
         atm_strike = round(spot_price / 50) * 50
 
@@ -278,7 +287,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with Expiry in L9!")
+            print(f"🎯 Google Sheet Successfully Updated!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
