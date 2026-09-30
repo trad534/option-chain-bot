@@ -65,11 +65,52 @@ except Exception as e:
     exit()
 
 # ==========================================
-# LOT SIZE & EXPIRY AUTO UPDATE
+# GLOBAL VARIABLES
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
+nifty_spot_token = None
 
+# ==========================================
+# SCRIP MASTER LOADER VIA SMARTAPI SEARCH
+# ==========================================
+def initialize_scrip_master(smart_api):
+    global cached_options_df, earliest_expiry, nifty_spot_token
+    try:
+        print("📥 Fetching Nifty Options via SmartAPI Search...")
+        res = smart_api.searchScrip("NFO", "NIFTY")
+        if res and res.get('status') and res.get('data'):
+            scrip_data = res['data']
+            df = pd.DataFrame(scrip_data)
+
+            # Keep lotsize column
+            if 'lotsize' in df.columns:
+                df['lotsize'] = df['lotsize'].astype(int)
+
+            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
+            if not nifty_opts.empty:
+                nifty_opts['strike'] = nifty_opts['strike'].astype(float)
+
+                # Expiry handling
+                nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
+                valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
+                if not valid_opts.empty:
+                    min_exp_dt = valid_opts['parsed_expiry'].min()
+                    earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
+                    cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
+
+                # Spot token fetch
+                spot_row = df[df['tradingsymbol'].str.upper() == "NIFTY"]
+                if not spot_row.empty:
+                    nifty_spot_token = str(spot_row['symboltoken'].iloc[0])
+
+        print(f"✅ Scrip Master Loaded! Expiry: {earliest_expiry}, Spot Token: {nifty_spot_token}")
+    except Exception as e:
+        print(f"⚠️ Scrip Master API Error: {e}")
+
+# ==========================================
+# LOT SIZE & EXPIRY AUTO UPDATE
+# ==========================================
 def update_lot_and_expiry():
     global cached_options_df, earliest_expiry
     try:
@@ -93,15 +134,29 @@ def update_lot_and_expiry():
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry
+    global cached_options_df, earliest_expiry, nifty_spot_token
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
-        
-        # ✅ Corrected f-string (no syntax error now)
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # यहां बाकी आपका option chain fetch/update logic रहेगा...
+        if cached_options_df.empty or not nifty_spot_token:
+            initialize_scrip_master(smart_api)
+
+        # Spot price fetch
+        spot_price = 0.0
+        if nifty_spot_token:
+            spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
+            if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
+                item = spot_quote['data']['fetched'][0]
+                spot_price = float(item.get('ltp', item.get('close', 0)))
+        print(f"🎯 Spot Price: {spot_price}")
+
+        # ATM strike calculation
+        atm_strike = round(spot_price / 50) * 50
+        print(f"🎯 ATM Strike: {atm_strike}")
+
+        # Update lot size + expiry
         update_lot_and_expiry()
 
     except Exception as ex:
@@ -112,13 +167,12 @@ def fetch_and_update_option_chain(smart_api):
 # ==========================================
 def run_bot_loop():
     print("🚀 Starting Bot Loop Thread...")
-    
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
         print(f"❌ SmartConnect Init Error: {e}")
         return
-        
+
     while True:
         try:
             print("🔄 Attempting to generate session...")
@@ -126,6 +180,7 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
+                initialize_scrip_master(smart_api)
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
@@ -145,5 +200,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-
     run_bot_loop()
