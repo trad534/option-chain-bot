@@ -86,7 +86,6 @@ def update_lot_and_expiry():
             if not match.empty:
                 lot_size = int(match['lotsize'].values[0])
 
-        # ✅ gspread update fix
         data_sheet.update([[lot_size]], "A7")
         data_sheet.update([[str(earliest_expiry)]], "L9")
         print(f"✅ Updated Lot Size {lot_size}, Expiry {earliest_expiry}")
@@ -133,8 +132,7 @@ def run_bot_loop():
             session = smart_api.generateSession(os.getenv("ANGEL_CLIENT_ID"), os.getenv("ANGEL_PIN"), totp)
             if session and session.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
-                # ✅ Token set fix
-                smart_api.setToken(session['data']['jwtToken'])
+                # ❌ setToken हटाया गया
                 initialize_scrip_master(smart_api)
                 break
             else:
