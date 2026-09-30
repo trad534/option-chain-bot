@@ -108,7 +108,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 # GLOBAL CACHE FOR SCRIP MASTER
 # ==========================================
-cached_nifty_spot_token = None
+cached_nifty_spot_token = "99926000"  # Default fallback
 cached_options_df = None
 earliest_expiry = None
 
@@ -121,13 +121,12 @@ def initialize_scrip_master():
         scrip_data = json.loads(response.read().decode())
         df = pd.DataFrame(scrip_data)
 
-        # Robust Nifty Spot token extraction
-        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['symbol'] == 'NIFTY') & (df['instrumenttype'] == '')]
-        if nifty_spot_row.empty:
-            nifty_spot_row = df[(df['exch_seg'] == 'NSE') & (df['name'] == 'NIFTY')]
+        # Nifty Spot token extraction with fallback
+        nifty_spot_row = df[(df['exch_seg'] == 'NSE') & ((df['symbol'] == 'NIFTY') | (df['name'] == 'NIFTY'))]
+        if not nifty_spot_row.empty:
+            cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
         
-        cached_nifty_spot_token = str(nifty_spot_row.iloc[0]['token'])
-        print(f"✅ Nifty Spot Token Found: {cached_nifty_spot_token}")
+        print(f"✅ Nifty Spot Token Set: {cached_nifty_spot_token}")
 
         # Robust Nifty Options extraction
         nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
@@ -138,6 +137,7 @@ def initialize_scrip_master():
         print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
         print(f"❌ Error loading Scrip Master: {e}")
+        cached_nifty_spot_token = "99926000"
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -157,7 +157,7 @@ def fetch_and_update_angel_option_chain(smart_api):
             return
 
         # Fetch Spot Price using cached token
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [cached_nifty_spot_token]})
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": [str(cached_nifty_spot_token)]})
         if not spot_quote or not spot_quote.get('status') or not spot_quote['data']['fetched']:
             print(f"❌ Failed to fetch Spot Quote: {spot_quote}")
             return
