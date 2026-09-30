@@ -82,7 +82,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         else:
             low_sigma = mid_sigma
     else:
-            sigma = mid_sigma
+        sigma = mid_sigma
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
@@ -138,7 +138,7 @@ def initialize_scrip_master():
         cached_nifty_spot_token = "99926000"
 
 # ==========================================
-# FETCH & UPDATE LOOP (SINGLE OPTIMIZED CALL)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_angel_option_chain(smart_api):
     global cached_options_df, cached_nifty_spot_token, earliest_expiry
@@ -162,7 +162,6 @@ def fetch_and_update_angel_option_chain(smart_api):
             
         spot_price = float(spot_quote['data']['fetched'][0]['ltp'])
 
-        # Range ko 250 points rakha hai taaki kam tokens jaye aur timeout na ho
         atm_strike = round(spot_price / 50) * 50
         filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 250) & (cached_options_df['strike'] <= atm_strike + 250)].copy()
 
@@ -171,7 +170,6 @@ def fetch_and_update_angel_option_chain(smart_api):
             print("❌ No NFO tokens found for current strike range!")
             return
 
-        # Single combined request for all NFO tokens
         quotes = smart_api.getMarketData("FULL", {"NFO": tokens_nfo})
         
         if not quotes or not quotes.get('status') or not quotes['data']['fetched']:
@@ -183,7 +181,8 @@ def fetch_and_update_angel_option_chain(smart_api):
                           quotes_df[['tradingSymbol', 'ltp']], 
                           left_on='symbol', right_on='tradingSymbol', how='inner')
 
-        exp_date = datetime.strptime(earliest_expiry, "%d%b%Y")
+        # Fixed expiry date parsing (.title() handles uppercase month strings like 'OCT')
+        exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
@@ -238,7 +237,7 @@ def run_bot_loop():
             print(f"❌ Login Error: {e}, retrying in 10s...")
             time.sleep(10)
 
-    # Continuous Loop with 15s delay to prevent rate limits
+    # Continuous Loop
     while True:
         try:
             fetch_and_update_angel_option_chain(smart_api)
