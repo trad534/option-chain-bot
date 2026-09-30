@@ -34,7 +34,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
-# CONFIGURATION & GOOGLE SHEET
+# CONFIGURATION & GOOGLE SHEETS
 # ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -42,7 +42,8 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
+SELECTION_SHEET_NAME = "Option chain index new"
+DATA_SHEET_NAME = "upstox get data"
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -58,8 +59,9 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheet Connected Successfully!")
+    selection_sheet = spreadsheet.worksheet(SELECTION_SHEET_NAME)
+    data_sheet = spreadsheet.worksheet(DATA_SHEET_NAME)
+    print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
@@ -112,11 +114,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER & EXPIRIES MANAGER
+# EXPIRY & TUESDAYS HELPER
 # ==========================================
-all_nifty_options_df = pd.DataFrame()
-nifty_spot_token = "26000"
-
 def get_upcoming_tuesdays(count=4):
     tuesdays = []
     today = datetime.now()
@@ -130,54 +129,66 @@ def get_upcoming_tuesdays(count=4):
         tuesdays.append([tues.strftime('%d%b%Y').upper()])
     return tuesdays
 
-def initialize_scrip_master(smart_api):
-    global all_nifty_options_df
-    try:
-        print("📥 Fetching Nifty Options via SmartAPI Search...")
-        res = smart_api.searchScrip("NFO", "NIFTY")
-        if res and res.get('status') and res.get('data'):
-            scrip_data = res['data']
-            df = pd.DataFrame(scrip_data)
-            
-            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
-            if not nifty_opts.empty:
-                if 'strike' in nifty_opts.columns:
-                    nifty_opts['strike'] = nifty_opts['strike'].astype(float)
-                    if nifty_opts['strike'].max() > 50000:
-                        nifty_opts['strike'] = nifty_opts['strike'] / 100
-                
-                all_nifty_options_df = nifty_opts.copy()
-                if 'symboltoken' in all_nifty_options_df.columns and 'token' not in all_nifty_options_df.columns:
-                    all_nifty_options_df['token'] = all_nifty_options_df['symboltoken']
-                if 'tradingsymbol' in all_nifty_options_df.columns and 'symbol' not in all_nifty_options_df.columns:
-                    all_nifty_options_df['symbol'] = all_nifty_options_df['tradingsymbol']
-
-        # Push 4 upcoming Tuesdays directly to A3:A6
-        expiry_rows = get_upcoming_tuesdays(4)
-        try:
-            data_sheet.update(range_name="A3:A6", values=expiry_rows)
-            print(f"✅ Updated Expiries in A3:A6 -> {expiry_rows}")
-        except Exception as e:
-            print(f"⚠️ Error updating expiry cells A3:A6: {e}")
-
-        print(f"✅ Scrip Master Loaded! Total Options: {len(all_nifty_options_df)}")
-    except Exception as e:
-        print(f"⚠️ Scrip Master API Error: {e}")
-        expiry_rows = get_upcoming_tuesdays(4)
-        data_sheet.update(range_name="A3:A6", values=expiry_rows)
-
 # ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global all_nifty_options_df
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        if all_nifty_options_df is None or all_nifty_options_df.empty:
-            initialize_scrip_master(smart_api)
+        # 1. Read Selected Symbol from 'Option chain index new' cell J4
+        selected_symbol = "NIFTY"
+        try:
+            j4_val = selection_sheet.acell('J4').value
+            if j4_val and j4_val.strip():
+                selected_symbol = j4_val.strip().upper()
+        except:
+            pass
+        print(f"📌 Selected Symbol from J4: {selected_symbol}")
+
+        # 2. Fetch Scrip Master for Selected Symbol to get Lot Size & Options
+        res = smart_api.searchScrip("NFO", selected_symbol)
+        all_options_df = pd.DataFrame()
+        lot_size = 25 # Default fallback lot size
+
+        if res and res.get('status') and res.get('data'):
+            scrip_data = res['data']
+            df = pd.DataFrame(scrip_data)
+            
+            if not df.empty:
+                if 'lotsize' in df.columns:
+                    valid_lots = df['lotsize'].dropna()
+                    if not valid_lots.empty:
+                        lot_size = int(valid_lots.iloc[0])
+
+                nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy() if 'instrumenttype' in df.columns else df.copy()
+                if not nifty_opts.empty:
+                    if 'strike' in nifty_opts.columns:
+                        nifty_opts['strike'] = nifty_opts['strike'].astype(float)
+                        if nifty_opts['strike'].max() > 50000:
+                            nifty_opts['strike'] = nifty_opts['strike'] / 100
+                    
+                    all_options_df = nifty_opts.copy()
+                    if 'symboltoken' in all_options_df.columns and 'token' not in all_options_df.columns:
+                        all_options_df['token'] = all_options_df['symboltoken']
+                    if 'tradingsymbol' in all_options_df.columns and 'symbol' not in all_options_df.columns:
+                        all_options_df['symbol'] = all_options_df['tradingsymbol']
+
+        # 3. Update Lot Size in 'upstox get data' Cell A7
+        try:
+            data_sheet.update(range_name="A7", values=[[lot_size]])
+            print(f"✅ Lot Size Updated in A7: {lot_size}")
+        except Exception as e:
+            print(f"⚠️ Error updating A7 lot size: {e}")
+
+        # Update Expiries in A3:A6 of 'upstox get data'
+        expiry_rows = get_upcoming_tuesdays(4)
+        try:
+            data_sheet.update(range_name="A3:A6", values=expiry_rows)
+        except Exception as e:
+            print(f"⚠️ Error updating expiry cells A3:A6: {e}")
 
         # Read selected expiry from cell L9 (default to A3 if blank)
         selected_expiry = "N/A"
@@ -199,8 +210,11 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📅 Active Selected Expiry: {selected_expiry}")
 
-        # 1. Fetch Spot Price
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
+        # 4. Fetch Spot Price
+        spot_token_map = {"NIFTY": "26000", "BANKNIFTY": "26001", "FINNIFTY": "26037"}
+        spot_token = spot_token_map.get(selected_symbol, "26000")
+        
+        spot_quote = smart_api.getMarketData("FULL", {"NSE": [spot_token]})
         spot_price = 0.0
         
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
@@ -209,7 +223,7 @@ def fetch_and_update_option_chain(smart_api):
             if spot_price <= 0:
                 spot_price = float(item.get('close', 22620.45))
 
-        print(f"🎯 Spot Price: {spot_price}")
+        print(f"🎯 Spot Price for {selected_symbol}: {spot_price}")
 
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
@@ -219,13 +233,13 @@ def fetch_and_update_option_chain(smart_api):
         atm_strike = round(spot_price / 50) * 50
 
         # Filter options
-        if all_nifty_options_df is not None and not all_nifty_options_df.empty:
-            if 'expiry' in all_nifty_options_df.columns:
-                expiry_filtered = all_nifty_options_df[all_nifty_options_df['expiry'].str.upper() == selected_expiry].copy()
+        if all_options_df is not None and not all_options_df.empty:
+            if 'expiry' in all_options_df.columns:
+                expiry_filtered = all_options_df[all_options_df['expiry'].str.upper() == selected_expiry].copy()
                 if expiry_filtered.empty:
-                    expiry_filtered = all_nifty_options_df.copy()
+                    expiry_filtered = all_options_df.copy()
             else:
-                expiry_filtered = all_nifty_options_df.copy()
+                expiry_filtered = all_options_df.copy()
 
             filtered_opts = expiry_filtered[(expiry_filtered['strike'] >= atm_strike - 950) & (expiry_filtered['strike'] <= atm_strike + 950)].copy()
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()] if not filtered_opts.empty else []
@@ -233,7 +247,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API
+        # 5. Fetch NFO Option Quotes from Angel API
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
@@ -309,7 +323,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated for Expiry: {selected_expiry}!")
+            print(f"🎯 Google Sheet Successfully Updated for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -333,7 +347,6 @@ def run_bot_loop():
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
-                initialize_scrip_master(smart_api)
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
