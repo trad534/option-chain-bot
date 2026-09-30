@@ -115,7 +115,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # SCRIP MASTER LOADER VIA SMARTAPI SEARCH
 # ==========================================
 cached_options_df = pd.DataFrame()
-earliest_expiry = ""
+earliest_expiry = "N/A"
 nifty_spot_token = "26000"
 
 def initialize_scrip_master(smart_api):
@@ -149,13 +149,13 @@ def initialize_scrip_master(smart_api):
 
             print(f"✅ Scrip Master Loaded via API! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️️ Scrip Master API Error: {e}")
+        print(f"⚠️ Scrip Master API Error: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df
+    global cached_options_df, earliest_expiry
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
@@ -176,17 +176,16 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Spot Price: {spot_price}")
 
-        # Update Spot Price in K9 and Expiry in L9
+        # Update Spot Price in K9 and Expiry in L9 safely
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
-            data_sheet.update(range_name="L9", values=[[earliest_expiry]])
+            data_sheet.update(range_name="L9", values=[[str(earliest_expiry)]])
         except Exception as sheet_err:
             print(f"⚠️ Error updating K9/L9: {sheet_err}")
 
         atm_strike = round(spot_price / 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
-            # 39 Strikes total range (ATM ke upar aur neeche 19 strikes = 19 * 50 = 950 points range on each side)
             filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 950) & (cached_options_df['strike'] <= atm_strike + 950)].copy()
             tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
         else:
@@ -235,7 +234,6 @@ def fetch_and_update_option_chain(smart_api):
 
         strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
         
-        # Exact Header Sequence matching user request
         output_rows = [
             [
                 "CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP",
@@ -261,7 +259,6 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
-            # CE Side, Strike Price, PE Side exact ordering
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", 0, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
@@ -271,7 +268,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated with 39 Strike Prices & Exact Layout!")
+            print(f"🎯 Google Sheet Successfully Updated with Expiry in L9!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
