@@ -208,7 +208,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes using standard exchange payload dictionary
+        # 2. Fetch NFO Option Quotes via ltpData method (Reliable for NFO)
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -216,13 +216,19 @@ def fetch_and_update_option_chain(smart_api):
                 continue
             
             try:
-                # Correct payload format for SmartAPI getMarketData FULL
-                res = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                if res and res.get('status') and res.get('data'):
-                    if 'fetched' in res['data']:
-                        all_fetched_quotes.extend(res['data']['fetched'])
+                for tok in batch_tokens:
+                    res = smart_api.ltpData("NFO", cached_options_df[cached_options_df['token'].astype(str) == tok]['symbol'].values[0] if not cached_options_df.empty else "", tok)
+                    if res and res.get('status') and res.get('data'):
+                        d = res['data']
+                        all_fetched_quotes.append({
+                            'symbolToken': tok,
+                            'ltp': d.get('ltp', 0),
+                            'tradeVolume': 0,
+                            'opnInterest': 0,
+                            'netChange': 0
+                        })
             except Exception as batch_err:
-                print(f"⚠ Batch fetch error: {batch_err}")
+                print(f"⚠ LTP batch error: {batch_err}")
 
         print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
 
@@ -262,7 +268,7 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_stream if 'atm_stream' in locals() else atm_strike - 950), int(atm_strike + 1000), 50)
         
         output_rows = [
             [
