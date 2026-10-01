@@ -201,10 +201,11 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating K9/L9: {sheet_err}")
 
-        atm_strike = round(spot_price / 50) * 50
+        # Use floor to ensure the strike just below the spot price aligns perfectly with Row 30
+        base_strike = int(spot_price // 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 950) & (cached_options_df['strike'] <= atm_strike + 950)].copy()
+            filtered_opts = cached_options_df[(cached_options_df['strike'] >= base_strike - 950) & (cached_options_df['strike'] <= base_strike + 950)].copy()
             tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
         else:
             tokens_nfo = []
@@ -262,7 +263,7 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(base_strike - 950), int(base_strike + 1000), 50)
         
         output_rows = [
             [
@@ -294,7 +295,7 @@ def fetch_and_update_option_chain(smart_api):
             ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
             pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
 
-            # Continuous Strike rows (No blank row added)
+            # Continuous Strike rows, perfectly aligned with Row 30 & 31 red line divider
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
@@ -304,7 +305,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Continuous Rows, No Blanks)! pharmacokinetic")
+            print(f"🎯 Option Chain Updated Successfully (Aligned to Row 30/31 Divider)! pharmacokinetic")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
