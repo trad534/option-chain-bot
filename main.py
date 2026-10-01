@@ -65,10 +65,11 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS CALCULATOR (BLACK-SCHOLES)
+# SAFE IV & GREEKS CALCULATOR
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0:
+    # Agar LTP 0.50 se kam hai toh calculation skip karke zero return karo (Deep OTM handling)
+    if t <= 0 or S <= 0 or K <= 0 or ltp < 0.50:
         return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
     low_sigma, high_sigma = 0.01, 3.0
@@ -232,7 +233,6 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
-            # OI Change Calculation
             prev_oi = previous_oi_dict.get(tok, oi)
             oi_chg = oi - prev_oi
             previous_oi_dict[tok] = oi
@@ -292,16 +292,19 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
+            ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
+            pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
+
             output_rows.append([
-                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
-                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
+                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_str, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain with Direct Data & Accurate Greeks Updated Successfully!")
+            print(f"🎯 Option Chain Data Cleaned & Updated Successfully!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
