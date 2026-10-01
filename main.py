@@ -65,11 +65,10 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (WITH CLEAN LOGIC)
+# ACCURATE IV & GREEKS (WITHOUT INTRINSIC CHECK)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    intrinsic = max(0, S - K) if flag == 'CE' else max(0, K - S)
-    if t <= 0 or S <= 0 or K <= 0 or ltp <= intrinsic or ltp < 0.05:
+    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         if flag == 'CE':
             delta = 1.0 if S > K else 0.0
         else:
@@ -319,7 +318,6 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
-            # Updated to show '-' if IV is invalid or too low
             ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 1.0 else "-"
             pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 1.0 else "-"
 
@@ -332,7 +330,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully with '-' format!")
+            print(f"🎯 Option Chain Updated Successfully (All Strikes IV Active)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
