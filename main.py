@@ -35,7 +35,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
-# CONFIGURATION & GOOGLE SHEET
+# CONFIGURATION & GOOGLE SHEETS
 # ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -44,6 +44,7 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
+INDEX_SHEET_NAME = "Option chain index new"  # J4 symbol selection ke liye
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -60,7 +61,8 @@ try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheet Connected Successfully!")
+    index_sheet = spreadsheet.worksheet(INDEX_SHEET_NAME)
+    print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
@@ -76,7 +78,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
             delta = -1.0 if S < K else 0.0
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
-    # Handle LTP less than intrinsic value
     if flag == 'CE':
         intrinsic = max(0, S - K * np.exp(-r * t))
     else:
@@ -101,7 +102,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     except Exception:
         sigma = 0.20
 
-    # Calculate final Greeks using solved sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
@@ -126,69 +126,38 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ==========================================
 # SCRIP MASTER LOADER VIA OFFICIAL JSON
 # ==========================================
-cached_options_df = pd.DataFrame()
-earliest_expiry = "N/A"
-nifty_spot_token = "26000"
-
+full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
 
-def get_upcoming_tuesday():
-    today = datetime.now()
-    days_ahead = (1 - today.weekday() + 7) % 7
-    if days_ahead == 0 and today.hour >= 15:
-        days_ahead = 7
-    tuesday = today + timedelta(days=days_ahead)
-    return tuesday.strftime('%d%b%Y').upper()
-
 def initialize_scrip_master(smart_api):
-    global cached_options_df, earliest_expiry
+    global full_scrip_df
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=15)
+        resp = requests.get(url, timeout=20)
         if resp.status_code == 200:
             scrip_data = resp.json()
-            df = pd.DataFrame(scrip_data)
+            full_scrip_df = pd.DataFrame(scrip_data)
             
-            nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
-            if not nifty_opts.empty:
-                if 'strike' in nifty_opts.columns:
-                    nifty_opts['strike'] = nifty_opts['strike'].astype(float)
-                    if nifty_opts['strike'].max() > 50000:
-                        nifty_opts['strike'] = nifty_opts['strike'] / 100
+            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns:
+                full_scrip_df['token'] = full_scrip_df['symboltoken']
+            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns:
+                full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+            if 'strike' in full_scrip_df.columns:
+                full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
+                # Kuch segments me strike price 100 se multiplied hoti hai, use adjust karein agar zaroori ho
+                # full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
                 
-                if 'expiry' in nifty_opts.columns:
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
-                    valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-                    
-                    if not valid_opts.empty:
-                        min_exp_dt = valid_opts['parsed_expiry'].min()
-                        earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
-                        cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
-                        
-                if cached_options_df.empty and not nifty_opts.empty:
-                    cached_options_df = nifty_opts.copy()
-
-                if 'symboltoken' in cached_options_df.columns and 'token' not in cached_options_df.columns:
-                    cached_options_df['token'] = cached_options_df['symboltoken']
-                if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
-                    cached_options_df['symbol'] = cached_options_df['tradingsymbol']
-
-        if earliest_expiry == "N/A" or not earliest_expiry:
-            earliest_expiry = get_upcoming_tuesday()
-
-        print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+            print(f"✅ Scrip Master Loaded Successfully! Total Records: {len(full_scrip_df)}")
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
-        if earliest_expiry == "N/A":
-            earliest_expiry = get_upcoming_tuesday()
 
 # ==========================================
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry, morning_oi_dict, baseline_date
+    global full_scrip_df, morning_oi_dict, baseline_date
     try:
         now_dt = datetime.now()
         current_time_str = now_dt.strftime('%H:%M:%S')
@@ -201,36 +170,133 @@ def fetch_and_update_option_chain(smart_api):
             morning_oi_dict = {}
             baseline_date = current_date_str
 
-        if cached_options_df is None or cached_options_df.empty:
+        if full_scrip_df is None or full_scrip_df.empty:
             initialize_scrip_master(smart_api)
+            if full_scrip_df.empty:
+                print("⚠ Scrip master empty, retrying next loop...")
+                return
 
-        # 1. Fetch Spot Price
-        spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
-        spot_price = 0.0
+        # 1. Read Selected Symbol from J4 in 'Option chain index new'
+        selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
+        if not selected_symbol or selected_symbol == "NONE":
+            print("⚠ No valid symbol found in J4. Waiting...")
+            return
+
+        print(f"🎯 Selected Symbol from J4: {selected_symbol}")
+
+        # 2. Filter Symbol data from Master (Index/Stock/MCX options)
+        # Name match ya symbol match karenge
+        sym_options = full_scrip_df[
+            (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO'])) & 
+            ((full_scrip_df['name'] == selected_symbol) | (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False))) &
+            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
+        ].copy()
+
+        if sym_options.empty:
+            print(f"⚠ No options found in master for symbol: {selected_symbol}")
+            return
+
+        # Parse expiry dates
+        sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
+        sym_options = sym_options.dropna(subset=['parsed_expiry'])
+
+        if sym_options.empty:
+            print(f"⚠ No valid expiry dates found for {selected_symbol}")
+            return
+
+        # Sort unique expiries chronologically
+        unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
+        expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
+
+        # Get top 4 expiries for A3 to A6
+        active_expiries = expiry_strings_sorted[:4]
+        while len(active_expiries) < 4:
+            active_expiries.append(active_expiries[-1] if active_expiries else "N/A")
+
+        current_expiry = active_expiries[0]
+
+        # Filter options for the Current (Nearest) Expiry
+        current_expiry_dt = unique_expiries_dt[0]
+        current_expiry_options = sym_options[sym_options['parsed_expiry'] == current_expiry_dt].copy()
+
+        # 3. Get Lot Size (A7)
+        lot_size = 1
+        if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty:
+            try:
+                lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
+            except:
+                lot_size = 1
+
+        # 4. Find Spot / Underlying Token & Price
+        spot_token = ""
+        spot_exchange = "NSE"
+        # Spot token dhundne ke liye index/equity segment check karein
+        spot_match = full_scrip_df[
+            (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) & 
+            (full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ')
+        ]
         
+        # Fallback agar specific spot na mile toh Nifty default ya symbol base token lenge
+        if not spot_match.empty:
+            spot_token = str(spot_match['token'].iloc[0])
+            spot_exchange = str(spot_match['exch_seg'].iloc[0])
+        else:
+            # Common indices mapping fallback
+            spot_map = {"NIFTY": ("26000", "NSE"), "BANKNIFTY": ("26009", "NSE"), "SENSEX": ("1", "BSE")}
+            if selected_symbol in spot_map:
+                spot_token, spot_exchange = spot_map[selected_symbol]
+            else:
+                spot_token = str(current_expiry_options['token'].iloc[0])
+                spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
+
+        # Fetch Spot Price
+        spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+        spot_price = 0.0
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
             item = spot_quote['data']['fetched'][0]
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-            if spot_price <= 0:
-                spot_price = float(item.get('close', 22620.45))
+        
+        if spot_price <= 0:
+            spot_price = float(current_expiry_options['strike'].median()) # Fallback median strike
 
-        print(f"🎯 Spot Price: {spot_price}")
+        print(f"🎯 Symbol: {selected_symbol} | Spot: {spot_price} | Current Expiry: {current_expiry} | Lot Size: {lot_size}")
 
+        # 5. Update Sheet Mappings (`upstox get data`)
         try:
+            data_sheet.update(range_name="J9", values=[[selected_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
-            data_sheet.update(range_name="L9", values=[[str(earliest_expiry)]])
+            data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
+            data_sheet.update(range_name="A7", values=[[lot_size]])
+            
+            # Expiries A3 to A6 update
+            expiry_cells = [
+                ['A3', active_expiries[0]], 
+                ['A4', active_expiries[1]], 
+                ['A5', active_expiries[2]], 
+                ['A6', active_expiries[3]]
+            ]
+            data_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
         except Exception as sheet_err:
-            print(f"⚠ Error updating K9/L9: {sheet_err}")
+            print(f"⚠ Error updating header cells (J9, K9, L9, A3-A7): {sheet_err}")
 
-        base_strike = int(spot_price // 50) * 50
+        # 6. Filter option chain strikes around Spot Price (e.g., ± 20 strikes)
+        strike_step = 50
+        if len(current_expiry_options['strike'].unique()) > 1:
+            sorted_strikes = sorted(current_expiry_options['strike'].unique())
+            if len(sorted_strikes) > 1:
+                strike_step = abs(sorted_strikes[1] - sorted_strikes[0])
 
-        if cached_options_df is not None and not cached_options_df.empty:
-            filtered_opts = cached_options_df[(cached_options_df['strike'] >= base_strike - 950) & (cached_options_df['strike'] <= base_strike + 950)].copy()
-            tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
-        else:
-            tokens_nfo = []
-            filtered_opts = pd.DataFrame()
+        base_strike = round(spot_price / strike_step) * strike_step
+        range_span = strike_step * 20  # 20 strikes above and below
 
+        filtered_opts = current_expiry_options[
+            (current_expiry_options['strike'] >= base_strike - range_span) & 
+            (current_expiry_options['strike'] <= base_strike + range_span)
+        ].copy()
+
+        tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
+
+        # Fetch Market Data for Options in Batches
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -281,15 +347,15 @@ def fetch_and_update_option_chain(smart_api):
             merged = pd.DataFrame()
 
         try:
-            exp_dt = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+            exp_dt = datetime.strptime(str(current_expiry).title(), "%d%b%Y")
             exp_date = exp_dt.replace(hour=15, minute=30, second=0)
         except:
-            exp_date = datetime.now()
+            exp_date = datetime.now() + timedelta(days=5)
 
         t = max((exp_date - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(base_strike - 950), int(base_strike + 1000), 50)
+        strikes = sorted(merged['strike'].unique()) if not merged.empty else [base_strike]
         
         output_rows = [
             [
@@ -328,9 +394,8 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            # batch_clear removed to prevent sheet from blinking / turning blank
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully without Blank/Blink!")
+            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
