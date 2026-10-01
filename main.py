@@ -146,8 +146,6 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
-                # Kuch segments me strike price 100 se multiplied hoti hai, use adjust karein agar zaroori ho
-                # full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
                 
             print(f"✅ Scrip Master Loaded Successfully! Total Records: {len(full_scrip_df)}")
     except Exception as e:
@@ -184,8 +182,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Filter Symbol data from Master (Index/Stock/MCX options)
-        # Name match ya symbol match karenge
+        # 2. Filter Symbol data from Master
         sym_options = full_scrip_df[
             (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO'])) & 
             ((full_scrip_df['name'] == selected_symbol) | (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False))) &
@@ -196,7 +193,6 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ No options found in master for symbol: {selected_symbol}")
             return
 
-        # Parse expiry dates
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
 
@@ -204,18 +200,14 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ No valid expiry dates found for {selected_symbol}")
             return
 
-        # Sort unique expiries chronologically
         unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
 
-        # Get top 4 expiries for A3 to A6
         active_expiries = expiry_strings_sorted[:4]
         while len(active_expiries) < 4:
             active_expiries.append(active_expiries[-1] if active_expiries else "N/A")
 
         current_expiry = active_expiries[0]
-
-        # Filter options for the Current (Nearest) Expiry
         current_expiry_dt = unique_expiries_dt[0]
         current_expiry_options = sym_options[sym_options['parsed_expiry'] == current_expiry_dt].copy()
 
@@ -227,21 +219,18 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # 4. Find Spot / Underlying Token & Price
+        # 4. Find Spot Token & Price
         spot_token = ""
         spot_exchange = "NSE"
-        # Spot token dhundne ke liye index/equity segment check karein
         spot_match = full_scrip_df[
             (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) & 
-            (full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ')
+            ((full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ'))
         ]
         
-        # Fallback agar specific spot na mile toh Nifty default ya symbol base token lenge
         if not spot_match.empty:
             spot_token = str(spot_match['token'].iloc[0])
             spot_exchange = str(spot_match['exch_seg'].iloc[0])
         else:
-            # Common indices mapping fallback
             spot_map = {"NIFTY": ("26000", "NSE"), "BANKNIFTY": ("26009", "NSE"), "SENSEX": ("1", "BSE")}
             if selected_symbol in spot_map:
                 spot_token, spot_exchange = spot_map[selected_symbol]
@@ -249,7 +238,6 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(current_expiry_options['token'].iloc[0])
                 spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
 
-        # Fetch Spot Price
         spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
         spot_price = 0.0
         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
@@ -257,46 +245,42 @@ def fetch_and_update_option_chain(smart_api):
             spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
         
         if spot_price <= 0:
-            spot_price = float(current_expiry_options['strike'].median()) # Fallback median strike
+            spot_price = float(current_expiry_options['strike'].median())
 
         print(f"🎯 Symbol: {selected_symbol} | Spot: {spot_price} | Current Expiry: {current_expiry} | Lot Size: {lot_size}")
 
-        # 5. Update Sheet Mappings (`upstox get data`)
+        # Update Headers (`upstox get data`)
         try:
             data_sheet.update(range_name="J9", values=[[selected_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
             
-            # Expiries A3 to A6 update
             expiry_cells = [
-                ['A3', active_expiries[0]], 
-                ['A4', active_expiries[1]], 
-                ['A5', active_expiries[2]], 
-                ['A6', active_expiries[3]]
+                ['A3', active_expiries[0]], ['A4', active_expiries[1]], 
+                ['A5', active_expiries[2]], ['A6', active_expiries[3]]
             ]
             data_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
         except Exception as sheet_err:
-            print(f"⚠ Error updating header cells (J9, K9, L9, A3-A7): {sheet_err}")
+            print(f"⚠ Error updating header cells: {sheet_err}")
 
-        # 6. Filter option chain strikes around Spot Price (e.g., ± 20 strikes)
+        # 5. Strike step & filtering proper ascending strikes around spot price
+        all_master_strikes = sorted(current_expiry_options['strike'].unique())
         strike_step = 50
-        if len(current_expiry_options['strike'].unique()) > 1:
-            sorted_strikes = sorted(current_expiry_options['strike'].unique())
-            if len(sorted_strikes) > 1:
-                strike_step = abs(sorted_strikes[1] - sorted_strikes[0])
+        if len(all_master_strikes) > 1:
+            strike_step = abs(all_master_strikes[1] - all_master_strikes[0])
 
         base_strike = round(spot_price / strike_step) * strike_step
-        range_span = strike_step * 20  # 20 strikes above and below
+        range_span = strike_step * 20  # ±20 strikes
 
-        filtered_opts = current_expiry_options[
-            (current_expiry_options['strike'] >= base_strike - range_span) & 
-            (current_expiry_options['strike'] <= base_strike + range_span)
-        ].copy()
+        strikes = [st for st in all_master_strikes if base_strike - range_span <= st <= base_strike + range_span]
+        if not strikes:
+            strikes = all_master_strikes[:40]
 
+        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
         tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
 
-        # Fetch Market Data for Options in Batches
+        # Fetch Quotes in Batches
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -305,15 +289,14 @@ def fetch_and_update_option_chain(smart_api):
             try:
                 res = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
                 if res and res.get('status') and res.get('data'):
-                    fetched_list = res['data'].get('fetched', [])
-                    all_fetched_quotes.extend(fetched_list)
+                    all_fetched_quotes.extend(res['data'].get('fetched', []))
             except Exception as batch_err:
                 print(f"⚠ Batch fetch error: {batch_err}")
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
 
-        quotes_data = []
+        quotes_dict = {}
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
             ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
@@ -321,30 +304,13 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
-            if is_market_open_passed:
-                if tok not in morning_oi_dict:
-                    morning_oi_dict[tok] = oi
+            if is_market_open_passed and tok not in morning_oi_dict:
+                morning_oi_dict[tok] = oi
 
             base_oi = morning_oi_dict.get(tok, oi)
-            oi_chg = oi - base_oi
-
-            quotes_data.append({
-                'token': tok, 
-                'ltp': ltp, 
-                'volume': volume, 
-                'oi': oi, 
-                'oi_chg': oi_chg,
-                'net_change': net_change
-            })
-
-        quotes_df = pd.DataFrame(quotes_data)
-
-        if not quotes_df.empty and not filtered_opts.empty:
-            filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
-            quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
-            merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
-        else:
-            merged = pd.DataFrame()
+            quotes_dict[tok] = {
+                'ltp': ltp, 'volume': volume, 'oi': oi, 'oi_chg': oi - base_oi, 'net_change': net_change
+            }
 
         try:
             exp_dt = datetime.strptime(str(current_expiry).title(), "%d%b%Y")
@@ -355,47 +321,37 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else [base_strike]
-        
-        output_rows = [
-            [
-                "CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP",
-                "Strike Price",
-                "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"
-            ]
-        ]
+        output_rows = [[
+            "CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP",
+            "Strike Price",
+            "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"
+        ]]
 
         for st in strikes:
-            ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()     
-            pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()     
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.endswith('PE'))]
 
-            ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
-            ce_vol = float(ce_row['volume'].values[0]) if not ce_row.empty and 'volume' in ce_row.columns else 0.0
-            ce_oi = float(ce_row['oi'].values[0]) if not ce_row.empty and 'oi' in ce_row.columns else 0.0
-            ce_oi_chg = float(ce_row['oi_chg'].values[0]) if not ce_row.empty and 'oi_chg' in ce_row.columns else 0.0
-            ce_change = float(ce_row['net_change'].values[0]) if not ce_row.empty and 'net_change' in ce_row.columns else 0.0
+            ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
 
-            pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
-            pe_vol = float(pe_row['volume'].values[0]) if not pe_row.empty and 'volume' in pe_row.columns else 0.0
-            pe_oi = float(pe_row['oi'].values[0]) if not pe_row.empty and 'oi' in pe_row.columns else 0.0
-            pe_oi_chg = float(pe_row['oi_chg'].values[0]) if not pe_row.empty and 'oi_chg' in pe_row.columns else 0.0
-            pe_change = float(pe_row['net_change'].values[0]) if not pe_row.empty and 'net_change' in pe_row.columns else 0.0
+            ce_q = quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
+            pe_q = quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
 
-            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
-            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
+            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_q['ltp'])
+            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_q['ltp'])
 
             ce_iv_val = ce_gks['iv'] if ce_gks['iv'] > 1.0 else 0
             pe_iv_val = pe_gks['iv'] if pe_gks['iv'] > 1.0 else 0
 
             output_rows.append([
-                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_val, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_val, ce_q['oi_chg'], ce_q['oi'], ce_q['volume'], ce_q['net_change'], ce_q['ltp'],
                 st,
-                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
+                pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully with Proper Ascending Strikes for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
