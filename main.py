@@ -208,18 +208,26 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API with Debugging
+        # 2. Fetch NFO Option Quotes with Correct Payload Structure
         all_fetched_quotes = []
-        for i in range(0, len(tokens_nfo), 50):
-            batch_tokens = tokens_nfo[i:i+50]
+        for i in range(0, len(tokens_nfo), 40):
+            batch_tokens = tokens_nfo[i:i+40]
             if not batch_tokens:
                 continue
-            quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
             
-            print(f"DEBUG: Batch tokens count: {len(batch_tokens)}, Response status: {quotes.get('status') if quotes else 'None'}")
+            # Angel One format for exchange tokens
+            params = {"exchange": "NFO", "tokens": batch_tokens}
+            quotes = smart_api.getMarketData("FULL", params)
             
-            if quotes and quotes.get('status') and quotes.get('data') and quotes['data'].get('fetched'):
-                all_fetched_quotes.extend(quotes['data']['fetched'])
+            if not quotes or not quotes.get('status'):
+                # Fallback dictionary format
+                quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+
+            if quotes and quotes.get('status') and quotes.get('data'):
+                if isinstance(quotes['data'], dict) and quotes['data'].get('fetched'):
+                    all_fetched_quotes.extend(quotes['data']['fetched'])
+                elif isinstance(quotes['data'], list):
+                    all_fetched_quotes.extend(quotes['data'])
 
         print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
 
@@ -303,9 +311,6 @@ def fetch_and_update_option_chain(smart_api):
 # ==========================================
 # MAIN EXECUTION THREADS
 # ==========================================
-def run_bot_log():
-    pass
-
 def run_bot_loop():
     print("🚀 Starting Bot Loop Thread...")
     
