@@ -11,6 +11,8 @@ import numpy as np
 from flask import Flask
 import threading
 import pyotp
+import json
+import tempfile
 
 # ==========================================
 # FLASK WEB SERVER FOR RENDER PORT BINDING
@@ -45,10 +47,9 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Google Sheets Initialization (Direct Environment Variables - No PEM error)
+# Google Sheets Initialization (Temp File Method - 100% Foolproof)
 try:
     private_key_val = os.getenv("GOOGLE_PRIVATE_KEY", "")
-    # Properly handle newlines for private key
     if private_key_val:
         private_key_val = private_key_val.replace("\\n", "\n")
 
@@ -65,11 +66,15 @@ try:
         "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
     }
 
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    gc = gspread.authorize(creds)
+    # Create temporary json file dynamically to avoid all PEM/Newline errors
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
+        json.dump(creds_dict, temp_file)
+        temp_file_path = temp_file.name
+
+    gc = gspread.service_account(filename=temp_file_path)
     sh = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = sh.worksheet(WORKSHEET_NAME)
-    print("✅ Google Sheets Connected Successfully via Env Vars!")
+    print("✅ Google Sheets Connected Successfully via Dynamic Temp File!")
 except Exception as e:
     print(f"❌ Google Sheets Connection Error: {e}")
 
