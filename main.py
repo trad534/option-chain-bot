@@ -208,25 +208,19 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes via direct ltpData iteration (Guaranteed data)
+        # 2. Fetch NFO Option Quotes via Fast Batch getMarketData
         all_fetched_quotes = []
-        if not filtered_opts.empty:
-            for idx, row in filtered_opts.iterrows():
-                tok = str(row['token']).strip()
-                sym = str(row['symbol']).strip()
-                try:
-                    res = smart_api.ltpData("NFO", sym, tok)
-                    if res and res.get('status') and res.get('data'):
-                        d = res['data']
-                        all_fetched_quotes.append({
-                            'symbolToken': tok,
-                            'ltp': float(d.get('ltp', 0)),
-                            'tradeVolume': float(d.get('tradeVolume', 0)),
-                            'opnInterest': float(d.get('opnInterest', 0)),
-                            'netChange': float(d.get('netChange', 0))
-                        })
-                except Exception as sub_err:
-                    pass
+        for i in range(0, len(tokens_nfo), 40):
+            batch_tokens = tokens_nfo[i:i+40]
+            if not batch_tokens:
+                continue
+            try:
+                res = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+                if res and res.get('status') and res.get('data'):
+                    fetched_list = res['data'].get('fetched', [])
+                    all_fetched_quotes.extend(fetched_list)
+            except Exception as batch_err:
+                print(f"⚠ Batch fetch error: {batch_err}")
 
         print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
 
