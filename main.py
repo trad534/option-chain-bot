@@ -8,6 +8,21 @@ from google.oauth2.service_account import Credentials
 from SmartApi import SmartConnect
 import scipy.stats as si
 import numpy as np
+from flask import Flask
+import threading
+
+# ==========================================
+# FLASK WEB SERVER FOR RENDER PORT BINDING
+# ==========================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Option Chain Bot is active and running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
 # CONFIGURATION & CREDENTIALS
@@ -20,19 +35,16 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "6 LTP C...")
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "upstox get data")
 
-# Global variables
 cached_options_df = None
 earliest_expiry = None
-nifty_spot_token = "99926000"  # Nifty 50 Index Token for NSE
+nifty_spot_token = "99926000"
 
-# Setup Google Sheets Connection
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
 try:
-    # Render environment ke liye service account JSON handling
     creds_dict = {
         "type": os.getenv("GOOGLE_TYPE", "service_account"),
         "project_id": os.getenv("GOOGLE_PROJECT_ID"),
@@ -53,14 +65,11 @@ try:
 except Exception as e:
     print(f"❌ Google Sheets Connection Error: {e}")
 
-# ==========================================
-# GREEKS & IV CALCULATION
-# ==========================================
 def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
     if market_price <= 0 or T <= 0 or S <= 0 or K <= 0:
         return {'iv': 0.0, 'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0}
     
-    sigma = 0.20  # initial guess
+    sigma = 0.20
     for _ in range(100):
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
@@ -81,8 +90,6 @@ def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
         sigma = max(0.01, min(sigma, 5.0))
         
     iv = round(sigma * 100, 2)
-    
-    # Calculate Greeks using final IV
     if sigma > 0:
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
@@ -100,9 +107,6 @@ def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
 
     return {'iv': iv, 'delta': delta, 'gamma': gamma, 'theta': theta, 'vega': vega_val}
 
-# ==========================================
-# INITIALIZE SCRIP MASTER
-# ==========================================
 def initialize_scrip_master(smart_api):
     global cached_options_df, earliest_expiry
     print("🔄 Downloading and parsing NFO Scrip Master...")
@@ -112,30 +116,18 @@ def initialize_scrip_master(smart_api):
         if response.status_code == 200:
             data = response.json()
             df = pd.DataFrame(data)
-            
-            # Filter for Nifty Options (NFO)
             nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY')].copy()
             nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100.0
-            
-            # Parse expiry date
             nifty_opts['expiry_dt'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
             valid_opts = nifty_opts.dropna(subset=['expiry_dt']).sort_values('expiry_dt')
             
             if not valid_opts.empty:
                 earliest_expiry = valid_opts['expiry'].iloc[0]
-                # Filter only for the nearest expiry date to optimize token list
                 cached_options_df = valid_opts[valid_opts['expiry'] == earliest_expiry].copy()
                 print(f"✅ Scrip Master Loaded. Nearest Expiry: {earliest_expiry}, Total Contracts: {len(cached_options_df)}")
-            else:
-                print("⚠ No valid option contracts found in scrip master.")
-        else:
-            print(f"❌ Failed to download scrip master, status code: {response.status_code}")
     except Exception as e:
         print(f"❌ Error in initialize_scrip_master: {e}")
 
-# ==========================================
-# FETCH & UPDATE LOOP
-# ==========================================
 def fetch_and_update_option_chain(smart_api):
     global cached_options_df, earliest_expiry
     try:
@@ -149,7 +141,6 @@ def fetch_and_update_option_chain(smart_api):
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master(smart_api)
 
-        # 1. Fetch Spot Price
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
         spot_price = 0.0
         
@@ -160,7 +151,7 @@ def fetch_and_update_option_chain(smart_api):
                 spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0)) or 0))
         
         if spot_price <= 0:
-            spot_price = 22620.45  # Fallback spot
+            spot_price = 22620.45
 
         print(f"🎯 Spot Price: {spot_price}")
 
@@ -171,7 +162,6 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Error updating K9/L9: {sheet_err}")
 
         atm_strike = round(spot_price / 50) * 50
-
         tokens_nfo = []
         filtered_opts = pd.DataFrame()
 
@@ -180,17 +170,12 @@ def fetch_and_update_option_chain(smart_api):
             if not filtered_opts.empty and 'token' in filtered_opts.columns:
                 tokens_nfo = [str(t) for t in filtered_opts['token'].dropna().unique().tolist()]
 
-        print(f"📦 Total tokens to fetch: {len(tokens_nfo)}")
-
-        # 2. Fetch NFO Option Quotes securely in batches & PRINT RAW RESPONSE
         all_fetched_quotes = []
         if tokens_nfo:
             for i in range(0, len(tokens_nfo), 50):
                 batch_tokens = tokens_nfo[i:i+50]
                 try:
                     quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                    print(f"🔍 RAW API Response for batch: {str(quotes)[:300]}...")
-                    
                     if quotes and quotes.get('status'):
                         q_data = quotes.get('data', {})
                         fetched_list = q_data.get('fetched', [])
@@ -199,13 +184,10 @@ def fetch_and_update_option_chain(smart_api):
                         if not fetched_list and isinstance(q_data, dict):
                             if 'pricedata' in q_data:
                                 fetched_list = q_data['pricedata']
-                        
                         if fetched_list:
                             all_fetched_quotes.extend(fetched_list)
                 except Exception as q_err:
                     print(f"⚠ Batch quote fetch error: {q_err}")
-
-        print(f"📥 Total fetched quotes received: {len(all_fetched_quotes)}")
 
         quotes_data = []
         for item in all_fetched_quotes:
@@ -229,10 +211,8 @@ def fetch_and_update_option_chain(smart_api):
             filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
             quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
             merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
-            print(f"🔗 Merged rows count: {len(merged)}")
         else:
             merged = pd.DataFrame()
-            print("⚠ Warning: quotes_df or filtered_opts is empty!")
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
@@ -283,26 +263,33 @@ def fetch_and_update_option_chain(smart_api):
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
-# ==========================================
-# MAIN EXECUTION
-# ==========================================
-if __name__ == "__main__":
-    print("🚀 Starting Angel One Option Chain Worker...")
+def run_bot_loop():
+    print("🚀 Starting Bot Loop Thread...")
     try:
         import pyotp
-        totp = pyotp.TOTP(TOTP_SECRET).now()
+        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
         smart_api = SmartConnect(api_key=API_KEY)
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
         
         if data and data.get('status'):
             print("✅ Angel One Session Generated Successfully!")
+            initialize_scrip_master(smart_api)
             while True:
                 try:
                     fetch_and_update_option_chain(smart_api)
                 except Exception as loop_err:
                     print(f"⚠ Loop Error: {loop_err}")
-                time.sleep(5)  # Refresh every 5 seconds
+                time.sleep(10)
         else:
             print(f"❌ Login Failed: {data}")
     except Exception as auth_err:
         print(f"❌ Authentication Exception: {auth_err}")
+
+if __name__ == "__main__":
+    # Start Flask in a background thread so Render port requirement is satisfied immediately
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # Run the main option chain loop
+    run_bot_loop()
