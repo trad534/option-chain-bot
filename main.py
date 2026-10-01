@@ -208,7 +208,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes
+        # 2. Fetch NFO Option Quotes via ltpData & getMarketData fallback
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -216,14 +216,20 @@ def fetch_and_update_option_chain(smart_api):
                 continue
             
             try:
-                quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                if quotes and quotes.get('status') and quotes.get('data'):
-                    data_obj = quotes['data']
-                    if isinstance(data_obj, dict):
-                        if 'fetched' in data_obj:
-                            all_fetched_quotes.extend(data_obj['fetched'])
-                    elif isinstance(data_obj, list):
+                # Try ltpData first which is extremely stable for NFO
+                res = smart_api.ltpData("NFO", batch_tokens, batch_tokens[0])
+                if res and res.get('status') and res.get('data'):
+                    data_obj = res['data']
+                    if isinstance(data_obj, list):
                         all_fetched_quotes.extend(data_obj)
+                    elif isinstance(data_obj, dict):
+                        all_fetched_quotes.append(data_obj)
+                else:
+                    # Fallback to getMarketData full
+                    quotes = smart_api.getMarketData("FULL", {"exchange": "NFO", "symboltokens": batch_tokens})
+                    if quotes and quotes.get('status') and quotes.get('data'):
+                        if 'fetched' in quotes['data']:
+                            all_fetched_quotes.extend(quotes['data']['fetched'])
             except Exception as batch_err:
                 print(f"⚠ Batch fetch error: {batch_err}")
 
@@ -231,7 +237,6 @@ def fetch_and_update_option_chain(smart_api):
 
         quotes_data = []
         for item in all_fetched_quotes:
-            # Extract token checking all possible key variations
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
             ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
             volume = float(item.get('tradeVolume', item.get('volume', 0)))
@@ -337,7 +342,7 @@ def run_bot_loop():
 
     while True:
         try:
-            fetch_and_update_option_chain(smart_api)
+            fetch_and_update_option chain(smart_api)
         except Exception as e:
             print(f"❌ Loop Error: {e}")
         time.sleep(15)
