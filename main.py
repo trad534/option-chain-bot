@@ -169,6 +169,7 @@ def fetch_and_update_option_chain(smart_api):
             morning_oi_dict = {}
             baseline_date = current_date_str
 
+        # Ensure scrip master is loaded only once / if empty
         if full_scrip_df is None or full_scrip_df.empty:
             initialize_scrip_master(smart_api)
             if full_scrip_df.empty:
@@ -245,7 +246,6 @@ def fetch_and_update_option_chain(smart_api):
                 
                 if wl_output:
                     data_sheet.update(range_name=f"Z10:AB{9 + len(wl_output)}", values=wl_output)
-                    print(f"✅ Watchlist Y10:Y200 updated successfully!")
         except Exception as wl_err:
             print(f"⚠ Watchlist processing error: {wl_err}")
 
