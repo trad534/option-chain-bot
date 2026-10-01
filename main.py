@@ -65,14 +65,21 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (NEWTON-RAPHSON METHOD)
+# ACCURATE IV & GREEKS (MICRON LEVEL PRECISION)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    if t <= 0 or S <= 0 or K <= 0 or ltp < 0.10:
-        return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
+    # Intrinsic value check to avoid absurd IV on deep ITM options
+    intrinsic = max(0, S - K) if flag == 'CE' else max(0, K - S)
+    if t <= 0 or S <= 0 or K <= 0 or ltp <= intrinsic or ltp < 0.05:
+        # Default Greeks for deep ITM/OTM if skipped
+        if flag == 'CE':
+            delta = 1.0 if S > K else 0.0
+        else:
+            delta = -1.0 if S < K else 0.0
+        return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
     sigma = 0.20  # Initial guess
-    for _ in range(100):
+    for _ in range(200):  # High iterations for micro-accuracy
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
         
@@ -84,20 +91,20 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         vega = S * norm.pdf(d1) * np.sqrt(t)
         diff = price - ltp
         
-        if abs(diff) < 1e-4:
+        if abs(diff) < 1e-6:  # High precision tolerance matching terminals
             break
         if vega < 1e-8:
             break
             
         sigma = sigma - diff / vega
         if sigma <= 0:
-            sigma = 0.001
+            sigma = 0.0001
             break
         if sigma > 5.0:  # Cap at 500% IV
             sigma = 5.0
             break
 
-    # Final Greeks calculation using converged sigma
+    # Final Greeks calculation using precise converged sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
@@ -126,7 +133,6 @@ cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
 nifty_spot_token = "26000"
 
-# Storage for 09:15 AM OI baseline tracking
 morning_oi_dict = {}
 baseline_date = None
 
@@ -194,7 +200,6 @@ def fetch_and_update_option_chain(smart_api):
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
 
-        # Reset morning OI dictionary on a new trading day
         if baseline_date != current_date_str:
             morning_oi_dict = {}
             baseline_date = current_date_str
@@ -220,7 +225,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating K9/L9: {sheet_err}")
 
-        # Floor alignment for Row 30 & 31 red line divider
         base_strike = int(spot_price // 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
@@ -230,7 +234,6 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes via Batch getMarketData
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -255,13 +258,12 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
-            # Capture 09:15 AM baseline OI (or the first fetched OI at/after 09:15 AM)
             if is_market_open_passed:
                 if tok not in morning_oi_dict:
                     morning_oi_dict[tok] = oi
 
             base_oi = morning_oi_dict.get(tok, oi)
-            oi_chg = oi - base_oi  # Exact change from 09:15 AM baseline
+            oi_chg = oi - base_oi
 
             quotes_data.append({
                 'token': tok, 
@@ -287,7 +289,6 @@ def fetch_and_update_option_chain(smart_api):
         except:
             exp_date = datetime.now()
 
-        # Accurate fractional time in years using total seconds
         t = max((exp_date - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
         r = 0.07
 
@@ -323,7 +324,6 @@ def fetch_and_update_option_chain(smart_api):
             ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
             pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
 
-            # Continuous Strike rows, perfectly aligned with Row 30 & 31 divider
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
@@ -333,7 +333,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (09:15 AM OI Change Baseline Active)!")
+            print(f"🎯 Option Chain Updated Successfully (Micron-Level IV Precision Active)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
