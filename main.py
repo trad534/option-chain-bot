@@ -65,36 +65,44 @@ except Exception as e:
     exit()
 
 # ==========================================
-# SAFE IV & GREEKS CALCULATOR
+# ACCURATE IV & GREEKS (NEWTON-RAPHSON METHOD)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    if t <= 0 or S <= 0 or K <= 0 or ltp < 0.50:
+    if t <= 0 or S <= 0 or K <= 0 or ltp < 0.10:
         return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
-    low_sigma, high_sigma = 0.01, 3.0
-    sigma = 0.20
-    for _ in range(15):
-        mid_sigma = (low_sigma + high_sigma) / 2
-        d1 = (np.log(S / K) + (r + 0.5 * mid_sigma ** 2) * t) / (mid_sigma * np.sqrt(t))
-        d2 = d1 - mid_sigma * np.sqrt(t)
+    sigma = 0.20  # Initial guess
+    for _ in range(100):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+        d2 = d1 - sigma * np.sqrt(t)
         
-        price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
-        
-        if abs(price - ltp) < 0.05:
-            sigma = mid_sigma
-            break
-        if price > ltp:
-            high_sigma = mid_sigma
+        if flag == 'CE':
+            price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2)
         else:
-            low_sigma = mid_sigma
-    else:
-        sigma = mid_sigma
+            price = K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
+            
+        vega = S * norm.pdf(d1) * np.sqrt(t)
+        diff = price - ltp
+        
+        if abs(diff) < 1e-4:
+            break
+        if vega < 1e-8:
+            break
+            
+        sigma = sigma - diff / vega
+        if sigma <= 0:
+            sigma = 0.001
+            break
+        if sigma > 5.0:  # Cap at 500% IV
+            sigma = 5.0
+            break
 
+    # Final Greeks calculation using converged sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
     gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
-    vega = S * norm.pdf(d1) * np.sqrt(t) / 100
+    vega_val = S * norm.pdf(d1) * np.sqrt(t) / 100
 
     if flag == 'CE':
         delta = norm.cdf(d1)
@@ -108,7 +116,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'delta': round(delta, 3),
         'gamma': round(gamma, 4),
         'theta': round(theta, 2),
-        'vega': round(vega, 2)
+        'vega': round(vega_val, 2)
     }
 
 # ==========================================
@@ -201,7 +209,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating K9/L9: {sheet_err}")
 
-        # Use floor to ensure the strike just below the spot price aligns perfectly with Row 30
+        # Floor alignment for Row 30 & 31 red line divider
         base_strike = int(spot_price // 50) * 50
 
         if cached_options_df is not None and not cached_options_df.empty:
@@ -256,11 +264,13 @@ def fetch_and_update_option_chain(smart_api):
             merged = pd.DataFrame()
 
         try:
-            exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+            exp_dt = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+            exp_date = exp_dt.replace(hour=15, minute=30, second=0)
         except:
             exp_date = datetime.now()
 
-        t = max((exp_date - datetime.now()).days / 365.0, 0.001)
+        # Accurate fractional time in years using total seconds
+        t = max((exp_date - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
         r = 0.07
 
         strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(base_strike - 950), int(base_strike + 1000), 50)
@@ -295,7 +305,7 @@ def fetch_and_update_option_chain(smart_api):
             ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
             pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
 
-            # Continuous Strike rows, perfectly aligned with Row 30 & 31 red line divider
+            # Continuous Strike rows, perfectly aligned with Row 30 & 31 divider
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
@@ -305,7 +315,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Aligned to Row 30/31 Divider)! pharmacokinetic")
+            print(f"🎯 Option Chain Updated Successfully (Accurate IV & Aligned Rows)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
