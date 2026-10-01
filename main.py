@@ -116,7 +116,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
 
     return {
-        'iv': round(sigma * 100, 2),  # Returns clean number like 15.25 instead of "15.25%"
+        'iv': round(sigma * 100, 2),
         'delta': round(delta, 3),
         'gamma': round(gamma, 4),
         'theta': round(theta, 2),
@@ -328,9 +328,9 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            data_sheet.batch_clear(["A10:U150"])
+            # batch_clear removed to prevent sheet from blinking / turning blank
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (IV as Number without %)!")
+            print(f"🎯 Option Chain Updated Successfully without Blank/Blink!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
