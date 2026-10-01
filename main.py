@@ -11,6 +11,7 @@ import numpy as np
 from flask import Flask
 import threading
 import pyotp
+import json
 
 # ==========================================
 # FLASK WEB SERVER FOR RENDER PORT BINDING
@@ -45,24 +46,33 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Google Sheets Initialization using Secret File or Env
+# Google Sheets Initialization (PEM Error Proof)
 try:
+    creds = None
     secret_file_path = "/etc/secrets/credentials.json"
+    
     if os.path.exists(secret_file_path):
-        creds = Credentials.from_service_account_file(secret_file_path, scopes=scope)
-        print("✅ Loaded Google Credentials from Secret File successfully!")
+        with open(secret_file_path, 'r') as f:
+            raw_data = f.read()
+        # Clean up escaped newlines if any exist in the secret file
+        cleaned_data = raw_data.replace('\\\\n', '\\n')
+        creds_dict = json.loads(cleaned_data)
+        # Ensure private key handles newlines correctly
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        print("✅ Loaded Google Credentials from Secret File safely!")
     else:
-        # Fallback dictionary if file is not in secret path
         creds_dict = {
-            "type": os.getenv("GOOGLE_TYPE", "service_account"),
+            "type": "service_account",
             "project_id": os.getenv("GOOGLE_PROJECT_ID"),
             "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
             "private_key": os.getenv("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
             "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
             "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-            "auth_uri": os.getenv("GOOGLE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
-            "token_uri": os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
-            "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
         }
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
