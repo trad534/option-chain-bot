@@ -184,7 +184,10 @@ def fetch_and_update_option_chain(smart_api):
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
-        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        try:
+            data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        except:
+            pass
 
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master(smart_api)
@@ -193,11 +196,14 @@ def fetch_and_update_option_chain(smart_api):
         spot_quote = smart_api.getMarketData("FULL", {"NSE": [nifty_spot_token]})
         spot_price = 0.0
         
-        if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
-            item = spot_quote['data']['fetched'][0]
-            spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-            if spot_price <= 0:
-                spot_price = float(item.get('close', 22620.45))
+        if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
+            fetched_spot = spot_quote['data'].get('fetched', [])
+            if fetched_spot:
+                item = fetched_spot[0]
+                spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0)) or 0))
+        
+        if spot_price <= 0:
+            spot_price = 22620.45  # Fallback spot
 
         print(f"🎯 Spot Price: {spot_price}")
 
@@ -219,15 +225,18 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📦 Total tokens to fetch: {len(tokens_nfo)}")
 
-        # 2. Fetch NFO Option Quotes from Angel API securely in batches
+        # 2. Fetch NFO Option Quotes securely in batches
         all_fetched_quotes = []
         if tokens_nfo:
             for i in range(0, len(tokens_nfo), 50):
                 batch_tokens = tokens_nfo[i:i+50]
                 try:
                     quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                    if quotes and quotes.get('status') and quotes.get('data'):
-                        fetched_list = quotes['data'].get('fetched', [])
+                    if quotes and quotes.get('status'):
+                        q_data = quotes.get('data', {})
+                        fetched_list = q_data.get('fetched', [])
+                        if not fetched_list and isinstance(q_data, list):
+                            fetched_list = q_data
                         if fetched_list:
                             all_fetched_quotes.extend(fetched_list)
                 except Exception as q_err:
@@ -237,7 +246,7 @@ def fetch_and_update_option_chain(smart_api):
 
         quotes_data = []
         for item in all_fetched_quotes:
-            tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
+            tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', item.get('tradingSymbol', '')))))
             ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0)) or 0))
             volume = float(item.get('tradeVolume', item.get('volume', 0)) or 0)
             oi = float(item.get('opnInterest', item.get('oi', 0)) or 0)
@@ -252,12 +261,16 @@ def fetch_and_update_option_chain(smart_api):
             })
 
         quotes_df = pd.DataFrame(quotes_data)
+        
+        # Merge safely ensuring token types match
         if not quotes_df.empty and not filtered_opts.empty:
-            filtered_opts['token'] = filtered_opts['token'].astype(str)
-            quotes_df['token'] = quotes_df['token'].astype(str)
+            filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
+            quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
             merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
+            print(f"🔗 Merged rows count: {len(merged)}")
         else:
             merged = pd.DataFrame()
+            print("⚠ Warning: quotes_df or filtered_opts is empty!")
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
@@ -267,7 +280,7 @@ def fetch_and_update_option_chain(smart_api):
         t = max((exp_date - datetime.now()).days / 365.0, 0.001)
         r = 0.07
 
-        strikes = sorted(merged['strike'].unique()) if not merged.empty else [float(atm_strike + (i * 50)) for i in range(-19, 20)]
+        strikes = sorted(filtered_opts['strike'].unique()) if not filtered_opts.empty else [float(atm_strike + (i * 50)) for i in range(-19, 20)]
         
         output_rows = [
             [
