@@ -368,7 +368,7 @@ def run_bot_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as e:
             print(f"❌ Loop Error: {e}")
-        time.sleep(15)
+        time.sleep(5)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
