@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Option Chain & Watchlist Bot is active and running!"
+    return "Option Chain Bot is active and running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -135,7 +135,7 @@ def initialize_scrip_master(smart_api):
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=20)
         if resp.status_code == 200:
             scrip_data = resp.json()
             full_scrip_df = pd.DataFrame(scrip_data)
@@ -175,83 +175,7 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # ==========================================
-        # 1. PROCESS WATCHLIST FROM Y10:Y200 (Z=Symbol, AA=LTP, AB=Change)
-        # ==========================================
-        try:
-            symbol_col_values = data_sheet.get('Y10:Y200')
-            if symbol_col_values:
-                watchlist_exchange_map = {}
-                matched_symbols_info = []
-                
-                for row in symbol_col_values:
-                    sym = row[0].strip() if row and row[0] else ""
-                    if not sym:
-                        matched_symbols_info.append(("", "", ""))
-                        continue
-                    
-                    sym_upper = sym.upper()
-                    match = full_scrip_df[
-                        ((full_scrip_df['symbol'].str.upper() == sym_upper) | (full_scrip_df['name'].str.upper() == sym_upper)) &
-                        (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
-                    ]
-                    
-                    if match.empty:
-                        match = full_scrip_df[
-                            (full_scrip_df['symbol'].str.contains(sym_upper, case=False, na=False) | full_scrip_df['name'].str.contains(sym_upper, case=False, na=False)) &
-                            (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
-                        ]
-                    
-                    if not match.empty:
-                        eq_match = match[match['symbol'].str.endswith('-EQ', na=False)]
-                        row_item = eq_match.iloc[0] if not eq_match.empty else match.iloc[0]
-                        
-                        exch = str(row_item['exch_seg']).strip()
-                        tok = str(row_item['token']).strip()
-                        official_sym = str(row_item['symbol']).strip()
-                        
-                        if exch not in watchlist_exchange_map:
-                            watchlist_exchange_map[exch] = []
-                        watchlist_exchange_map[exch].append((official_sym, tok))
-                        matched_symbols_info.append((official_sym, tok, exch))
-                    else:
-                        matched_symbols_info.append((sym, "", ""))
-                
-                wl_quotes = {}
-                for exch, pairs in watchlist_exchange_map.items():
-                    tokens_list = [p[1] for p in pairs]
-                    for i in range(0, len(tokens_list), 40):
-                        batch = tokens_list[i:i+40]
-                        try:
-                            res = smart_api.getMarketData("FULL", {exch: batch})
-                            if res and res.get('status') and res.get('data'):
-                                for item in res['data'].get('fetched', []):
-                                    tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
-                                    ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-                                    change = float(item.get('netChange', item.get('change', 0)))
-                                    wl_quotes[tok] = {'ltp': ltp, 'change': change}
-                        except Exception as e:
-                            print(f"⚠ Watchlist batch fetch error for {exch}: {e}")
-                
-                wl_output = []
-                for off_sym, tok, exch in matched_symbols_info:
-                    if not off_sym:
-                        wl_output.append(["", 0, 0])
-                    elif tok and tok in wl_quotes:
-                        q_data = wl_quotes[tok]
-                        wl_output.append([off_sym, q_data['ltp'], q_data['change']])
-                    else:
-                        wl_output.append([off_sym, 0, 0])
-                
-                if wl_output:
-                    data_sheet.update(range_name=f"Z10:AB{9 + len(wl_output)}", values=wl_output)
-                    print(f"✅ Watchlist Y10:Y200 updated with Angel One symbols, LTP & Change successfully!")
-        except Exception as wl_err:
-            print(f"⚠ Watchlist processing error: {wl_err}")
-
-        # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4
-        # ==========================================
+        # 1. Read Selected Symbol from J4
         selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not selected_symbol or selected_symbol == "NONE":
             print("⚠ No valid symbol found in J4. Waiting...")
@@ -259,6 +183,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
+        # 2. Filter Symbol data from Master (Handling BFO/NFO/BSE based on symbol)
         target_exch_segs = ['NFO', 'MCX', 'BFO']
         if selected_symbol == 'SENSEX':
             target_exch_segs = ['BFO', 'BSE']
@@ -270,6 +195,7 @@ def fetch_and_update_option_chain(smart_api):
         ].copy()
 
         if sym_options.empty:
+            # Fallback broader search if specific segment fails
             sym_options = full_scrip_df[
                 (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) &
                 (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
@@ -282,6 +208,7 @@ def fetch_and_update_option_chain(smart_api):
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
 
+        # Filter out past expiries
         today_date = pd.Timestamp(now_dt.date())
         sym_options = sym_options[sym_options['parsed_expiry'] >= today_date]
 
@@ -300,6 +227,7 @@ def fetch_and_update_option_chain(smart_api):
         current_expiry_dt = unique_expiries_dt[0]
         current_expiry_options = sym_options[sym_options['parsed_expiry'] == current_expiry_dt].copy()
 
+        # 3. Get Lot Size (A7)
         lot_size = 1
         if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty:
             try:
@@ -307,6 +235,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
+        # 4. Find Spot Token & Price accurately
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -315,7 +244,7 @@ def fetch_and_update_option_chain(smart_api):
             "BANKNIFTY": ("26009", "NSE"), 
             "FINNIFTY": ("26037", "NSE"), 
             "MIDCPNIFTY": ("26074", "NSE"),
-            "SENSEX": ("999907000", "BSE")
+            "SENSEX": ("999907000", "BSE") # BSE Sensex Index code or fallback to ltp calculation
         }
         
         if selected_symbol in spot_map:
@@ -347,6 +276,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Symbol: {selected_symbol} | Spot: {spot_price} | Current Expiry: {current_expiry} | Lot Size: {lot_size}")
 
+        # Update Headers
         try:
             data_sheet.update(range_name="J9", values=[[selected_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
@@ -361,6 +291,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating header cells: {sheet_err}")
 
+        # 5. ROBUST STRIKE SLICING
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
         if all_master_strikes:
@@ -373,6 +304,7 @@ def fetch_and_update_option_chain(smart_api):
 
         filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
         
+        # Group tokens by their respective exchange segments (e.g. NFO, BFO, BSE) to fetch correctly
         exchange_tokens_map = {}
         for _, row in filtered_opts.iterrows():
             exch = str(row['exch_seg']).strip()
@@ -382,6 +314,7 @@ def fetch_and_update_option_chain(smart_api):
             if tok not in exchange_tokens_map[exch]:
                 exchange_tokens_map[exch].append(tok)
 
+        # Fetch Quotes in Batches per Exchange
         all_fetched_quotes = []
         for exch, tokens_list in exchange_tokens_map.items():
             for i in range(0, len(tokens_list), 40):
@@ -475,7 +408,7 @@ def run_bot_loop():
     while True:
         try:
             print("🔄 Attempting to generate session...")
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+            totp = pyotp.TOTP(TOTPS_SECRET.replace(" ", "")).now() if 'TOTPS_SECRET' in globals() and TOTPS_SECRET else pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
