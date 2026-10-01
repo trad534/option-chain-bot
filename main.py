@@ -269,9 +269,7 @@ def fetch_and_update_option_chain(smart_api):
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
         if all_master_strikes:
-            # Find the index of the strike closest to the live spot price
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-            # Take 20 strikes below and 20 strikes above the closest strike (Total ~41 strikes)
             start_idx = max(0, closest_idx - 20)
             end_idx = min(len(all_master_strikes), closest_idx + 21)
             strikes = all_master_strikes[start_idx:end_idx]
@@ -351,6 +349,9 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
+            # Clear old leftover rows below the table first
+            data_sheet.batch_clear(["A10:U150"])
+            # Update with fresh rows
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
             print(f"🎯 Option Chain Table Updated Successfully centered around Spot {spot_price} for {selected_symbol}!")
 
