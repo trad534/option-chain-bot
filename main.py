@@ -68,7 +68,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ROBUST IV & GREEKS (WITHOUT % SIGN)
+# ROBUST IV & GREEKS
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
@@ -124,7 +124,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER VIA OFFICIAL JSON
+# SCRIP MASTER LOADER
 # ==========================================
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
@@ -183,12 +183,23 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
-        # 2. Filter Symbol data from Master
+        # 2. Filter Symbol data from Master (Handling BFO/NFO/BSE based on symbol)
+        target_exch_segs = ['NFO', 'MCX', 'BFO']
+        if selected_symbol == 'SENSEX':
+            target_exch_segs = ['BFO', 'BSE']
+
         sym_options = full_scrip_df[
-            (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO'])) & 
+            (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
             ((full_scrip_df['name'] == selected_symbol) | (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False))) &
             (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
         ].copy()
+
+        if sym_options.empty:
+            # Fallback broader search if specific segment fails
+            sym_options = full_scrip_df[
+                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) &
+                (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
+            ].copy()
 
         if sym_options.empty:
             print(f"⚠ No options found in master for symbol: {selected_symbol}")
@@ -197,8 +208,12 @@ def fetch_and_update_option_chain(smart_api):
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
 
+        # Filter out past expiries
+        today_date = pd.Timestamp(now_dt.date())
+        sym_options = sym_options[sym_options['parsed_expiry'] >= today_date]
+
         if sym_options.empty:
-            print(f"⚠ No valid expiry dates found for {selected_symbol}")
+            print(f"⚠ No future valid expiry dates found for {selected_symbol}")
             return
 
         unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
@@ -229,7 +244,7 @@ def fetch_and_update_option_chain(smart_api):
             "BANKNIFTY": ("26009", "NSE"), 
             "FINNIFTY": ("26037", "NSE"), 
             "MIDCPNIFTY": ("26074", "NSE"),
-            "SENSEX": ("1", "BSE")
+            "SENSEX": ("999907000", "BSE") # BSE Sensex Index code or fallback to ltp calculation
         }
         
         if selected_symbol in spot_map:
@@ -246,11 +261,15 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(current_expiry_options['token'].iloc[0])
                 spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
 
-        spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
-        spot_price = 0.0
-        if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
-            item = spot_quote['data']['fetched'][0]
-            spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+        try:
+            spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+            spot_price = 0.0
+            if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
+                item = spot_quote['data']['fetched'][0]
+                spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+        except Exception as e:
+            print(f"⚠ Spot fetch warning: {e}")
+            spot_price = 0.0
         
         if spot_price <= 0:
             spot_price = float(current_expiry_options['strike'].median())
@@ -272,7 +291,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating header cells: {sheet_err}")
 
-        # 5. ROBUST STRIKE SLICING AROUND SPOT PRICE (CENTERED)
+        # 5. ROBUST STRIKE SLICING
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
         if all_master_strikes:
@@ -284,20 +303,30 @@ def fetch_and_update_option_chain(smart_api):
             strikes = []
 
         filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
-        tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
+        
+        # Group tokens by their respective exchange segments (e.g. NFO, BFO, BSE) to fetch correctly
+        exchange_tokens_map = {}
+        for _, row in filtered_opts.iterrows():
+            exch = str(row['exch_seg']).strip()
+            tok = str(row['token']).strip()
+            if exch not in exchange_tokens_map:
+                exchange_tokens_map[exch] = []
+            if tok not in exchange_tokens_map[exch]:
+                exchange_tokens_map[exch].append(tok)
 
-        # Fetch Quotes in Batches
+        # Fetch Quotes in Batches per Exchange
         all_fetched_quotes = []
-        for i in range(0, len(tokens_nfo), 40):
-            batch_tokens = tokens_nfo[i:i+40]
-            if not batch_tokens:
-                continue
-            try:
-                res = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                if res and res.get('status') and res.get('data'):
-                    all_fetched_quotes.extend(res['data'].get('fetched', []))
-            except Exception as batch_err:
-                print(f"⚠ Batch fetch error: {batch_err}")
+        for exch, tokens_list in exchange_tokens_map.items():
+            for i in range(0, len(tokens_list), 40):
+                batch_tokens = tokens_list[i:i+40]
+                if not batch_tokens:
+                    continue
+                try:
+                    res = smart_api.getMarketData("FULL", {exch: batch_tokens})
+                    if res and res.get('status') and res.get('data'):
+                        all_fetched_quotes.extend(res['data'].get('fetched', []))
+                except Exception as batch_err:
+                    print(f"⚠ Batch fetch error for {exch}: {batch_err}")
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
@@ -357,9 +386,7 @@ def fetch_and_update_option_chain(smart_api):
 
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
-            # 1. Write the new rows freshly
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
-            # 2. Clear remaining leftover old rows cleanly without blinking the active table
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
             print(f"🎯 Option Chain Table Updated & Cleaned Successfully for {selected_symbol}!")
 
@@ -381,7 +408,7 @@ def run_bot_loop():
     while True:
         try:
             print("🔄 Attempting to generate session...")
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+            totp = pyotp.TOTP(TOTPS_SECRET.replace(" ", "")).now() if 'TOTPS_SECRET' in globals() and TOTPS_SECRET else pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
