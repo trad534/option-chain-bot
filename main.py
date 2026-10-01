@@ -220,21 +220,28 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # 4. Find Spot Token & Price
+        # 4. Find Spot Token & Price accurately
         spot_token = ""
         spot_exchange = "NSE"
-        spot_match = full_scrip_df[
-            (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) & 
-            ((full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ'))
-        ]
         
-        if not spot_match.empty:
-            spot_token = str(spot_match['token'].iloc[0])
-            spot_exchange = str(spot_match['exch_seg'].iloc[0])
+        spot_map = {
+            "NIFTY": ("26000", "NSE"), 
+            "BANKNIFTY": ("26009", "NSE"), 
+            "FINNIFTY": ("26037", "NSE"), 
+            "MIDCPNIFTY": ("26074", "NSE"),
+            "SENSEX": ("1", "BSE")
+        }
+        
+        if selected_symbol in spot_map:
+            spot_token, spot_exchange = spot_map[selected_symbol]
         else:
-            spot_map = {"NIFTY": ("26000", "NSE"), "BANKNIFTY": ("26009", "NSE"), "SENSEX": ("1", "BSE")}
-            if selected_symbol in spot_map:
-                spot_token, spot_exchange = spot_map[selected_symbol]
+            spot_match = full_scrip_df[
+                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) & 
+                ((full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ'))
+            ]
+            if not spot_match.empty:
+                spot_token = str(spot_match['token'].iloc[0])
+                spot_exchange = str(spot_match['exch_seg'].iloc[0])
             else:
                 spot_token = str(current_expiry_options['token'].iloc[0])
                 spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
@@ -349,9 +356,12 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            # DIRECT UPDATE WITHOUT CLEARING TO PREVENT BLINKING/FLASHING
-            data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Table Updated Successfully without blinking for {selected_symbol}!")
+            last_row_num = 10 + len(output_rows) - 1
+            # 1. Write the new rows freshly
+            data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
+            # 2. Clear remaining leftover old rows cleanly without blinking the active table
+            data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
+            print(f"🎯 Option Chain Table Updated & Cleaned Successfully for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
