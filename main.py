@@ -117,6 +117,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
 nifty_spot_token = "26000"
+previous_oi_dict = {}
 
 def get_upcoming_tuesday():
     today = datetime.now()
@@ -173,7 +174,7 @@ def initialize_scrip_master(smart_api):
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry
+    global cached_options_df, earliest_expiry, previous_oi_dict
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
@@ -223,8 +224,6 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as batch_err:
                 print(f"⚠ Batch fetch error: {batch_err}")
 
-        print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
-
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
@@ -233,25 +232,28 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
+            # Calculate OI Change
+            prev_oi = previous_oi_dict.get(tok, oi)
+            oi_chg = oi - prev_oi
+            previous_oi_dict[tok] = oi  # Update for next loop
+
             quotes_data.append({
                 'token': tok, 
                 'ltp': ltp, 
                 'volume': volume, 
                 'oi': oi, 
+                'oi_chg': oi_chg,
                 'net_change': net_change
             })
 
         quotes_df = pd.DataFrame(quotes_data)
-        print(f"DEBUG: quotes_df shape: {quotes_df.shape}, filtered_opts shape: {filtered_opts.shape}")
 
         if not quotes_df.empty and not filtered_opts.empty:
             filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
             quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
             merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
-            print(f"DEBUG: Merged dataframe shape: {merged.shape}")
         else:
             merged = pd.DataFrame()
-            print("⚠ WARNING: Either quotes_df or filtered_opts is empty!")
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
@@ -278,26 +280,28 @@ def fetch_and_update_option_chain(smart_api):
             ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
             ce_vol = float(ce_row['volume'].values[0]) if not ce_row.empty and 'volume' in ce_row.columns else 0.0
             ce_oi = float(ce_row['oi'].values[0]) if not ce_row.empty and 'oi' in ce_row.columns else 0.0
+            ce_oi_chg = float(ce_row['oi_chg'].values[0]) if not ce_row.empty and 'oi_chg' in ce_row.columns else 0.0
             ce_change = float(ce_row['net_change'].values[0]) if not ce_row.empty and 'net_change' in ce_row.columns else 0.0
 
             pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
             pe_vol = float(pe_row['volume'].values[0]) if not pe_row.empty and 'volume' in pe_row.columns else 0.0
             pe_oi = float(pe_row['oi'].values[0]) if not pe_row.empty and 'oi' in pe_row.columns else 0.0
+            pe_oi_chg = float(pe_row['oi_chg'].values[0]) if not pe_row.empty and 'oi_chg' in pe_row.columns else 0.0
             pe_change = float(pe_row['net_change'].values[0]) if not pe_row.empty and 'net_change' in pe_row.columns else 0.0
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
             output_rows.append([
-                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", 0, ce_oi, ce_vol, ce_change, ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
-                pe_ltp, pe_change, pe_vol, pe_oi, 0, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
+                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Google Sheet Successfully Updated!")
+            print(f"🎯 Google Sheet Successfully Updated with OI Change!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
