@@ -272,7 +272,7 @@ def fetch_and_update_option_chain(smart_api):
             ]
         ]
 
-        for idx, st in enumerate(strikes):
+        for st in strikes:
             ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()     
             pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()     
 
@@ -294,30 +294,17 @@ def fetch_and_update_option_chain(smart_api):
             ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
             pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
 
-            # Strike row append karo
+            # Continuous Strike rows (No blank row added)
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
                 pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_str, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-            # Exact Divider Placement Condition
-            if idx < len(strikes) - 1:
-                next_st = strikes[idx + 1]
-                if st <= spot_price < next_st:
-                    print(f"📍 Divider placed between {st} and {next_st} for Spot: {spot_price}")
-                    output_rows.append([
-                        "", "", "", "", "", "", "", "", "", "",
-                        "", # Blank strike cell for divider
-                        "", "", "", "", "", "", "", "", "", ""
-                    ])
-
         if len(output_rows) > 1:
-            # Pehle purani saari rows ko saaf (clear) karo taaki extra rows na bachein
             data_sheet.batch_clear(["A10:U150"])
-            # Ab naya data update karo
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Cleaned & Updated Successfully!")
+            print(f"🎯 Option Chain Updated Successfully (Continuous Rows, No Blanks)! pharmacokinetic")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
