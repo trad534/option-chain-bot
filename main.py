@@ -164,7 +164,7 @@ def initialize_scrip_master(smart_api):
 
         print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️ Scrip Master API Error: {e}")
+        print(f"⚠️️ Scrip Master API Error: {e}")
         if earliest_expiry == "N/A":
             earliest_expiry = get_upcoming_tuesday()
 
@@ -216,7 +216,6 @@ def fetch_and_update_option_chain(smart_api):
                 continue
             
             try:
-                # Try ltpData first which is extremely stable for NFO
                 res = smart_api.ltpData("NFO", batch_tokens, batch_tokens[0])
                 if res and res.get('status') and res.get('data'):
                     data_obj = res['data']
@@ -225,7 +224,6 @@ def fetch_and_update_option_chain(smart_api):
                     elif isinstance(data_obj, dict):
                         all_fetched_quotes.append(data_obj)
                 else:
-                    # Fallback to getMarketData full
                     quotes = smart_api.getMarketData("FULL", {"exchange": "NFO", "symboltokens": batch_tokens})
                     if quotes and quotes.get('status') and quotes.get('data'):
                         if 'fetched' in quotes['data']:
@@ -342,7 +340,7 @@ def run_bot_loop():
 
     while True:
         try:
-            fetch_and_update_option chain(smart_api)
+            fetch_and_update_option_chain(smart_api)
         except Exception as e:
             print(f"❌ Loop Error: {e}")
         time.sleep(15)
