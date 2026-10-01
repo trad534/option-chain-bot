@@ -349,11 +349,9 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            # Clear old leftover rows below the table first
-            data_sheet.batch_clear(["A10:U150"])
-            # Update with fresh rows
+            # DIRECT UPDATE WITHOUT CLEARING TO PREVENT BLINKING/FLASHING
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Table Updated Successfully centered around Spot {spot_price} for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully without blinking for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
