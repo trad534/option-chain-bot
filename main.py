@@ -203,12 +203,12 @@ def fetch_and_update_option_chain(smart_api):
 
         if cached_options_df is not None and not cached_options_df.empty:
             filtered_opts = cached_options_df[(cached_options_df['strike'] >= atm_strike - 950) & (cached_options_df['strike'] <= atm_strike + 950)].copy()
-            tokens_nfo = [str(t) for t in filtered_opts['token'].unique().tolist()]
+            tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
         else:
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes with Alternative Robust Method
+        # 2. Fetch NFO Option Quotes
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -217,10 +217,6 @@ def fetch_and_update_option_chain(smart_api):
             
             try:
                 quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-                
-                if not quotes or not quotes.get('status'):
-                    quotes = smart_api.getMarketData("FULL", {"exchange": "NFO", "tokens": batch_tokens})
-                
                 if quotes and quotes.get('status') and quotes.get('data'):
                     data_obj = quotes['data']
                     if isinstance(data_obj, dict):
@@ -235,7 +231,8 @@ def fetch_and_update_option_chain(smart_api):
 
         quotes_data = []
         for item in all_fetched_quotes:
-            tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', ''))))
+            # Extract token checking all possible key variations
+            tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
             ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
             volume = float(item.get('tradeVolume', item.get('volume', 0)))
             oi = float(item.get('opnInterest', item.get('oi', 0)))
@@ -253,8 +250,8 @@ def fetch_and_update_option_chain(smart_api):
         print(f"DEBUG: quotes_df shape: {quotes_df.shape}, filtered_opts shape: {filtered_opts.shape}")
 
         if not quotes_df.empty and not filtered_opts.empty:
-            filtered_opts['token'] = filtered_opts['token'].astype(str)
-            quotes_df['token'] = quotes_df['token'].astype(str)
+            filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
+            quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
             merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
             print(f"DEBUG: Merged dataframe shape: {merged.shape}")
         else:
