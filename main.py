@@ -3,8 +3,10 @@ import os
 import json
 import requests
 import pandas as pd
+import numpy as np
 import pyotp
 import gspread
+from scipy.stats import norm
 from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 from flask import Flask
@@ -63,11 +65,59 @@ except Exception as e:
     exit()
 
 # ==========================================
+# ACCURATE IV & GREEKS CALCULATOR (BLACK-SCHOLES)
+# ==========================================
+def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
+    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0:
+        return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
+
+    low_sigma, high_sigma = 0.01, 3.0
+    sigma = 0.20
+    for _ in range(15):
+        mid_sigma = (low_sigma + high_sigma) / 2
+        d1 = (np.log(S / K) + (r + 0.5 * mid_sigma ** 2) * t) / (mid_sigma * np.sqrt(t))
+        d2 = d1 - mid_sigma * np.sqrt(t)
+        
+        price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
+        
+        if abs(price - ltp) < 0.05:
+            sigma = mid_sigma
+            break
+        if price > ltp:
+            high_sigma = mid_sigma
+        else:
+            low_sigma = mid_sigma
+    else:
+        sigma = mid_sigma
+
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+    d2 = d1 - sigma * np.sqrt(t)
+    
+    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
+    vega = S * norm.pdf(d1) * np.sqrt(t) / 100
+
+    if flag == 'CE':
+        delta = norm.cdf(d1)
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365
+    else:
+        delta = norm.cdf(d1) - 1
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
+
+    return {
+        'iv': round(sigma * 100, 2),
+        'delta': round(delta, 3),
+        'gamma': round(gamma, 4),
+        'theta': round(theta, 2),
+        'vega': round(vega, 2)
+    }
+
+# ==========================================
 # SCRIP MASTER LOADER VIA OFFICIAL JSON
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
 nifty_spot_token = "26000"
+previous_oi_dict = {}
 
 def get_upcoming_tuesday():
     today = datetime.now()
@@ -121,10 +171,10 @@ def initialize_scrip_master(smart_api):
             earliest_expiry = get_upcoming_tuesday()
 
 # ==========================================
-# FETCH & UPDATE LOOP (ONLY DIRECT FETCH)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry
+    global cached_options_df, earliest_expiry, previous_oi_dict
     try:
         current_time_str = datetime.now().strftime('%H:%M:%S')
         print(f"\n🔄 Loop executed at: {current_time_str}")
@@ -182,11 +232,17 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
+            # OI Change Calculation
+            prev_oi = previous_oi_dict.get(tok, oi)
+            oi_chg = oi - prev_oi
+            previous_oi_dict[tok] = oi
+
             quotes_data.append({
                 'token': tok, 
                 'ltp': ltp, 
                 'volume': volume, 
                 'oi': oi, 
+                'oi_chg': oi_chg,
                 'net_change': net_change
             })
 
@@ -199,14 +255,21 @@ def fetch_and_update_option_chain(smart_api):
         else:
             merged = pd.DataFrame()
 
+        try:
+            exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
+        except:
+            exp_date = datetime.now()
+
+        t = max((exp_date - datetime.now()).days / 365.0, 0.001)
+        r = 0.07
+
         strikes = sorted(merged['strike'].unique()) if not merged.empty else range(int(atm_strike - 950), int(atm_strike + 1000), 50)
         
-        # Structure mapping directly to columns A to U as per your sheet layout
         output_rows = [
             [
-                "", "", "", "", "", "", "CE OI", "CE Vol", "CE Change", "CE LTP",
+                "CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP",
                 "Strike Price",
-                "PE LTP", "PE Change", "PE Vol", "PE OI", "", "", "", "", "", ""
+                "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"
             ]
         ]
 
@@ -217,23 +280,28 @@ def fetch_and_update_option_chain(smart_api):
             ce_ltp = float(ce_row['ltp'].values[0]) if not ce_row.empty and 'ltp' in ce_row.columns else 0.0
             ce_vol = float(ce_row['volume'].values[0]) if not ce_row.empty and 'volume' in ce_row.columns else 0.0
             ce_oi = float(ce_row['oi'].values[0]) if not ce_row.empty and 'oi' in ce_row.columns else 0.0
+            ce_oi_chg = float(ce_row['oi_chg'].values[0]) if not ce_row.empty and 'oi_chg' in ce_row.columns else 0.0
             ce_change = float(ce_row['net_change'].values[0]) if not ce_row.empty and 'net_change' in ce_row.columns else 0.0
 
             pe_ltp = float(pe_row['ltp'].values[0]) if not pe_row.empty and 'ltp' in pe_row.columns else 0.0
             pe_vol = float(pe_row['volume'].values[0]) if not pe_row.empty and 'volume' in pe_row.columns else 0.0
             pe_oi = float(pe_row['oi'].values[0]) if not pe_row.empty and 'oi' in pe_row.columns else 0.0
+            pe_oi_chg = float(pe_row['oi_chg'].values[0]) if not pe_row.empty and 'oi_chg' in pe_row.columns else 0.0
             pe_change = float(pe_row['net_change'].values[0]) if not pe_row.empty and 'net_change' in pe_row.columns else 0.0
 
+            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
+            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
+
             output_rows.append([
-                "", "", "", "", "", "", ce_oi, ce_vol, ce_change, ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], f"{ce_gks['iv']}%", ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
-                pe_ltp, pe_change, pe_vol, pe_oi, "", "", "", "", "", ""
+                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, f"{pe_gks['iv']}%", pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U100"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Direct Option Chain Data Fetched & Updated Successfully!")
+            print(f"🎯 Option Chain with Direct Data & Accurate Greeks Updated Successfully!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
