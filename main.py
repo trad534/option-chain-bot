@@ -164,7 +164,7 @@ def initialize_scrip_master(smart_api):
 
         print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠️️ Scrip Master API Error: {e}")
+        print(f"⚠ Scrip Master API Error: {e}")
         if earliest_expiry == "N/A":
             earliest_expiry = get_upcoming_tuesday()
 
@@ -208,7 +208,7 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes via ltpData & getMarketData fallback
+        # 2. Fetch NFO Option Quotes using standard exchange payload dictionary
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
@@ -216,18 +216,11 @@ def fetch_and_update_option_chain(smart_api):
                 continue
             
             try:
-                res = smart_api.ltpData("NFO", batch_tokens, batch_tokens[0])
+                # Correct payload format for SmartAPI getMarketData FULL
+                res = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
                 if res and res.get('status') and res.get('data'):
-                    data_obj = res['data']
-                    if isinstance(data_obj, list):
-                        all_fetched_quotes.extend(data_obj)
-                    elif isinstance(data_obj, dict):
-                        all_fetched_quotes.append(data_obj)
-                else:
-                    quotes = smart_api.getMarketData("FULL", {"exchange": "NFO", "symboltokens": batch_tokens})
-                    if quotes and quotes.get('status') and quotes.get('data'):
-                        if 'fetched' in quotes['data']:
-                            all_fetched_quotes.extend(quotes['data']['fetched'])
+                    if 'fetched' in res['data']:
+                        all_fetched_quotes.extend(res['data']['fetched'])
             except Exception as batch_err:
                 print(f"⚠ Batch fetch error: {batch_err}")
 
