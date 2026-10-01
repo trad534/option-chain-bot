@@ -146,6 +146,8 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
+                # Strike price adjustment for large integer formats in master
+                full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
                 
             print(f"✅ Scrip Master Loaded Successfully! Total Records: {len(full_scrip_df)}")
     except Exception as e:
@@ -351,7 +353,7 @@ def fetch_and_update_option_chain(smart_api):
 
         if len(output_rows) > 1:
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Table Updated Successfully with Proper Ascending Strikes for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully with Corrected Strikes for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
