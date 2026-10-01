@@ -68,7 +68,6 @@ except Exception as e:
 # SAFE IV & GREEKS CALCULATOR
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    # Agar LTP 0.50 se kam hai toh calculation skip karke zero return karo (Deep OTM handling)
     if t <= 0 or S <= 0 or K <= 0 or ltp < 0.50:
         return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
@@ -273,7 +272,17 @@ def fetch_and_update_option_chain(smart_api):
             ]
         ]
 
-        for st in strikes:
+        for idx, st in enumerate(strikes):
+            # Dynamic ATM Divider Row insertion between the two strikes surrounding spot price
+            if idx < len(strikes) - 1:
+                next_st = strikes[idx + 1]
+                if st <= spot_price < next_st:
+                    output_rows.append([
+                        "", "", "", "", "", "", "", "", "", "",
+                        "", # Blank strike cell for divider
+                        "", "", "", "", "", "", "", "", "", ""
+                    ])
+
             ce_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('CE'))] if not merged.empty else pd.DataFrame()     
             pe_row = merged[(merged['strike'] == st) & (merged['symbol'].str.endswith('PE'))] if not merged.empty else pd.DataFrame()     
 
@@ -302,9 +311,9 @@ def fetch_and_update_option_chain(smart_api):
             ])
 
         if len(output_rows) > 1:
-            data_sheet.batch_clear(["A10:U100"])
+            data_sheet.batch_clear(["A10:U130"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Data Cleaned & Updated Successfully!")
+            print(f"🎯 Option Chain with Dynamic ATM Divider Updated Successfully!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
