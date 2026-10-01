@@ -125,7 +125,10 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
 nifty_spot_token = "26000"
-previous_oi_dict = {}
+
+# Storage for 09:15 AM OI baseline tracking
+morning_oi_dict = {}
+baseline_date = None
 
 def get_upcoming_tuesday():
     today = datetime.now()
@@ -182,11 +185,19 @@ def initialize_scrip_master(smart_api):
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global cached_options_df, earliest_expiry, previous_oi_dict
+    global cached_options_df, earliest_expiry, morning_oi_dict, baseline_date
     try:
-        current_time_str = datetime.now().strftime('%H:%M:%S')
+        now_dt = datetime.now()
+        current_time_str = now_dt.strftime('%H:%M:%S')
+        current_date_str = now_dt.strftime('%Y-%m-%d')
+        
         print(f"\n🔄 Loop executed at: {current_time_str}")
         data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+
+        # Reset morning OI dictionary on a new trading day
+        if baseline_date != current_date_str:
+            morning_oi_dict = {}
+            baseline_date = current_date_str
 
         if cached_options_df is None or cached_options_df.empty:
             initialize_scrip_master(smart_api)
@@ -233,6 +244,9 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as batch_err:
                 print(f"⚠ Batch fetch error: {batch_err}")
 
+        market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
+        is_market_open_passed = now_dt.time() >= market_open_time
+
         quotes_data = []
         for item in all_fetched_quotes:
             tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
@@ -241,9 +255,13 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
-            prev_oi = previous_oi_dict.get(tok, oi)
-            oi_chg = oi - prev_oi
-            previous_oi_dict[tok] = oi
+            # Capture 09:15 AM baseline OI (or the first fetched OI at/after 09:15 AM)
+            if is_market_open_passed:
+                if tok not in morning_oi_dict:
+                    morning_oi_dict[tok] = oi
+
+            base_oi = morning_oi_dict.get(tok, oi)
+            oi_chg = oi - base_oi  # Exact change from 09:15 AM baseline
 
             quotes_data.append({
                 'token': tok, 
@@ -315,7 +333,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Accurate IV & Aligned Rows)!")
+            print(f"🎯 Option Chain Updated Successfully (09:15 AM OI Change Baseline Active)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
