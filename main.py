@@ -10,6 +10,7 @@ import scipy.stats as si
 import numpy as np
 from flask import Flask
 import threading
+import pyotp
 
 # ==========================================
 # FLASK WEB SERVER FOR RENDER PORT BINDING
@@ -44,20 +45,29 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+# Google Sheets Initialization using Secret File or Env
 try:
-    creds_dict = {
-        "type": os.getenv("GOOGLE_TYPE", "service_account"),
-        "project_id": os.getenv("GOOGLE_PROJECT_ID"),
-        "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
-        "private_key": os.getenv("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
-        "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
-        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-        "auth_uri": os.getenv("GOOGLE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
-        "token_uri": os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
-        "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
-        "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
-    }
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    secret_file_path = "/etc/secrets/credentials.json"
+    if os.path.exists(secret_file_path):
+        creds = Credentials.from_service_account_file(secret_file_path, scopes=scope)
+        print("✅ Loaded Google Credentials from Secret File successfully!")
+    else:
+        # Fallback dictionary if file is not in secret path
+        creds_dict = {
+            "type": os.getenv("GOOGLE_TYPE", "service_account"),
+            "project_id": os.getenv("GOOGLE_PROJECT_ID"),
+            "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
+            "private_key": os.getenv("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
+            "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "auth_uri": os.getenv("GOOGLE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+            "token_uri": os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+            "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+            "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
+        }
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        print("✅ Loaded Google Credentials from Environment Variables successfully!")
+
     gc = gspread.authorize(creds)
     sh = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = sh.worksheet(WORKSHEET_NAME)
@@ -70,7 +80,7 @@ def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
         return {'iv': 0.0, 'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0}
     
     sigma = 0.20
-    for _ in range(100):
+    for _ in range(50):
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
         
@@ -78,19 +88,21 @@ def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
             price = S * si.norm.cdf(d1) - K * np.exp(-r * T) * si.norm.cdf(d2)
             vega = S * si.norm.pdf(d1) * np.sqrt(T) / 100
         else:
-            price = K * np.exp(-r * T) * si.norm.cdf(-d2) - S * si.norm.cdf(-d1)
+            price = K * np.exp(-r * T) * si.norm.cdf(-d2) - S * si.norm.cdf(-1 * d1)
             vega = S * si.norm.pdf(d1) * np.sqrt(T) / 100
             
         diff = market_price - price
         if abs(diff) < 1e-4:
             break
-        if vega == 0:
+        if abs(vega) < 1e-6:
             break
+        
         sigma += diff / (vega * 100)
         sigma = max(0.01, min(sigma, 5.0))
         
     iv = round(sigma * 100, 2)
-    if sigma > 0:
+    
+    if sigma > 0 and abs(vega) >= 1e-6:
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
         gamma = round(si.norm.pdf(d1) / (S * sigma * np.sqrt(T)), 4)
@@ -266,7 +278,6 @@ def fetch_and_update_option_chain(smart_api):
 def run_bot_loop():
     print("🚀 Starting Bot Loop Thread...")
     try:
-        import pyotp
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
         smart_api = SmartConnect(api_key=API_KEY)
         data = smart_api.generateSession(CLIENT_ID, PIN, totp)
@@ -286,10 +297,8 @@ def run_bot_loop():
         print(f"❌ Authentication Exception: {auth_err}")
 
 if __name__ == "__main__":
-    # Start Flask in a background thread so Render port requirement is satisfied immediately
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Run the main option chain loop
     run_bot_loop()
