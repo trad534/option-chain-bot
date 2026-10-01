@@ -44,7 +44,7 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
-INDEX_SHEET_NAME = "Option chain index new"  # J4 symbol selection ke liye
+INDEX_SHEET_NAME = "Option chain index new"
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -146,7 +146,6 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
-                # Strike price adjustment for large integer formats in master
                 full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
                 
             print(f"✅ Scrip Master Loaded Successfully! Total Records: {len(full_scrip_df)}")
@@ -176,7 +175,7 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # 1. Read Selected Symbol from J4 in 'Option chain index new'
+        # 1. Read Selected Symbol from J4
         selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not selected_symbol or selected_symbol == "NONE":
             print("⚠ No valid symbol found in J4. Waiting...")
@@ -251,7 +250,7 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Symbol: {selected_symbol} | Spot: {spot_price} | Current Expiry: {current_expiry} | Lot Size: {lot_size}")
 
-        # Update Headers (`upstox get data`)
+        # Update Headers
         try:
             data_sheet.update(range_name="J9", values=[[selected_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
@@ -266,18 +265,18 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating header cells: {sheet_err}")
 
-        # 5. Strike step & filtering proper ascending strikes around spot price
+        # 5. ROBUST STRIKE SLICING AROUND SPOT PRICE (CENTERED)
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
-        strike_step = 50
-        if len(all_master_strikes) > 1:
-            strike_step = abs(all_master_strikes[1] - all_master_strikes[0])
-
-        base_strike = round(spot_price / strike_step) * strike_step
-        range_span = strike_step * 20  # ±20 strikes
-
-        strikes = [st for st in all_master_strikes if base_strike - range_span <= st <= base_strike + range_span]
-        if not strikes:
-            strikes = all_master_strikes[:40]
+        
+        if all_master_strikes:
+            # Find the index of the strike closest to the live spot price
+            closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
+            # Take 20 strikes below and 20 strikes above the closest strike (Total ~41 strikes)
+            start_idx = max(0, closest_idx - 20)
+            end_idx = min(len(all_master_strikes), closest_idx + 21)
+            strikes = all_master_strikes[start_idx:end_idx]
+        else:
+            strikes = []
 
         filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
         tokens_nfo = [str(t).strip() for t in filtered_opts['token'].unique().tolist()]
@@ -353,7 +352,7 @@ def fetch_and_update_option_chain(smart_api):
 
         if len(output_rows) > 1:
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Table Updated Successfully with Corrected Strikes for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully centered around Spot {spot_price} for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
