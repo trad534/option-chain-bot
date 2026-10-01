@@ -301,10 +301,11 @@ def fetch_and_update_option_chain(smart_api):
                 pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_str, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-            # Exact Check: Agar spot price is strike aur agle strike ke beech me hai, toh turant neeche blank row daal do
+            # Check next strike for divider placement
             if idx < len(strikes) - 1:
                 next_st = strikes[idx + 1]
                 if st <= spot_price < next_st:
+                    print(f"📍 Divider placed between {st} and {next_st} for Spot: {spot_price}")
                     output_rows.append([
                         "", "", "", "", "", "", "", "", "", "",
                         "", # Blank strike cell for divider
@@ -314,7 +315,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U130"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain with Perfect Dynamic ATM Divider Updated Successfully!")
+            print(f"🎯 Option Chain Updated Successfully!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
