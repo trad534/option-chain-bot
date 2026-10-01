@@ -135,7 +135,7 @@ def initialize_scrip_master(smart_api):
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=20)
+        resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
             scrip_data = resp.json()
             full_scrip_df = pd.DataFrame(scrip_data)
@@ -191,12 +191,23 @@ def fetch_and_update_option_chain(smart_api):
                         continue
                     
                     sym_upper = sym.upper()
-                    match = full_scrip_df[(full_scrip_df['symbol'].str.upper() == sym_upper) | (full_scrip_df['name'].str.upper() == sym_upper)]
+                    # Smart Matching across NSE, BSE, NFO, MCX
+                    match = full_scrip_df[
+                        ((full_scrip_df['symbol'].str.upper() == sym_upper) | (full_scrip_df['name'].str.upper() == sym_upper)) &
+                        (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
+                    ]
+                    
                     if match.empty:
-                        match = full_scrip_df[full_scrip_df['symbol'].str.contains(sym_upper, case=False, na=False) | full_scrip_df['name'].str.contains(sym_upper, case=False, na=False)]
+                        match = full_scrip_df[
+                            (full_scrip_df['symbol'].str.contains(sym_upper, case=False, na=False) | full_scrip_df['name'].str.contains(sym_upper, case=False, na=False)) &
+                            (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
+                        ]
                     
                     if not match.empty:
-                        row_item = match.iloc[0]
+                        # Prefer -EQ or index segment if available
+                        eq_match = match[match['symbol'].str.endswith('-EQ', na=False)]
+                        row_item = eq_match.iloc[0] if not eq_match.empty else match.iloc[0]
+                        
                         exch = str(row_item['exch_seg']).strip()
                         tok = str(row_item['token']).strip()
                         official_sym = str(row_item['symbol']).strip()
@@ -466,7 +477,7 @@ def run_bot_loop():
     while True:
         try:
             print("🔄 Attempting to generate session...")
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTPS_SECRET else "123456" # type: ignore
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
