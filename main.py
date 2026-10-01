@@ -112,7 +112,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER VIA SMARTAPI SEARCH
+# SCRIP MASTER LOADER VIA OFFICIAL JSON
 # ==========================================
 cached_options_df = pd.DataFrame()
 earliest_expiry = "N/A"
@@ -129,13 +129,14 @@ def get_upcoming_tuesday():
 def initialize_scrip_master(smart_api):
     global cached_options_df, earliest_expiry
     try:
-        print("📥 Fetching Nifty Options via SmartAPI Search...")
-        res = smart_api.searchScrip("NFO", "NIFTY")
-        if res and res.get('status') and res.get('data'):
-            scrip_data = res['data']
+        print("📥 Downloading Angel One Scrip Master JSON...")
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        resp = requests.get(url, timeout=15)
+        if resp.status_code == 200:
+            scrip_data = resp.json()
             df = pd.DataFrame(scrip_data)
             
-            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
+            nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY') & (df['instrumenttype'] == 'OPTIDX')].copy()
             if not nifty_opts.empty:
                 if 'strike' in nifty_opts.columns:
                     nifty_opts['strike'] = nifty_opts['strike'].astype(float)
@@ -143,7 +144,7 @@ def initialize_scrip_master(smart_api):
                         nifty_opts['strike'] = nifty_opts['strike'] / 100
                 
                 if 'expiry' in nifty_opts.columns:
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
+                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
                     valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
                     
                     if not valid_opts.empty:
@@ -162,9 +163,9 @@ def initialize_scrip_master(smart_api):
         if earliest_expiry == "N/A" or not earliest_expiry:
             earliest_expiry = get_upcoming_tuesday()
 
-        print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+        print(f"✅ Scrip Master Loaded Successfully! Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
     except Exception as e:
-        print(f"⚠ Scrip Master API Error: {e}")
+        print(f"⚠ Scrip Master Download Error: {e}")
         if earliest_expiry == "N/A":
             earliest_expiry = get_upcoming_tuesday()
 
