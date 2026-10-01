@@ -1,180 +1,137 @@
-import time
 import os
-import json
+import time
 import requests
 import pandas as pd
-import numpy as np
-import pyotp
-import gspread
-from scipy.stats import norm
 from datetime import datetime, timedelta
+import gspread
+from google.oauth2.service_account import Credentials
 from SmartApi import SmartConnect
-from flask import Flask
-import threading
-import builtins
+import scipy.stats as si
+import numpy as np
 
 # ==========================================
-# FORCE FLUSH LOGS IN RENDER (BUFFERING FIX)
+# CONFIGURATION & CREDENTIALS
 # ==========================================
-def print(*args, **kwargs):
-    kwargs['flush'] = True
-    builtins.print(*args, **kwargs)
-
-# ==========================================
-# FLASK WEB SERVER FOR RENDER PORT
-# ==========================================
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Option Chain Bot is active and running!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-# ==========================================
-# CONFIGURATION & GOOGLE SHEET
-# ==========================================
+API_KEY = os.getenv("ANGEL_API_KEY")
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
-API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
-GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
+GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "6 LTP C...")
+WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "upstox get data")
 
-def get_gspread_client():
-    if os.path.exists("/etc/secrets/Credentials.json"):
-        return gspread.service_account(filename="/etc/secrets/Credentials.json")
-    if os.path.exists("Credentials.json"):
-        return gspread.service_account(filename="Credentials.json")
-    env_creds = os.getenv("GOOGLE_CREDENTIALS")
-    if env_creds:
-        creds_dict = json.loads(env_creds)
-        return gspread.service_account_from_dict(creds_dict)
-    raise Exception("No Credentials found for Google Sheets!")
+# Global variables
+cached_options_df = None
+earliest_expiry = None
+nifty_spot_token = "99926000"  # Nifty 50 Index Token for NSE
+
+# Setup Google Sheets Connection
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 try:
-    gc = get_gspread_client()
-    spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheet Connected Successfully!")
-except Exception as e:
-    print(f"❌ Google Sheet Connection Error: {e}")
-    exit()
-
-# ==========================================
-# BLACK-SCHOLES GREEKS & IV CALCULATOR
-# ==========================================
-def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0:
-        return {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
-
-    low_sigma, high_sigma = 0.01, 3.0
-    sigma = 0.20
-    for _ in range(15):
-        mid_sigma = (low_sigma + high_sigma) / 2
-        d1 = (np.log(S / K) + (r + 0.5 * mid_sigma ** 2) * t) / (mid_sigma * np.sqrt(t))
-        d2 = d1 - mid_sigma * np.sqrt(t)
-        
-        price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
-        
-        if abs(price - ltp) < 0.1:
-            sigma = mid_sigma
-            break
-        if price > ltp:
-            high_sigma = mid_sigma
-        else:
-            low_sigma = mid_sigma
-    else:
-        sigma = mid_sigma
-
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
-    d2 = d1 - sigma * np.sqrt(t)
-    
-    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
-    vega = S * norm.pdf(d1) * np.sqrt(t) / 100
-
-    if flag == 'CE':
-        delta = norm.cdf(d1)
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365
-    else:
-        delta = norm.cdf(d1) - 1
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
-
-    return {
-        'iv': round(sigma * 100, 2),
-        'delta': round(delta, 3),
-        'gamma': round(gamma, 4),
-        'theta': round(theta, 2),
-        'vega': round(vega, 2)
+    # Render environment ke liye service account JSON handling
+    creds_dict = {
+        "type": os.getenv("GOOGLE_TYPE", "service_account"),
+        "project_id": os.getenv("GOOGLE_PROJECT_ID"),
+        "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
+        "private_key": os.getenv("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
+        "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "auth_uri": os.getenv("GOOGLE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+        "token_uri": os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+        "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+        "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
     }
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    gc = gspread.authorize(creds)
+    sh = gc.open(GOOGLE_SHEET_NAME)
+    data_sheet = sh.worksheet(WORKSHEET_NAME)
+    print("✅ Google Sheets Connected Successfully!")
+except Exception as e:
+    print(f"❌ Google Sheets Connection Error: {e}")
 
 # ==========================================
-# SCRIP MASTER LOADER VIA SMARTAPI SEARCH
+# GREEKS & IV CALCULATION
 # ==========================================
-cached_options_df = pd.DataFrame()
-earliest_expiry = "N/A"
-nifty_spot_token = "26000"
+def calculate_iv_and_greeks(option_type, S, K, T, r, market_price):
+    if market_price <= 0 or T <= 0 or S <= 0 or K <= 0:
+        return {'iv': 0.0, 'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0}
+    
+    sigma = 0.20  # initial guess
+    for _ in range(100):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        if option_type == 'CE':
+            price = S * si.norm.cdf(d1) - K * np.exp(-r * T) * si.norm.cdf(d2)
+            vega = S * si.norm.pdf(d1) * np.sqrt(T) / 100
+        else:
+            price = K * np.exp(-r * T) * si.norm.cdf(-d2) - S * si.norm.cdf(-d1)
+            vega = S * si.norm.pdf(d1) * np.sqrt(T) / 100
+            
+        diff = market_price - price
+        if abs(diff) < 1e-4:
+            break
+        if vega == 0:
+            break
+        sigma += diff / (vega * 100)
+        sigma = max(0.01, min(sigma, 5.0))
+        
+    iv = round(sigma * 100, 2)
+    
+    # Calculate Greeks using final IV
+    if sigma > 0:
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        gamma = round(si.norm.pdf(d1) / (S * sigma * np.sqrt(T)), 4)
+        vega_val = round(S * si.norm.pdf(d1) * np.sqrt(T) / 100, 2)
+        
+        if option_type == 'CE':
+            delta = round(si.norm.cdf(d1), 4)
+            theta = round((- (S * si.norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) - r * K * np.exp(-r * T) * si.norm.cdf(d2)) / 365, 2)
+        else:
+            delta = round(si.norm.cdf(d1) - 1, 4)
+            theta = round((- (S * si.norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) + r * K * np.exp(-r * T) * si.norm.cdf(-d2)) / 365, 2)
+    else:
+        delta, gamma, theta, vega_val = 0.0, 0.0, 0.0, 0.0
 
-def get_upcoming_tuesday():
-    today = datetime.now()
-    days_ahead = (1 - today.weekday() + 7) % 7
-    if days_ahead == 0 and today.hour >= 15:
-        days_ahead = 7
-    tuesday = today + timedelta(days=days_ahead)
-    return tuesday.strftime('%d%b%Y').upper()
+    return {'iv': iv, 'delta': delta, 'gamma': gamma, 'theta': theta, 'vega': vega_val}
 
+# ==========================================
+# INITIALIZE SCRIP MASTER
+# ==========================================
 def initialize_scrip_master(smart_api):
     global cached_options_df, earliest_expiry
+    print("🔄 Downloading and parsing NFO Scrip Master...")
     try:
-        print("📥 Fetching Nifty Options via SmartAPI Search...")
-        res = smart_api.searchScrip("NFO", "NIFTY")
-        if res and res.get('status') and res.get('data'):
-            scrip_data = res['data']
-            df = pd.DataFrame(scrip_data)
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            df = pd.DataFrame(data)
             
-            nifty_opts = df[df['instrumenttype'] == 'OPTIDX'].copy()
-            if not nifty_opts.empty:
-                if 'strike' in nifty_opts.columns:
-                    nifty_opts['strike'] = nifty_opts['strike'].astype(float)
-                    if nifty_opts['strike'].max() > 50000:
-                        nifty_opts['strike'] = nifty_opts['strike'] / 100
-                
-                if 'expiry' in nifty_opts.columns:
-                    nifty_opts['parsed_expiry'] = pd.to_datetime(nifty_opts['expiry'], errors='coerce')
-                    valid_opts = nifty_opts.dropna(subset=['parsed_expiry'])
-                    
-                    if not valid_opts.empty:
-                        min_exp_dt = valid_opts['parsed_expiry'].min()
-                        earliest_expiry = min_exp_dt.strftime('%d%b%Y').upper()
-                        cached_options_df = nifty_opts[nifty_opts['parsed_expiry'] == min_exp_dt].copy()
-                        
-                if cached_options_df.empty and not nifty_opts.empty:
-                    cached_options_df = nifty_opts.copy()
-
-                # Normalize token and symbol columns
-                if 'symboltoken' in cached_options_df.columns:
-                    cached_options_df['token'] = cached_options_df['symboltoken'].astype(str)
-                elif 'symbolToken' in cached_options_df.columns:
-                    cached_options_df['token'] = cached_options_df['symbolToken'].astype(str)
-                elif 'token' in cached_options_df.columns:
-                    cached_options_df['token'] = cached_options_df['token'].astype(str)
-
-                if 'tradingsymbol' in cached_options_df.columns:
-                    cached_options_df['symbol'] = cached_options_df['tradingsymbol']
-                elif 'symbol' in cached_options_df.columns:
-                    cached_options_df['symbol'] = cached_options_df['symbol']
-
-        if earliest_expiry == "N/A" or not earliest_expiry:
-            earliest_expiry = get_upcoming_tuesday()
-
-        print(f"✅ Scrip Master Loaded! Final Expiry: {earliest_expiry}, Total Options: {len(cached_options_df)}")
+            # Filter for Nifty Options (NFO)
+            nifty_opts = df[(df['exch_seg'] == 'NFO') & (df['name'] == 'NIFTY')].copy()
+            nifty_opts['strike'] = nifty_opts['strike'].astype(float) / 100.0
+            
+            # Parse expiry date
+            nifty_opts['expiry_dt'] = pd.to_datetime(nifty_opts['expiry'], format='%d%b%Y', errors='coerce')
+            valid_opts = nifty_opts.dropna(subset=['expiry_dt']).sort_values('expiry_dt')
+            
+            if not valid_opts.empty:
+                earliest_expiry = valid_opts['expiry'].iloc[0]
+                # Filter only for the nearest expiry date to optimize token list
+                cached_options_df = valid_opts[valid_opts['expiry'] == earliest_expiry].copy()
+                print(f"✅ Scrip Master Loaded. Nearest Expiry: {earliest_expiry}, Total Contracts: {len(cached_options_df)}")
+            else:
+                print("⚠ No valid option contracts found in scrip master.")
+        else:
+            print(f"❌ Failed to download scrip master, status code: {response.status_code}")
     except Exception as e:
-        print(f"⚠️ Scrip Master API Error: {e}")
-        if earliest_expiry == "N/A":
-            earliest_expiry = get_upcoming_tuesday()
+        print(f"❌ Error in initialize_scrip_master: {e}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -225,18 +182,24 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"📦 Total tokens to fetch: {len(tokens_nfo)}")
 
-        # 2. Fetch NFO Option Quotes securely in batches
+        # 2. Fetch NFO Option Quotes securely in batches & PRINT RAW RESPONSE
         all_fetched_quotes = []
         if tokens_nfo:
             for i in range(0, len(tokens_nfo), 50):
                 batch_tokens = tokens_nfo[i:i+50]
                 try:
                     quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+                    print(f"🔍 RAW API Response for batch: {str(quotes)[:300]}...")
+                    
                     if quotes and quotes.get('status'):
                         q_data = quotes.get('data', {})
                         fetched_list = q_data.get('fetched', [])
                         if not fetched_list and isinstance(q_data, list):
                             fetched_list = q_data
+                        if not fetched_list and isinstance(q_data, dict):
+                            if 'pricedata' in q_data:
+                                fetched_list = q_data['pricedata']
+                        
                         if fetched_list:
                             all_fetched_quotes.extend(fetched_list)
                 except Exception as q_err:
@@ -262,7 +225,6 @@ def fetch_and_update_option_chain(smart_api):
 
         quotes_df = pd.DataFrame(quotes_data)
         
-        # Merge safely ensuring token types match
         if not quotes_df.empty and not filtered_opts.empty:
             filtered_opts['token'] = filtered_opts['token'].astype(str).str.strip()
             quotes_df['token'] = quotes_df['token'].astype(str).str.strip()
@@ -322,43 +284,25 @@ def fetch_and_update_option_chain(smart_api):
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
 # ==========================================
-# MAIN EXECUTION THREADS
+# MAIN EXECUTION
 # ==========================================
-def run_bot_loop():
-    print("🚀 Starting Bot Loop Thread...")
-    
-    try:
-        smart_api = SmartConnect(api_key=API_KEY)
-    except Exception as e:
-        print(f"❌ SmartConnect Init Error: {e}")
-        return
-        
-    while True:
-        try:
-            print("🔄 Attempting to generate session...")
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-            data = smart_api.generateSession(CLIENT_ID, PIN, totp)
-            if data and data.get('status'):
-                print("✅ Angel One Session Generated Successfully!")
-                initialize_scrip_master(smart_api)
-                break
-            else:
-                print(f"⚠ Session Failed Response: {data}")
-                time.sleep(10)
-        except Exception as e:
-            print(f"❌ Session Generation Exception: {e}")
-            time.sleep(10)
-
-    while True:
-        try:
-            fetch_and_update_option_chain(smart_api)
-        except Exception as e:
-            print(f"❌ Loop Error: {e}")
-        time.sleep(15)
-
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    run_bot_loop()
+    print("🚀 Starting Angel One Option Chain Worker...")
+    try:
+        import pyotp
+        totp = pyotp.TOTP(TOTP_SECRET).now()
+        smart_api = SmartConnect(api_key=API_KEY)
+        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+        
+        if data and data.get('status'):
+            print("✅ Angel One Session Generated Successfully!")
+            while True:
+                try:
+                    fetch_and_update_option_chain(smart_api)
+                except Exception as loop_err:
+                    print(f"⚠ Loop Error: {loop_err}")
+                time.sleep(5)  # Refresh every 5 seconds
+        else:
+            print(f"❌ Login Failed: {data}")
+    except Exception as auth_err:
+        print(f"❌ Authentication Exception: {auth_err}")
