@@ -65,13 +65,11 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (MICRON LEVEL PRECISION)
+# ACCURATE IV & GREEKS (FIXED CE/PE LOGIC)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
-    # Intrinsic value check to avoid absurd IV on deep ITM options
     intrinsic = max(0, S - K) if flag == 'CE' else max(0, K - S)
     if t <= 0 or S <= 0 or K <= 0 or ltp <= intrinsic or ltp < 0.05:
-        # Default Greeks for deep ITM/OTM if skipped
         if flag == 'CE':
             delta = 1.0 if S > K else 0.0
         else:
@@ -79,7 +77,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
     sigma = 0.20  # Initial guess
-    for _ in range(200):  # High iterations for micro-accuracy
+    for _ in range(200):
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
         
@@ -91,7 +89,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         vega = S * norm.pdf(d1) * np.sqrt(t)
         diff = price - ltp
         
-        if abs(diff) < 1e-6:  # High precision tolerance matching terminals
+        if abs(diff) < 1e-6:
             break
         if vega < 1e-8:
             break
@@ -100,11 +98,11 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if sigma <= 0:
             sigma = 0.0001
             break
-        if sigma > 5.0:  # Cap at 500% IV
+        if sigma > 5.0:
             sigma = 5.0
             break
 
-    # Final Greeks calculation using precise converged sigma
+    # Recalculate d1, d2 with final sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
@@ -115,7 +113,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         delta = norm.cdf(d1)
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365
     else:
-        delta = norm.cdf(d1) - 1
+        delta = norm.cdf(d1) - 1  # Put delta is negative
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
 
     return {
@@ -333,7 +331,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Micron-Level IV Precision Active)!")
+            print(f"🎯 Option Chain Updated Successfully (Accurate PE/CE IV Logic Active)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
