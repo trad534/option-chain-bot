@@ -65,7 +65,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (FIXED CE/PE LOGIC)
+# ACCURATE IV & GREEKS (WITH CLEAN LOGIC)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     intrinsic = max(0, S - K) if flag == 'CE' else max(0, K - S)
@@ -319,8 +319,9 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
-            ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 0 else ""
-            pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 0 else ""
+            # Updated to show '-' if IV is invalid or too low
+            ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 1.0 else "-"
+            pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 1.0 else "-"
 
             output_rows.append([
                 ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
@@ -331,7 +332,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Accurate PE/CE IV Logic Active)!")
+            print(f"🎯 Option Chain Updated Successfully with '-' format!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
