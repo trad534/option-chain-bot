@@ -208,26 +208,28 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes with Correct Payload Structure
+        # 2. Fetch NFO Option Quotes with Alternative Robust Method
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 40):
             batch_tokens = tokens_nfo[i:i+40]
             if not batch_tokens:
                 continue
             
-            # Angel One format for exchange tokens
-            params = {"exchange": "NFO", "tokens": batch_tokens}
-            quotes = smart_api.getMarketData("FULL", params)
-            
-            if not quotes or not quotes.get('status'):
-                # Fallback dictionary format
+            try:
                 quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
-
-            if quotes and quotes.get('status') and quotes.get('data'):
-                if isinstance(quotes['data'], dict) and quotes['data'].get('fetched'):
-                    all_fetched_quotes.extend(quotes['data']['fetched'])
-                elif isinstance(quotes['data'], list):
-                    all_fetched_quotes.extend(quotes['data'])
+                
+                if not quotes or not quotes.get('status'):
+                    quotes = smart_api.getMarketData("FULL", {"exchange": "NFO", "tokens": batch_tokens})
+                
+                if quotes and quotes.get('status') and quotes.get('data'):
+                    data_obj = quotes['data']
+                    if isinstance(data_obj, dict):
+                        if 'fetched' in data_obj:
+                            all_fetched_quotes.extend(data_obj['fetched'])
+                    elif isinstance(data_obj, list):
+                        all_fetched_quotes.extend(data_obj)
+            except Exception as batch_err:
+                print(f"⚠ Batch fetch error: {batch_err}")
 
         print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
 
