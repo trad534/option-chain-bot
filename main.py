@@ -120,9 +120,8 @@ nifty_spot_token = "26000"
 
 def get_upcoming_tuesday():
     today = datetime.now()
-    # 1 is Tuesday (Monday=0, Tuesday=1)
     days_ahead = (1 - today.weekday() + 7) % 7
-    if days_ahead == 0 and today.hour >= 15: # If today is Tuesday after market hours, take next week
+    if days_ahead == 0 and today.hour >= 15:
         days_ahead = 7
     tuesday = today + timedelta(days=days_ahead)
     return tuesday.strftime('%d%b%Y').upper()
@@ -160,7 +159,6 @@ def initialize_scrip_master(smart_api):
                 if 'tradingsymbol' in cached_options_df.columns and 'symbol' not in cached_options_df.columns:
                     cached_options_df['symbol'] = cached_options_df['tradingsymbol']
 
-        # Fallback to upcoming Tuesday if expiry is blank
         if earliest_expiry == "N/A" or not earliest_expiry:
             earliest_expiry = get_upcoming_tuesday()
 
@@ -195,12 +193,11 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Spot Price: {spot_price}")
 
-        # Update Spot Price in K9 and Expiry in L9 safely
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(earliest_expiry)]])
         except Exception as sheet_err:
-            print(f"⚠️️ Error updating K9/L9: {sheet_err}")
+            print(f"⚠ Error updating K9/L9: {sheet_err}")
 
         atm_strike = round(spot_price / 50) * 50
 
@@ -211,13 +208,20 @@ def fetch_and_update_option_chain(smart_api):
             tokens_nfo = []
             filtered_opts = pd.DataFrame()
 
-        # 2. Fetch NFO Option Quotes from Angel API
+        # 2. Fetch NFO Option Quotes from Angel API with Debugging
         all_fetched_quotes = []
         for i in range(0, len(tokens_nfo), 50):
             batch_tokens = tokens_nfo[i:i+50]
+            if not batch_tokens:
+                continue
             quotes = smart_api.getMarketData("FULL", {"NFO": batch_tokens})
+            
+            print(f"DEBUG: Batch tokens count: {len(batch_tokens)}, Response status: {quotes.get('status') if quotes else 'None'}")
+            
             if quotes and quotes.get('status') and quotes.get('data') and quotes['data'].get('fetched'):
                 all_fetched_quotes.extend(quotes['data']['fetched'])
+
+        print(f"DEBUG: Total fetched raw quotes from NFO: {len(all_fetched_quotes)}")
 
         quotes_data = []
         for item in all_fetched_quotes:
@@ -236,12 +240,16 @@ def fetch_and_update_option_chain(smart_api):
             })
 
         quotes_df = pd.DataFrame(quotes_data)
+        print(f"DEBUG: quotes_df shape: {quotes_df.shape}, filtered_opts shape: {filtered_opts.shape}")
+
         if not quotes_df.empty and not filtered_opts.empty:
             filtered_opts['token'] = filtered_opts['token'].astype(str)
             quotes_df['token'] = quotes_df['token'].astype(str)
             merged = pd.merge(filtered_opts[['token', 'symbol', 'strike']], quotes_df, on='token', how='inner')
+            print(f"DEBUG: Merged dataframe shape: {merged.shape}")
         else:
             merged = pd.DataFrame()
+            print("⚠ WARNING: Either quotes_df or filtered_opts is empty!")
 
         try:
             exp_date = datetime.strptime(str(earliest_expiry).title(), "%d%b%Y")
@@ -295,6 +303,9 @@ def fetch_and_update_option_chain(smart_api):
 # ==========================================
 # MAIN EXECUTION THREADS
 # ==========================================
+def run_bot_log():
+    pass
+
 def run_bot_loop():
     print("🚀 Starting Bot Loop Thread...")
     
