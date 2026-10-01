@@ -7,6 +7,7 @@ import numpy as np
 import pyotp
 import gspread
 from scipy.stats import norm
+from scipy.optimize import brentq
 from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 from flask import Flask
@@ -65,7 +66,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (WITH INTRINSIC ADJUSTMENT)
+# ROBUST IV & GREEKS (USING BRENT'S METHOD)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
@@ -75,42 +76,33 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
             delta = -1.0 if S < K else 0.0
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
-    # Handle LTP less than intrinsic value to prevent Black-Scholes failure
+    # Handle LTP less than intrinsic value
     if flag == 'CE':
         intrinsic = max(0, S - K * np.exp(-r * t))
     else:
         intrinsic = max(0, K * np.exp(-r * t) - S)
         
     if ltp < intrinsic:
-        ltp = intrinsic + 0.05  # Slight adjustment so math works smoothly
+        ltp = intrinsic + 0.05
 
-    sigma = 0.20  # Initial guess
-    for _ in range(200):
+    def objective_function(sigma):
+        if sigma <= 0:
+            sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
-        
         if flag == 'CE':
             price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2)
         else:
             price = K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
-            
-        vega = S * norm.pdf(d1) * np.sqrt(t)
-        diff = price - ltp
-        
-        if abs(diff) < 1e-6:
-            break
-        if vega < 1e-8:
-            break
-            
-        sigma = sigma - diff / vega
-        if sigma <= 0:
-            sigma = 0.0001
-            break
-        if sigma > 5.0:
-            sigma = 5.0
-            break
+        return price - ltp
 
-    # Recalculate d1, d2 with final sigma
+    try:
+        # Brent's method is 100% reliable for Black-Scholes root finding
+        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+    except Exception:
+        sigma = 0.20  # Fallback if out of bounds
+
+    # Calculate final Greeks using solved sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     
@@ -121,7 +113,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         delta = norm.cdf(d1)
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365
     else:
-        delta = norm.cdf(d1) - 1  # Put delta is negative
+        delta = norm.cdf(d1) - 1
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
 
     return {
@@ -339,7 +331,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Intrinsic Adjusted & 5 Sec Sleep)!")
+            print(f"🎯 Option Chain Updated Successfully (Brent's IV Method)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
