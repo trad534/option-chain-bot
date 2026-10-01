@@ -66,7 +66,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ROBUST IV & GREEKS (USING BRENT'S METHOD)
+# ROBUST IV & GREEKS (WITHOUT % SIGN)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
@@ -97,10 +97,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         return price - ltp
 
     try:
-        # Brent's method is 100% reliable for Black-Scholes root finding
         sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
     except Exception:
-        sigma = 0.20  # Fallback if out of bounds
+        sigma = 0.20
 
     # Calculate final Greeks using solved sigma
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
@@ -117,7 +116,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
 
     return {
-        'iv': round(sigma * 100, 2),
+        'iv': round(sigma * 100, 2),  # Returns clean number like 15.25 instead of "15.25%"
         'delta': round(delta, 3),
         'gamma': round(gamma, 4),
         'theta': round(theta, 2),
@@ -319,19 +318,19 @@ def fetch_and_update_option_chain(smart_api):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, r, ce_ltp)
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, r, pe_ltp)
 
-            ce_iv_str = f"{ce_gks['iv']}%" if ce_gks['iv'] > 1.0 else "-"
-            pe_iv_str = f"{pe_gks['iv']}%" if pe_gks['iv'] > 1.0 else "-"
+            ce_iv_val = ce_gks['iv'] if ce_gks['iv'] > 1.0 else 0
+            pe_iv_val = pe_gks['iv'] if pe_gks['iv'] > 1.0 else 0
 
             output_rows.append([
-                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_str, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
+                ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_iv_val, ce_oi_chg, ce_oi, ce_vol, ce_change, ce_ltp,
                 st,
-                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_str, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
+                pe_ltp, pe_change, pe_vol, pe_oi, pe_oi_chg, pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (Brent's IV Method)!")
+            print(f"🎯 Option Chain Updated Successfully (IV as Number without %)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
