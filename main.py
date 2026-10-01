@@ -65,7 +65,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ACCURATE IV & GREEKS (WITHOUT INTRINSIC CHECK)
+# ACCURATE IV & GREEKS (WITH INTRINSIC ADJUSTMENT)
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
@@ -74,6 +74,15 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         else:
             delta = -1.0 if S < K else 0.0
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
+
+    # Handle LTP less than intrinsic value to prevent Black-Scholes failure
+    if flag == 'CE':
+        intrinsic = max(0, S - K * np.exp(-r * t))
+    else:
+        intrinsic = max(0, K * np.exp(-r * t) - S)
+        
+    if ltp < intrinsic:
+        ltp = intrinsic + 0.05  # Slight adjustment so math works smoothly
 
     sigma = 0.20  # Initial guess
     for _ in range(200):
@@ -330,7 +339,7 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             data_sheet.batch_clear(["A10:U150"])
             data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-            print(f"🎯 Option Chain Updated Successfully (All Strikes IV Active)!")
+            print(f"🎯 Option Chain Updated Successfully (Intrinsic Adjusted & 5 Sec Sleep)!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
