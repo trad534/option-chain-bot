@@ -142,9 +142,9 @@ def update_fno_watchlist_alphabetical():
             "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "COPPER", "ZINC", "ALUMINI", "LEAD"
         ]
         
-        # Extract all F&O stocks (OPTSTK / FUTSTK)
+        # Extract all F&O stocks from NFO segment properly
         fno_df = full_scrip_df[
-            (full_scrip_df['exch_seg'] == 'NSE') & 
+            (full_scrip_df['exch_seg'] == 'NFO') & 
             (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
         ]
         
@@ -154,8 +154,7 @@ def update_fno_watchlist_alphabetical():
         for sym in symbols:
             clean_s = sym.strip()
             if clean_s and clean_s not in fixed_indices_mcx:
-                # Map old Tata Motors variations cleanly
-                if clean_s in ["TATAMOTORS", "TATA"]:
+                if clean_s in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
                     clean_s = "TMCV"
                 formatted_fno.append(f"{clean_s}-EQ")
                 
@@ -167,9 +166,9 @@ def update_fno_watchlist_alphabetical():
         
         watchlist_output = [[sym] for sym in final_watchlist]
         if watchlist_output:
-            data_sheet.batch_clear(["Z10:Z600"])
+            data_sheet.batch_clear(["Z10:Z700"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Total items: {len(watchlist_output)}")
+            print(f"✅ Watchlist Updated Successfully! Indices/MCX + A-Z F&O Stocks. Total: {len(watchlist_output)}")
     except Exception as wl_err:
         print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
@@ -230,8 +229,7 @@ def fetch_and_update_option_chain(smart_api):
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         
-        # Robust handling for Tata Motors demerged symbols
-        if clean_symbol in ["TATAMOTORS", "TATA"]:
+        if clean_symbol in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
             clean_symbol = "TMCV"
 
         print(f"🎯 Active Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
@@ -462,9 +460,9 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
+            print(f"🎯 Option Chain Table Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
         else:
-            print("⚠ Warning: output_rows has only header!")
+            print("⚠ Warning: output_rows has only header, no strike rows generated!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
