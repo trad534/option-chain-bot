@@ -176,24 +176,42 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. AUTO-FETCH CLEAN ANGEL ONE SYMBOLS LIST INTO Z10:Z200
+        # 1. AUTO-FETCH ALL SYMBOLS DIRECTLY FROM ANGEL ONE SCRIP MASTER INTO Z10:Z200
         # ==========================================
         try:
             if full_scrip_df is not None and not full_scrip_df.empty:
-                indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-                commodities_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
+                indices_list = full_scrip_df[
+                    (full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & 
+                    (full_scrip_df['symbol'].isin(['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'NIFTY 50', 'NIFTY BANK']))
+                ]['symbol'].unique().tolist()
                 
-                stocks_df = full_scrip_df[
+                commodities_list = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'MCX') & 
+                    (full_scrip_df['instrumenttype'] == 'FUTCOM') &
+                    (full_scrip_df['symbol'].str.contains('CRUDEOIL|NATURALGAS|GOLD|SILVER|COPPER|ZINC|ALUMINI|LEAD', case=False, na=False))
+                ]['symbol'].unique().tolist()
+                
+                nse_stocks_df = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'NSE') & 
                     (full_scrip_df['symbol'].str.endswith('-EQ', na=False))
                 ]
-                stocks_list = stocks_df['symbol'].head(100).tolist()
+                stocks_list = nse_stocks_df['symbol'].dropna().unique().tolist()
                 
                 combined_symbols = indices_list + commodities_list + stocks_list
-                watchlist_output = [[sym] for sym in combined_symbols[:191]]
+                
+                seen = set()
+                unique_combined = []
+                for sym in combined_symbols:
+                    if sym not in seen:
+                        seen.add(sym)
+                        unique_combined.append(sym)
+
+                watchlist_output = [[sym] for sym in unique_combined[:191]]
                 
                 if watchlist_output:
+                    data_sheet.batch_clear(["Z10:Z250"])
                     data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
+                    print(f"✅ Automatically fetched all symbols from Angel One Scrip Master into Column Z!")
         except Exception as wl_err:
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
