@@ -362,7 +362,8 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Error updating header cells: {sheet_err}")
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
-        
+        print(f"📊 Total strikes available for expiry {current_expiry}: {len(all_master_strikes)}")
+
         if len(all_master_strikes) > 0:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
             start_idx = max(0, closest_idx - 20)
@@ -437,8 +438,8 @@ def fetch_and_update_option_chain(smart_api):
         ]]
 
         for st in strikes:
-            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.endswith('CE'))]
-            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.endswith('PE'))]
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
 
             ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
             pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
@@ -463,6 +464,8 @@ def fetch_and_update_option_chain(smart_api):
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
             print(f"🎯 Option Chain Table Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
+        else:
+            print("⚠ Warning: output_rows has only header, no strike rows generated!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
