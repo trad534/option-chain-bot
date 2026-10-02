@@ -204,21 +204,23 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # BULLETPROOF SYMBOL DETECTION FROM ALL SHEETS
+        # DIRECT & FOOLPROOF SYMBOL READING
         # ==========================================
         raw_selected_symbol = ""
         
-        # 1. Pehle sabhi sheets mein J4 cell ko scan karo
-        for ws in spreadsheet.worksheets():
-            try:
-                val = str(ws.cell(4, 10).value).strip().upper() # J4 is Row 4, Col 10
-                if val and val != "NONE" and val != "NAN" and val != "0" and val != "DATETIME":
+        # Check active worksheet J4 first safely
+        try:
+            for ws in spreadsheet.worksheets():
+                if ws.title == MAIN_SHEET_NAME:
+                    continue
+                val = str(ws.cell(4, 10).value).strip().upper()
+                if val and val != "NONE" and val != "NAN" and val != "0" and len(val) > 1:
                     raw_selected_symbol = val
                     break
-            except:
-                continue
+        except Exception as e:
+            print(f"⚠ Sheet scan warning: {e}")
 
-        # 2. Agar J4 na mile, toh upstox get data sheet ke J9 ko check karo
+        # Fallback to data_sheet J9 if not found
         if not raw_selected_symbol:
             try:
                 val = str(data_sheet.cell(9, 10).value).strip().upper()
@@ -263,8 +265,14 @@ def fetch_and_update_option_chain(smart_api):
             ].copy()
 
         if sym_options.empty:
-            print(f"⚠ No options found for symbol: {clean_symbol}. Clearing table.")
-            data_sheet.batch_clear(["A10:U100"])
+            print(f"⚠ No options found for symbol: {clean_symbol}. Trying broad search...")
+            sym_options = full_scrip_df[
+                (full_scrip_df['exch_seg'] == 'NFO') & 
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+            ].copy()
+
+        if sym_options.empty:
+            print(f"❌ Critical: Still no options found for {clean_symbol}!")
             return
 
         sym_options['strike'] = pd.to_numeric(sym_options['strike'], errors='coerce')
@@ -281,7 +289,6 @@ def fetch_and_update_option_chain(smart_api):
 
         if sym_options.empty:
             print(f"⚠ No valid expiry dates found for {clean_symbol}")
-            data_sheet.batch_clear(["A10:U100"])
             return
 
         unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
