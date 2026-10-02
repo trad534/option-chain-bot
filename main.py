@@ -204,7 +204,7 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # STRICTLY READ SYMBOL FROM J4 ONLY
+        # STRICTLY READ SYMBOL FROM J4 ONLY (NO FALLBACK)
         # ==========================================
         raw_selected_symbol = "NIFTY"
         try:
@@ -216,7 +216,7 @@ def fetch_and_update_option_chain(smart_api):
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        print(f"🎯 Active Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
@@ -326,7 +326,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
-            data_sheet.update(range_name="J9", values=[[watchlist_symbol]])
+            # J9 par ab koi symbol overwrite nahi hoga, sirf spot price update hogi
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
