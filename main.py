@@ -205,24 +205,71 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Bulletproof Fuzzy Matching for Options
-        search_keyword = clean_symbol
-        if "TATA" in clean_symbol:
-            search_keyword = "TATA"
+        # ==========================================
+        # ULTRA-ROBUST SPOT TOKEN & PRICE RESOLUTION FIRST
+        # ==========================================
+        spot_token = ""
+        spot_exchange = "NSE"
+        
+        spot_map = {
+            "NIFTY": ("26000", "NSE"), 
+            "BANKNIFTY": ("26009", "NSE"), 
+            "FINNIFTY": ("26037", "NSE"), 
+            "MIDCPNIFTY": ("26074", "NSE"),
+            "SENSEX": ("999907000", "BSE")
+        }
+        
+        if clean_symbol in spot_map:
+            spot_token, spot_exchange = spot_map[clean_symbol]
+        else:
+            eq_match = full_scrip_df[
+                (full_scrip_df['exch_seg'] == 'NSE') & 
+                (
+                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
+                ) &
+                (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
+            ]
+            
+            if not eq_match.empty:
+                spot_token = str(eq_match.iloc[0]['token']).strip()
+                spot_exchange = "NSE"
+            else:
+                fallback_eq = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'NSE') & 
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
+                    (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
+                ]
+                if not fallback_eq.empty:
+                    spot_token = str(fallback_eq.iloc[0]['token']).strip()
+                    spot_exchange = "NSE"
 
+        spot_price = 0.0
+        if spot_token:
+            try:
+                spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
+                    item = spot_quote['data']['fetched'][0]
+                    spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+            except Exception as e:
+                print(f"⚠ Spot fetch warning: {e}")
+
+        # Precise Options Filtering based on clean symbol name & strict keyword match
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
             (
-                (full_scrip_df['name'].astype(str).str.upper().str.contains(clean_symbol)) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(search_keyword))
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
             )
         ].copy()
 
-        if "TATA" in clean_symbol and not sym_options.empty:
-            specific_filtered = sym_options[sym_options['symbol'].astype(str).str.upper().str.startswith(clean_symbol)]
-            if not specific_filtered.empty:
-                sym_options = specific_filtered
+        if sym_options.empty:
+            # Broad fallback if exact startswith fails
+            sym_options = full_scrip_df[
+                (full_scrip_df['strike'] > 0) &
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+            ].copy()
 
         if sym_options.empty:
             print(f"❌ Critical: No options found for {clean_symbol}!")
@@ -261,58 +308,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # ==========================================
-        # ULTRA-ROBUST SPOT TOKEN & PRICE RESOLUTION
-        # ==========================================
-        spot_token = ""
-        spot_exchange = "NSE"
-        
-        spot_map = {
-            "NIFTY": ("26000", "NSE"), 
-            "BANKNIFTY": ("26009", "NSE"), 
-            "FINNIFTY": ("26037", "NSE"), 
-            "MIDCPNIFTY": ("26074", "NSE"),
-            "SENSEX": ("999907000", "BSE")
-        }
-        
-        if clean_symbol in spot_map:
-            spot_token, spot_exchange = spot_map[clean_symbol]
-        else:
-            eq_match = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NSE') & 
-                (
-                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-                ) &
-                (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
-            ]
-            
-            if not eq_match.empty:
-                spot_token = str(eq_match.iloc[0]['token']).strip()
-                spot_exchange = "NSE"
-            else:
-                # Fallback search if exact EQ match fails
-                fallback_eq = full_scrip_df[
-                    (full_scrip_df['exch_seg'] == 'NSE') & 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
-                    (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
-                ]
-                if not fallback_eq.empty:
-                    spot_token = str(fallback_eq.iloc[0]['token']).strip()
-                    spot_exchange = "NSE"
-
-        spot_price = 0.0
-        if spot_token:
-            try:
-                spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
-                if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
-                    item = spot_quote['data']['fetched'][0]
-                    spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-            except Exception as e:
-                print(f"⚠ Spot fetch warning: {e}")
-        
-        # Fallback to median strike if spot price retrieval fails or gives invalid range
+        # Fallback to median strike if spot price retrieval fails
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if all_strikes_list:
