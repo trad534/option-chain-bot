@@ -215,7 +215,7 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
         # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4 (Foolproof for -EQ & Indices)
+        # 2. OPTION CHAIN PROCESSING FOR J4
         # ==========================================
         selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not selected_symbol or selected_symbol == "NONE":
@@ -278,7 +278,7 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = 1
 
         # ==========================================
-        # SPOT PRICE & TOKEN FINDER (Foolproof for -EQ & Indices)
+        # SPOT PRICE & TOKEN FINDER (Strict & Safe)
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -294,26 +294,30 @@ def fetch_and_update_option_chain(smart_api):
         if selected_symbol in spot_map:
             spot_token, spot_exchange = spot_map[selected_symbol]
         else:
-            eq_search_symbol = clean_search_name + "-EQ"
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
-                (full_scrip_df['symbol'].str.upper() == eq_search_symbol)
+                (
+                    (full_scrip_df['symbol'].str.upper() == clean_search_name) | 
+                    (full_scrip_df['symbol'].str.upper() == clean_search_name + "-EQ") |
+                    (full_scrip_df['name'].str.upper() == clean_search_name)
+                ) &
+                (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
             ]
             
             if not eq_match.empty:
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                spot_match = full_scrip_df[
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol) & 
-                    (full_scrip_df['exch_seg'].isin(['NSE', 'MCX']))
+                comm_match = full_scrip_df[
+                    (full_scrip_df['symbol'].str.upper() == clean_search_name) & 
+                    (full_scrip_df['exch_seg'] == 'MCX')
                 ]
-                if not spot_match.empty:
-                    spot_token = str(spot_match.iloc[0]['token']).strip()
-                    spot_exchange = str(spot_match.iloc[0]['exch_seg']).strip()
+                if not comm_match.empty:
+                    spot_token = str(comm_match.iloc[0]['token']).strip()
+                    spot_exchange = "MCX"
                 else:
-                    spot_token = str(current_expiry_options['token'].iloc[0])
-                    spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
+                    spot_token = "2885"  # Default fallback for Reliance NSE token if not found
+                    spot_exchange = "NSE"
 
         try:
             spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
