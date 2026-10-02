@@ -176,7 +176,7 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. AUTO-FETCH EXACT SEQUENCE (Index -> MCX -> Top Stocks -> Remaining) INTO Z10:Z250
+        # 1. AUTO-FETCH WATCHLIST INTO Z10:Z250
         # ==========================================
         try:
             if full_scrip_df is not None and not full_scrip_df.empty:
@@ -215,16 +215,16 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
         # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4
+        # 2. OPTION CHAIN PROCESSING FOR J4 (Auto-Strip -EQ)
         # ==========================================
-        selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
-        if not selected_symbol or selected_symbol == "NONE":
+        raw_selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
+        if not raw_selected_symbol or raw_selected_symbol == "NONE":
             print("⚠ No valid symbol found in J4. Waiting...")
             return
 
-        print(f"🎯 Selected Symbol from J4: {selected_symbol}")
-
-        clean_search_name = selected_symbol.replace("-EQ", "").strip()
+        # Automatically strip '-EQ' or trailing whitespace so it never causes lookup failure
+        selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
+        print(f"🎯 Selected Symbol from J4 (Cleaned): {selected_symbol}")
 
         target_exch_segs = ['NFO', 'MCX', 'BFO']
         if selected_symbol == 'SENSEX':
@@ -233,15 +233,15 @@ def fetch_and_update_option_chain(smart_api):
         sym_options = full_scrip_df[
             (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
             (
-                (full_scrip_df['name'].str.upper() == clean_search_name) | 
-                (full_scrip_df['symbol'].str.startswith(clean_search_name, na=False))
+                (full_scrip_df['name'].str.upper() == selected_symbol) | 
+                (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
             ) &
             (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM']))
         ].copy()
 
         if sym_options.empty:
             sym_options = full_scrip_df[
-                (full_scrip_df['symbol'].str.contains(clean_search_name, case=False, na=False)) &
+                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) &
                 (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'OPTCOM']))
             ].copy()
 
@@ -278,7 +278,7 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = 1
 
         # ==========================================
-        # SPOT PRICE & TOKEN FINDER (Strict & Safe)
+        # SPOT PRICE & TOKEN FINDER (Strict Cash Segment)
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -297,9 +297,9 @@ def fetch_and_update_option_chain(smart_api):
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
                 (
-                    (full_scrip_df['symbol'].str.upper() == clean_search_name) | 
-                    (full_scrip_df['symbol'].str.upper() == clean_search_name + "-EQ") |
-                    (full_scrip_df['name'].str.upper() == clean_search_name)
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol) | 
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol + "-EQ") |
+                    (full_scrip_df['name'].str.upper() == selected_symbol)
                 ) &
                 (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
             ]
@@ -309,14 +309,14 @@ def fetch_and_update_option_chain(smart_api):
                 spot_exchange = "NSE"
             else:
                 comm_match = full_scrip_df[
-                    (full_scrip_df['symbol'].str.upper() == clean_search_name) & 
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol) & 
                     (full_scrip_df['exch_seg'] == 'MCX')
                 ]
                 if not comm_match.empty:
                     spot_token = str(comm_match.iloc[0]['token']).strip()
                     spot_exchange = "MCX"
                 else:
-                    spot_token = "2885"  # Default fallback for Reliance NSE token if not found
+                    spot_token = "2885"  # Fallback for Reliance NSE token
                     spot_exchange = "NSE"
 
         try:
