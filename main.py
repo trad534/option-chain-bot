@@ -176,27 +176,20 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. AUTO-FETCH ANGEL ONE SYMBOLS LIST INTO Z10:Z200
+        # 1. AUTO-FETCH CLEAN ANGEL ONE SYMBOLS LIST INTO Z10:Z200
         # ==========================================
         try:
             if full_scrip_df is not None and not full_scrip_df.empty:
-                indices_list = full_scrip_df[
-                    (full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & 
-                    (full_scrip_df['symbol'].isin(['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'NIFTY 50', 'NIFTY BANK']))
-                ]['symbol'].unique().tolist()
+                indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
+                commodities_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
                 
-                mcx_list = full_scrip_df[
-                    (full_scrip_df['exch_seg'] == 'MCX') & 
-                    (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                    (full_scrip_df['symbol'].str.contains('CRUDEOIL|NATURALGAS|GOLD|SILVER|COPPER|ZINC', case=False, na=False))
-                ]['symbol'].unique().tolist()
-                
-                stocks_list = full_scrip_df[
+                stocks_df = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'NSE') & 
                     (full_scrip_df['symbol'].str.endswith('-EQ', na=False))
-                ]['symbol'].head(50).tolist()
+                ]
+                stocks_list = stocks_df['symbol'].head(100).tolist()
                 
-                combined_symbols = indices_list + mcx_list + stocks_list
+                combined_symbols = indices_list + commodities_list + stocks_list
                 watchlist_output = [[sym] for sym in combined_symbols[:191]]
                 
                 if watchlist_output:
