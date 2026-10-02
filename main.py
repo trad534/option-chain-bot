@@ -229,7 +229,7 @@ def fetch_and_update_option_chain(smart_api):
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
                 (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-                (full_scrip_df['name'].str.upper() == clean_symbol)
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
             ].copy()
         elif clean_symbol in mcx_array:
             target_exch_segs = ['MCX']
@@ -238,19 +238,22 @@ def fetch_and_update_option_chain(smart_api):
                 (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
                 (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
                 (
-                    (full_scrip_df['name'].str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.startswith(clean_symbol))
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
                 )
             ].copy()
         else:
+            # STOCK OPTIONS - Robust matching for OPTSTK
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
                 (
-                    (full_scrip_df['name'].str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.startswith(clean_symbol))
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
                 )
             ].copy()
+
+        print(f"📊 Total raw option rows matched for {clean_symbol}: {len(sym_options)}")
 
         if sym_options.empty:
             print(f"⚠ No options found in master for symbol: {clean_symbol}. Clearing table.")
@@ -306,7 +309,7 @@ def fetch_and_update_option_chain(smart_api):
             fut_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'MCX') & 
                 (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                (full_scrip_df['name'].str.upper() == clean_symbol)
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
             ]
             if not fut_match.empty:
                 spot_token = str(fut_match.iloc[0]['token']).strip()
@@ -315,9 +318,9 @@ def fetch_and_update_option_chain(smart_api):
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
                 (
-                    (full_scrip_df['symbol'].str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].str.upper() == clean_symbol + "-EQ") |
-                    (full_scrip_df['name'].str.upper() == clean_symbol)
+                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
                 ) &
                 (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
             ]
@@ -499,7 +502,7 @@ def run_bot_loop():
             print(f"❌ Session Generation Exception: {e}")
             time.sleep(10)
 
-    while True:
+    while Thread := True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as e:
