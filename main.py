@@ -233,13 +233,13 @@ def fetch_and_update_option_chain(smart_api):
                 (full_scrip_df['name'].str.upper() == selected_symbol)
             ].copy()
         else:
-            # Highly Robust Stock Options Filter (Checks name, symbol & tradingsymbol)
+            # Precise Stock Options Filter (Stricts matching to prevent wrong index strikes)
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
                 (
                     (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.contains(selected_symbol))
+                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
                 )
             ].copy()
 
