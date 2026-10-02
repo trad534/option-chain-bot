@@ -204,15 +204,12 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # DIRECT & FOOLPROOF SYMBOL READING
+        # UNIVERSAL & FOOLPROOF SYMBOL READING
         # ==========================================
         raw_selected_symbol = ""
         
-        # Check active worksheet J4 first safely
         try:
             for ws in spreadsheet.worksheets():
-                if ws.title == MAIN_SHEET_NAME:
-                    continue
                 val = str(ws.cell(4, 10).value).strip().upper()
                 if val and val != "NONE" and val != "NAN" and val != "0" and len(val) > 1:
                     raw_selected_symbol = val
@@ -220,7 +217,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as e:
             print(f"⚠ Sheet scan warning: {e}")
 
-        # Fallback to data_sheet J9 if not found
         if not raw_selected_symbol:
             try:
                 val = str(data_sheet.cell(9, 10).value).strip().upper()
@@ -236,43 +232,26 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
         print(f"🎯 Active Selected Symbol: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-        mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
-
-        if clean_symbol in indices_array:
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'].isin(['NFO', 'BFO', 'BSE'])) & 
-                (full_scrip_df['instrumenttype'] == 'OPTIDX') &
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-            ].copy()
-        elif clean_symbol in mcx_array:
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'MCX') & 
-                (full_scrip_df['instrumenttype'].isin(['OPTCOM', 'FUTCOM'])) &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                )
-            ].copy()
-        else:
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NFO') & 
-                (full_scrip_df['instrumenttype'] == 'OPTSTK') &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                )
-            ].copy()
-
-        if sym_options.empty:
-            print(f"⚠ No options found for symbol: {clean_symbol}. Trying broad search...")
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NFO') & 
+        # Universal Search across all segments for ANY selected symbol
+        sym_options = full_scrip_df[
+            (full_scrip_df['exch_seg'].isin(['NFO', 'BFO', 'BSE', 'MCX'])) & 
+            (
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol)) |
                 (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+            ) &
+            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCOM', 'FUTCOM']))
+        ].copy()
+
+        if sym_options.empty:
+            print(f"⚠ Strict search failed for {clean_symbol}. Trying broad fallback search...")
+            sym_options = full_scrip_df[
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
+                (full_scrip_df['strike'] > 0)
             ].copy()
 
         if sym_options.empty:
-            print(f"❌ Critical: Still no options found for {clean_symbol}!")
+            print(f"❌ Critical: No options found for {clean_symbol}!")
             return
 
         sym_options['strike'] = pd.to_numeric(sym_options['strike'], errors='coerce')
@@ -322,15 +301,6 @@ def fetch_and_update_option_chain(smart_api):
         
         if clean_symbol in spot_map:
             spot_token, spot_exchange = spot_map[clean_symbol]
-        elif clean_symbol in mcx_array:
-            fut_match = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'MCX') & 
-                (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-            ]
-            if not fut_match.empty:
-                spot_token = str(fut_match.iloc[0]['token']).strip()
-                spot_exchange = "MCX"
         else:
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
@@ -346,7 +316,15 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                spot_token = ""
+                mcx_fut = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'MCX') & 
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
+                ]
+                if not mcx_fut.empty:
+                    spot_token = str(mcx_fut.iloc[0]['token']).strip()
+                    spot_exchange = "MCX"
+                else:
+                    spot_token = ""
 
         spot_price = 0.0
         if spot_token:
