@@ -176,77 +176,33 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. PROCESS WATCHLIST FROM Y10:Y200 (Z=Symbol, AA=LTP, AB=Change)
+        # 1. AUTO-FETCH ANGEL ONE SYMBOLS LIST INTO Z10:Z200
         # ==========================================
         try:
-            symbol_col_values = data_sheet.get('Y10:Y200')
-            if symbol_col_values:
-                watchlist_exchange_map = {}
-                matched_symbols_info = []
+            if full_scrip_df is not None and not full_scrip_df.empty:
+                indices_list = full_scrip_df[
+                    (full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & 
+                    (full_scrip_df['symbol'].isin(['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'NIFTY 50', 'NIFTY BANK']))
+                ]['symbol'].unique().tolist()
                 
-                for row in symbol_col_values:
-                    sym = row[0].strip() if row and row[0] else ""
-                    if not sym:
-                        matched_symbols_info.append(("", "", ""))
-                        continue
-                    
-                    sym_upper = sym.upper()
-                    match = full_scrip_df[
-                        ((full_scrip_df['symbol'].str.upper() == sym_upper) | (full_scrip_df['name'].str.upper() == sym_upper)) &
-                        (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
-                    ]
-                    
-                    if match.empty:
-                        match = full_scrip_df[
-                            (full_scrip_df['symbol'].str.contains(sym_upper, case=False, na=False) | full_scrip_df['name'].str.contains(sym_upper, case=False, na=False)) &
-                            (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO', 'MCX']))
-                        ]
-                    
-                    if not match.empty:
-                        eq_match = match[match['symbol'].str.endswith('-EQ', na=False)]
-                        row_item = eq_match.iloc[0] if not eq_match.empty else match.iloc[0]
-                        
-                        exch = str(row_item['exch_seg']).strip()
-                        tok = str(row_item['token']).strip()
-                        official_sym = str(row_item['symbol']).strip()
-                        
-                        if exch not in watchlist_exchange_map:
-                            watchlist_exchange_map[exch] = []
-                        watchlist_exchange_map[exch].append((official_sym, tok))
-                        matched_symbols_info.append((official_sym, tok, exch))
-                    else:
-                        matched_symbols_info.append((sym, "", ""))
+                mcx_list = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'MCX') & 
+                    (full_scrip_df['instrumenttype'] == 'FUTCOM') &
+                    (full_scrip_df['symbol'].str.contains('CRUDEOIL|NATURALGAS|GOLD|SILVER|COPPER|ZINC', case=False, na=False))
+                ]['symbol'].unique().tolist()
                 
-                wl_quotes = {}
-                for exch, pairs in watchlist_exchange_map.items():
-                    tokens_list = [p[1] for p in pairs]
-                    for i in range(0, len(tokens_list), 40):
-                        batch = tokens_list[i:i+40]
-                        try:
-                            res = smart_api.getMarketData("FULL", {exch: batch})
-                            if res and res.get('status') and res.get('data'):
-                                for item in res['data'].get('fetched', []):
-                                    tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
-                                    ltp = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-                                    change = float(item.get('netChange', item.get('change', 0)))
-                                    wl_quotes[tok] = {'ltp': ltp, 'change': change}
-                        except Exception as e:
-                            print(f"⚠ Watchlist batch fetch error for {exch}: {e}")
+                stocks_list = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'NSE') & 
+                    (full_scrip_df['symbol'].str.endswith('-EQ', na=False))
+                ]['symbol'].head(50).tolist()
                 
-                wl_output = []
-                for off_sym, tok, exch in matched_symbols_info:
-                    if not off_sym:
-                        wl_output.append(["", "", ""])
-                    elif tok and tok in wl_quotes:
-                        q_data = wl_quotes[tok]
-                        wl_output.append([off_sym, q_data['ltp'], q_data['change']])
-                    else:
-                        wl_output.append([off_sym, "", ""])
+                combined_symbols = indices_list + mcx_list + stocks_list
+                watchlist_output = [[sym] for sym in combined_symbols[:191]]
                 
-                if wl_output:
-                    data_sheet.update(range_name=f"Z10:AB{9 + len(wl_output)}", values=wl_output)
+                if watchlist_output:
+                    data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
         except Exception as wl_err:
-            print(f"⚠ Watchlist processing error: {wl_err}")
+            print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
         # ==========================================
         # 2. OPTION CHAIN PROCESSING FOR J4
@@ -264,7 +220,10 @@ def fetch_and_update_option_chain(smart_api):
 
         sym_options = full_scrip_df[
             (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
-            ((full_scrip_df['name'] == selected_symbol) | (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False))) &
+            (
+                (full_scrip_df['name'].str.upper() == selected_symbol) | 
+                (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
+            ) &
             (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
         ].copy()
 
@@ -275,7 +234,7 @@ def fetch_and_update_option_chain(smart_api):
             ].copy()
 
         if sym_options.empty:
-            print(f"⚠ No options found in master for symbol: {selected_symbol}")
+            print(f"⚠ No options found in master for symbol: {selected_symbol}. Skipping update.")
             return
 
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
