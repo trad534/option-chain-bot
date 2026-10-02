@@ -124,7 +124,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER (ANGEL ONE)
+# SCRIP MASTER LOADER & F&O STOCK EXTRACTOR
 # ==========================================
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
@@ -149,34 +149,43 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
                 
             print(f"✅ Angel One Scrip Master Loaded! Total Records: {len(full_scrip_df)}")
+            update_fno_watchlist_alphabetical()
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
 
-def update_watchlist_once():
+def update_fno_watchlist_alphabetical():
+    global full_scrip_df
     try:
-        full_63_list = [
-            'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX',
-            'CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD',
-            'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 'SBIN-EQ', 
-            'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 'TMCV-EQ', 'TMPV-EQ', 
-            'TATASTEEL-EQ', 'ITC-EQ', 'BAJFINANCE-EQ', 'ASIANPAINT-EQ', 'HINDUNILVR-EQ', 
-            'MARUTI-EQ', 'TITAN-EQ', 'SUNPHARMA-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ', 'ONGC-EQ', 
-            'NTPC-EQ', 'POWERGRID-EQ', 'COALINDIA-EQ', 'ADANIENT-EQ', 'ADANIPORTS-EQ', 
-            'BAJAJ-AUTO-EQ', 'BAJAJFINSV-EQ', 'BPCL-EQ', 'BRITANNIA-EQ', 'CIPLA-EQ', 
-            'DRREDDY-EQ', 'EICHERMOT-EQ', 'GRASIM-EQ', 'HCLTECH-EQ', 'HEROMOTOCO-EQ', 
-            'HINDALCO-EQ', 'INDUSINDBK-EQ', 'M&M-EQ', 'NESTLEIND-EQ', 'SBILIFE-EQ', 
-            'SHRIRAMFIN-EQ', 'SUNPHARMA-EQ', 'TATACONSUM-EQ', 'TECHM-EQ', 'TRENT-EQ', 
-            'UPL-EQ', 'ZOMATO-EQ'
+        if full_scrip_df.empty:
+            return
+            
+        # Extract unique F&O stock symbols (Instrument type OPTSTK or FUTSTK, excluding indices and commodities)
+        fno_df = full_scrip_df[
+            (full_scrip_df['exch_seg'] == 'NSE') & 
+            (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
         ]
-        # Remove duplicates while preserving order
-        combined_symbols = list(dict.fromkeys(full_63_list))
-        watchlist_output = [[sym] for sym in combined_symbols]
+        
+        symbols = fno_df['name'].dropna().astype(str).str.upper().unique().tolist()
+        
+        # Format with '-EQ' or clean up names appropriately
+        formatted_symbols = []
+        for sym in symbols:
+            clean_s = sym.strip()
+            if clean_s:
+                if clean_s in ["TATAMOTORS", "TATA"]:
+                    clean_s = "TMCV"
+                formatted_symbols.append(f"{clean_s}-EQ")
+                
+        # Remove duplicates and sort alphabetically (A to Z)
+        sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_symbols)))
+        
+        watchlist_output = [[sym] for sym in sorted_fno_symbols]
         if watchlist_output:
-            data_sheet.batch_clear(["Z10:Z250"])
+            data_sheet.batch_clear(["Z10:Z300"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Full Watchlist Successfully Written to Column Z! Total: {len(watchlist_output)}")
+            print(f"✅ Alphabetical F&O Stocks Watchlist Written to Column Z! Total Stocks: {len(watchlist_output)}")
     except Exception as wl_err:
-        print(f"⚠ Watchlist update error: {wl_err}")
+        print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -201,7 +210,7 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        raw_selected_symbol = "NIFTY"
+        raw_selected_symbol = "RELIANCE"
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4
             if val and val != "NONE" and val != "NAN" and val != "0":
@@ -223,39 +232,28 @@ def fetch_and_update_option_chain(smart_api):
         spot_token = ""
         spot_exchange = "NSE"
         
-        spot_map = {
-            "NIFTY": ("26000", "NSE"), 
-            "BANKNIFTY": ("26009", "NSE"), 
-            "FINNIFTY": ("26037", "NSE"), 
-            "MIDCPNIFTY": ("26074", "NSE"),
-            "SENSEX": ("999907000", "BSE")
-        }
+        eq_match = full_scrip_df[
+            (full_scrip_df['exch_seg'] == 'NSE') & 
+            (
+                (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
+                (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
+            ) &
+            (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
+        ]
         
-        if clean_symbol in spot_map:
-            spot_token, spot_exchange = spot_map[clean_symbol]
+        if not eq_match.empty:
+            spot_token = str(eq_match.iloc[0]['token']).strip()
+            spot_exchange = "NSE"
         else:
-            eq_match = full_scrip_df[
+            fallback_eq = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
-                (
-                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-                ) &
-                (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
+                (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
             ]
-            
-            if not eq_match.empty:
-                spot_token = str(eq_match.iloc[0]['token']).strip()
+            if not fallback_eq.empty:
+                spot_token = str(fallback_eq.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
-            else:
-                fallback_eq = full_scrip_df[
-                    (full_scrip_df['exch_seg'] == 'NSE') & 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
-                    (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
-                ]
-                if not fallback_eq.empty:
-                    spot_token = str(fallback_eq.iloc[0]['token']).strip()
-                    spot_exchange = "NSE"
 
         spot_price = 0.0
         if spot_token:
@@ -480,7 +478,6 @@ def run_bot_loop():
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
                 initialize_scrip_master(smart_api)
-                update_watchlist_once()
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
