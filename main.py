@@ -169,7 +169,6 @@ def fetch_and_update_option_chain(smart_api):
             morning_oi_dict = {}
             baseline_date = current_date_str
 
-        # Ensure scrip master is loaded only once / if empty
         if full_scrip_df is None or full_scrip_df.empty:
             initialize_scrip_master(smart_api)
             if full_scrip_df.empty:
@@ -307,6 +306,9 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
+        # ==========================================
+        # SPOT PRICE & TOKEN FINDER FOR INDEX / STOCKS
+        # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -322,12 +324,18 @@ def fetch_and_update_option_chain(smart_api):
             spot_token, spot_exchange = spot_map[selected_symbol]
         else:
             spot_match = full_scrip_df[
-                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) & 
-                ((full_scrip_df['instrumenttype'] == 'AMXIDX') | (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'] == selected_symbol + '-EQ'))
+                (
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol + "-EQ") | 
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol) |
+                    (full_scrip_df['name'].str.upper() == selected_symbol)
+                ) & 
+                (full_scrip_df['exch_seg'] == 'NSE')
             ]
             if not spot_match.empty:
-                spot_token = str(spot_match['token'].iloc[0])
-                spot_exchange = str(spot_match['exch_seg'].iloc[0])
+                eq_check = spot_match[spot_match['symbol'].str.endswith('-EQ', na=False)]
+                row_item = eq_check.iloc[0] if not eq_check.empty else spot_match.iloc[0]
+                spot_token = str(row_item['token']).strip()
+                spot_exchange = str(row_item['exch_seg']).strip()
             else:
                 spot_token = str(current_expiry_options['token'].iloc[0])
                 spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
