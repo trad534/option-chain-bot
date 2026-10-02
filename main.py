@@ -90,15 +90,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if sigma <= 0:
             sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
-        d2 = d1 - sigma * np.sqrt(t)
-        if flag == 'CE':
-            price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2)
-        else:
-            price = K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
-        return price - ltp
-
-    try:
-        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+        d2 = d1 - sigma * np.sqrt(, 5.0, xtol=1e-6, maxiter=100)
     except Exception:
         sigma = 0.20
 
@@ -124,11 +116,53 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER & F&O STOCK EXTRACTOR
+# SCRIP MASTER LOADER & WATCHLIST BUILDER
 # ==========================================
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
+
+def update_fno_watchlist_alphabetical():
+    global full_scrip_df
+    try:
+        if full_scrip_df.empty:
+            return
+            
+        # 1. Fixed Indices and MCX list as requested
+        fixed_indices_mcx = [
+            "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX",
+            "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "COPPER", "ZINC", "ALUMINI", "LEAD"
+        ]
+        
+        # 2. Extract all F&O stocks (OPTSTK / FUTSTK)
+        fno_df = full_scrip_df[
+            (full_scrip_df['exch_seg'] == 'NSE') & 
+            (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
+        ]
+        
+        symbols = fno_df['name'].dropna().astype(str).str.upper().unique().tolist()
+        
+        formatted_fno = []
+        for sym in symbols:
+            clean_s = sym.strip()
+            if clean_s and clean_s not in fixed_indices_mcx:
+                if clean_s in ["TATAMOTORS", "TATA"]:
+                    clean_s = "TMCV"
+                formatted_fno.append(f"{clean_s}-EQ")
+                
+        # Sort F&O stocks alphabetically from A to Z
+        sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_fno)))
+        
+        # Combine: First Indices/MCX, then Sorted F&O Stocks
+        final_watchlist = fixed_indices_mcx + sorted_fno_symbols
+        
+        watchlist_output = [[sym] for sym in final_watchlist]
+        if watchlist_output:
+            data_sheet.batch_clear(["Z10:Z500"])
+            data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
+            print(f"✅ Watchlist Updated Successfully! Indices/MCX + A-Z F&O Stocks. Total: {len(watchlist_output)}")
+    except Exception as wl_err:
+        print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df
@@ -152,40 +186,6 @@ def initialize_scrip_master(smart_api):
             update_fno_watchlist_alphabetical()
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
-
-def update_fno_watchlist_alphabetical():
-    global full_scrip_df
-    try:
-        if full_scrip_df.empty:
-            return
-            
-        # Extract unique F&O stock symbols (Instrument type OPTSTK or FUTSTK, excluding indices and commodities)
-        fno_df = full_scrip_df[
-            (full_scrip_df['exch_seg'] == 'NSE') & 
-            (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
-        ]
-        
-        symbols = fno_df['name'].dropna().astype(str).str.upper().unique().tolist()
-        
-        # Format with '-EQ' or clean up names appropriately
-        formatted_symbols = []
-        for sym in symbols:
-            clean_s = sym.strip()
-            if clean_s:
-                if clean_s in ["TATAMOTORS", "TATA"]:
-                    clean_s = "TMCV"
-                formatted_symbols.append(f"{clean_s}-EQ")
-                
-        # Remove duplicates and sort alphabetically (A to Z)
-        sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_symbols)))
-        
-        watchlist_output = [[sym] for sym in sorted_fno_symbols]
-        if watchlist_output:
-            data_sheet.batch_clear(["Z10:Z300"])
-            data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Alphabetical F&O Stocks Watchlist Written to Column Z! Total Stocks: {len(watchlist_output)}")
-    except Exception as wl_err:
-        print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -495,6 +495,7 @@ def run_bot_loop():
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon =Thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
