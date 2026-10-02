@@ -215,8 +215,9 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Selected Symbol from 'Option chain index new' J4: {selected_symbol}")
 
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-        mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
+        mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
 
+        # ROBUST FILTERING FOR INDEX, MCX AND STOCKS
         if selected_symbol in indices_array:
             target_exch_segs = ['NFO', 'BFO', 'BSE']
             target_inst_types = ['OPTIDX']
@@ -231,9 +232,13 @@ def fetch_and_update_option_chain(smart_api):
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
                 (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-                (full_scrip_df['name'].str.upper() == selected_symbol)
+                (
+                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
+                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
+                )
             ].copy()
         else:
+            # Stocks Option Filtering (Handles OPTSTK and symbol prefix mapping correctly)
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
@@ -277,7 +282,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # SPOT PRICE FETCHING
+        # SPOT / UNDERLYING PRICE FETCHING FOR INDEX, MCX & STOCKS
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -291,7 +296,18 @@ def fetch_and_update_option_chain(smart_api):
         
         if selected_symbol in spot_map:
             spot_token, spot_exchange = spot_map[selected_symbol]
+        elif selected_symbol in mcx_array:
+            # For MCX, pick the underlying future or spot token from master
+            fut_match = full_scrip_df[
+                (full_scrip_df['exch_seg'] == 'MCX') & 
+                (full_scrip_df['instrumenttype'] == 'FUTCOM') &
+                (full_scrip_df['name'].str.upper() == selected_symbol)
+            ]
+            if not fut_match.empty:
+                spot_token = str(fut_match.iloc[0]['token']).strip()
+                spot_exchange = "MCX"
         else:
+            # Stock Underlying Spot Fetching
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
                 (
