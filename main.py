@@ -90,7 +90,15 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if sigma <= 0:
             sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
-        d2 = d1 - sigma * np.sqrt(, 5.0, xtol=1e-6, maxiter=100)
+        d2 = d1 - sigma * np.sqrt(t)
+        if flag == 'CE':
+            price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2)
+        else:
+            price = K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
+        return price - ltp
+
+    try:
+        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
     except Exception:
         sigma = 0.20
 
@@ -128,13 +136,13 @@ def update_fno_watchlist_alphabetical():
         if full_scrip_df.empty:
             return
             
-        # 1. Fixed Indices and MCX list as requested
+        # Fixed Indices & MCX list
         fixed_indices_mcx = [
             "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX",
             "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "COPPER", "ZINC", "ALUMINI", "LEAD"
         ]
         
-        # 2. Extract all F&O stocks (OPTSTK / FUTSTK)
+        # Extract all F&O stocks (OPTSTK / FUTSTK)
         fno_df = full_scrip_df[
             (full_scrip_df['exch_seg'] == 'NSE') & 
             (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
@@ -146,6 +154,7 @@ def update_fno_watchlist_alphabetical():
         for sym in symbols:
             clean_s = sym.strip()
             if clean_s and clean_s not in fixed_indices_mcx:
+                # Map old Tata Motors variations cleanly
                 if clean_s in ["TATAMOTORS", "TATA"]:
                     clean_s = "TMCV"
                 formatted_fno.append(f"{clean_s}-EQ")
@@ -158,9 +167,9 @@ def update_fno_watchlist_alphabetical():
         
         watchlist_output = [[sym] for sym in final_watchlist]
         if watchlist_output:
-            data_sheet.batch_clear(["Z10:Z500"])
+            data_sheet.batch_clear(["Z10:Z600"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Indices/MCX + A-Z F&O Stocks. Total: {len(watchlist_output)}")
+            print(f"✅ Watchlist Updated Successfully! Total items: {len(watchlist_output)}")
     except Exception as wl_err:
         print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
@@ -221,10 +230,11 @@ def fetch_and_update_option_chain(smart_api):
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         
+        # Robust handling for Tata Motors demerged symbols
         if clean_symbol in ["TATAMOTORS", "TATA"]:
             clean_symbol = "TMCV"
 
-        print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         # ==========================================
         # SPOT TOKEN & PRICE RESOLUTION FIRST
@@ -452,9 +462,9 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Table Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
+            print(f"🎯 Option Chain Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
         else:
-            print("⚠ Warning: output_rows has only header, no strike rows generated!")
+            print("⚠ Warning: output_rows has only header!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -495,7 +505,6 @@ def run_bot_loop():
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon =Thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
