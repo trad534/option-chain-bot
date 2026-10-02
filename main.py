@@ -181,7 +181,7 @@ def update_watchlist_once():
         print(f"⚠ Watchlist update error: {wl_err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (WITH ROBUST MCX & STOCK FIX)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global full_scrip_df, morning_oi_dict, baseline_date
@@ -203,31 +203,21 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # Read Symbol from J4 or fallback J9
-        raw_selected_symbol = ""
+        # ==========================================
+        # STRICTLY READ SYMBOL FROM J4 ONLY
+        # ==========================================
+        raw_selected_symbol = "NIFTY"
         try:
-            val = str(data_sheet.cell(4, 10).value).strip().upper()
+            val = str(data_sheet.cell(4, 10).value).strip().upper() # Cell J4
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
-        except:
-            pass
-
-        if not raw_selected_symbol:
-            try:
-                val = str(data_sheet.cell(9, 10).value).strip().upper()
-                if val and val != "NONE" and val != "NAN" and val != "0":
-                    raw_selected_symbol = val
-            except:
-                pass
-
-        if not raw_selected_symbol:
-            raw_selected_symbol = "NIFTY"
+        except Exception as e:
+            print(f"⚠ Error reading J4 symbol: {e}")
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        print(f"🎯 Active Selected Symbol: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Flexible matching for Index, Stocks, and MCX options
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
             (
@@ -275,7 +265,6 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # Precise Spot/Underlying Token Finder for Index, Stocks & MCX
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -290,7 +279,6 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in spot_map:
             spot_token, spot_exchange = spot_map[clean_symbol]
         else:
-            # Check for Stock Equity (NSE)
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
                 (
@@ -305,7 +293,6 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                # Check for MCX Commodities Future/Spot
                 mcx_fut = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'MCX') & 
                     (
@@ -336,7 +323,7 @@ def fetch_and_update_option_chain(smart_api):
             else:
                 spot_price = 100.0
 
-        print(f"🎯 Symbol: {clean_symbol} | Exchange: {spot_exchange} | Spot Token: {spot_token} | Spot Price: {spot_price}")
+        print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
             data_sheet.update(range_name="J9", values=[[watchlist_symbol]])
