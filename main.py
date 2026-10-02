@@ -124,14 +124,15 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# LIGHTNING-FAST CACHED SCRIP MASTER
+# CACHED SCRIP MASTER & STATE VARIABLES
 # ==========================================
 full_scrip_df = pd.DataFrame()
-eq_cache = {}          # {clean_symbol: (token, exch)}
-options_cache = {}     # {clean_symbol: dataframe_of_options}
+eq_cache = {}          
+options_cache = {}     
 morning_oi_dict = {}
 baseline_date = None
-last_processed_symbol = None
+cached_selected_symbol = None
+sheet_read_counter = 0
 
 def update_fno_watchlist_alphabetical():
     global full_scrip_df
@@ -192,7 +193,6 @@ def initialize_scrip_master(smart_api):
 
             print("⚡ Pre-indexing EQ and Options for instant lookup...")
             
-            # Pre-cache Equity tokens
             nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
                 sym = str(row['symbol']).strip().upper()
@@ -203,7 +203,6 @@ def initialize_scrip_master(smart_api):
                 if sym.endswith("-EQ"):
                     eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
 
-            # Pre-cache Options by Name
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce')
@@ -212,7 +211,6 @@ def initialize_scrip_master(smart_api):
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 options_cache[name.strip()] = group
             
-            # Handle aliases like TMCV / TATAMOTORS
             if "TMCV" in options_cache:
                 options_cache["TATAMOTORS"] = options_cache["TMCV"]
                 options_cache["TATA"] = options_cache["TMCV"]
@@ -225,13 +223,12 @@ def initialize_scrip_master(smart_api):
         print(f"⚠ Scrip Master Download Error: {e}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (LIGHTNING FAST)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, last_processed_symbol, options_cache, eq_cache
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, sheet_read_counter
     try:
         now_dt = datetime.now()
-        current_time_str = now_dt.strftime('%H:%M:%S')
         current_date_str = now_dt.strftime('%Y-%m-%d')
 
         if baseline_date != current_date_str:
@@ -243,25 +240,25 @@ def fetch_and_update_option_chain(smart_api):
             if not options_cache:
                 return
 
-        # Instant read from J4
-        raw_selected_symbol = "RELIANCE"
+        # Optimized reading: Check J4 symbol dynamically
+        raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
+        
+        # Read from sheet every cycle or fallback safely
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
-        except Exception as e:
+        except Exception:
             pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
             clean_symbol = "TMCV"
 
-        # If symbol changed, log it immediately
-        if last_processed_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched Instantly to: {clean_symbol}")
-            last_processed_symbol = clean_symbol
+        if cached_selected_symbol != clean_symbol:
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+            cached_selected_symbol = clean_symbol
 
-        # Fast spot token lookup from memory cache
         spot_token = ""
         spot_exchange = "NSE"
         if clean_symbol in eq_cache:
@@ -279,17 +276,14 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # Fast options retrieval from memory cache
         sym_options = options_cache.get(clean_symbol, pd.DataFrame())
         if sym_options.empty:
-            # Fallback search in cache keys
             for key in options_cache:
                 if clean_symbol in key:
                     sym_options = options_cache[key]
                     break
 
         if sym_options.empty:
-            print(f"❌ No options found in cache for {clean_symbol}")
             return
 
         today_date = pd.Timestamp(now_dt.date())
@@ -319,7 +313,6 @@ def fetch_and_update_option_chain(smart_api):
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-        # Update headers instantly
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
@@ -433,7 +426,7 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"⚡ Instant Update: {clean_symbol} refreshed successfully!")
+            print(f"⚡ Refreshed Successfully for {clean_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -442,7 +435,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Lightning-Fast Angel One Bot Thread...")
+    print("🚀 Starting Optimized Angel One Bot Thread...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -470,7 +463,7 @@ def run_bot_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(1)  # Lightning fast 1-second refresh cycle!
+        time.sleep(1)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
