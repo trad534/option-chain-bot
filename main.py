@@ -153,6 +153,11 @@ def update_fno_watchlist_alphabetical():
         formatted_fno = []
         for sym in symbols:
             clean_s = sym.strip()
+            
+            # Skip dummy/test symbols like 011NSETEST, 021NSETEST, etc.
+            if "NSETEST" in clean_s or "TEST" in clean_s:
+                continue
+                
             if clean_s and clean_s not in fixed_indices_mcx:
                 if clean_s in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
                     clean_s = "TMCV"
@@ -168,7 +173,7 @@ def update_fno_watchlist_alphabetical():
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z700"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Indices/MCX + A-Z F&O Stocks. Total: {len(watchlist_output)}")
+            print(f"✅ Watchlist Updated Successfully! Test symbols removed. Total: {len(watchlist_output)}")
     except Exception as wl_err:
         print(f"⚠ Watchlist alphabetical update error: {wl_err}")
 
