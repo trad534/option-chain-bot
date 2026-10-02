@@ -206,7 +206,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         # ==========================================
-        # ULTRA-ROBUST SPOT TOKEN & PRICE RESOLUTION FIRST
+        # SPOT TOKEN & PRICE RESOLUTION FIRST
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -255,17 +255,29 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Spot fetch warning: {e}")
 
-        # Precise Options Filtering based on clean symbol name & strict keyword match
-        sym_options = full_scrip_df[
-            (full_scrip_df['strike'] > 0) &
-            (
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-            )
-        ].copy()
+        # ==========================================
+        # STRICT OPTIONS FILTERING FOR TATA MOTORS / STOCKS
+        # ==========================================
+        if clean_symbol == "TATAMOTORS":
+            # Strict filtering for TATAMOTORS to prevent mixing with other TATA groups
+            sym_options = full_scrip_df[
+                (full_scrip_df['strike'] > 0) &
+                (full_scrip_df['exch_seg'] == 'NFO') &
+                (
+                    (full_scrip_df['name'].astype(str).str.upper() == "TATAMOTORS") |
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith("TATAMOTORS"))
+                )
+            ].copy()
+        else:
+            sym_options = full_scrip_df[
+                (full_scrip_df['strike'] > 0) &
+                (
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
+                )
+            ].copy()
 
         if sym_options.empty:
-            # Broad fallback if exact startswith fails
             sym_options = full_scrip_df[
                 (full_scrip_df['strike'] > 0) &
                 (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
@@ -308,7 +320,6 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # Fallback to median strike if spot price retrieval fails
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if all_strikes_list:
