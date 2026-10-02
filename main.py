@@ -215,7 +215,7 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
         # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4 (Fixed for Stocks & MCX)
+        # 2. OPTION CHAIN PROCESSING FOR J4 (Foolproof for -EQ & Indices)
         # ==========================================
         selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not selected_symbol or selected_symbol == "NONE":
@@ -278,7 +278,7 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = 1
 
         # ==========================================
-        # SPOT PRICE & TOKEN FINDER (Updated & Fixed for -EQ Stocks)
+        # SPOT PRICE & TOKEN FINDER (Foolproof for -EQ & Indices)
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -294,27 +294,26 @@ def fetch_and_update_option_chain(smart_api):
         if selected_symbol in spot_map:
             spot_token, spot_exchange = spot_map[selected_symbol]
         else:
-            spot_match = full_scrip_df[
-                (
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper() == clean_search_name + "-EQ") |
-                    (full_scrip_df['name'].str.upper() == clean_search_name)
-                ) & 
-                (full_scrip_df['exch_seg'].isin(['NSE', 'MCX']))
+            eq_search_symbol = clean_search_name + "-EQ"
+            eq_match = full_scrip_df[
+                (full_scrip_df['exch_seg'] == 'NSE') & 
+                (full_scrip_df['symbol'].str.upper() == eq_search_symbol)
             ]
             
-            if not spot_match.empty:
-                eq_check = spot_match[(spot_match['exch_seg'] == 'NSE') & (spot_match['symbol'].str.endswith('-EQ', na=False))]
-                if not eq_check.empty:
-                    row_item = eq_check.iloc[0]
-                else:
-                    row_item = spot_match.iloc[0]
-                
-                spot_token = str(row_item['token']).strip()
-                spot_exchange = str(row_item['exch_seg']).strip()
+            if not eq_match.empty:
+                spot_token = str(eq_match.iloc[0]['token']).strip()
+                spot_exchange = "NSE"
             else:
-                spot_token = str(current_expiry_options['token'].iloc[0])
-                spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
+                spot_match = full_scrip_df[
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol) & 
+                    (full_scrip_df['exch_seg'].isin(['NSE', 'MCX']))
+                ]
+                if not spot_match.empty:
+                    spot_token = str(spot_match.iloc[0]['token']).strip()
+                    spot_exchange = str(spot_match.iloc[0]['exch_seg']).strip()
+                else:
+                    spot_token = str(current_expiry_options['token'].iloc[0])
+                    spot_exchange = str(current_expiry_options['exch_seg'].iloc[0])
 
         try:
             spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
@@ -326,7 +325,7 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Spot fetch warning: {e}")
             spot_price = 0.0
         
-        if spot_price <= 0 and selected_symbol in spot_map:
+        if spot_price <= 0:
             spot_price = float(current_expiry_options['strike'].median())
 
         print(f"🎯 Symbol: {selected_symbol} | Spot Token: {spot_token} | Spot Exch: {spot_exchange} | Spot Price: {spot_price}")
