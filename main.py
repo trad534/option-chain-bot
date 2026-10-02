@@ -204,15 +204,23 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # FOOLPROOF SYMBOL READING & CLEANING
+        # FOOLPROOF SYMBOL READING FROM J4 (AND FALLBACK J9)
         # ==========================================
         raw_selected_symbol = ""
         try:
-            val = str(data_sheet.cell(9, 10).value).strip().upper()
+            val = str(data_sheet.cell(4, 10).value).strip().upper() # J4 cell
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
         except:
             pass
+
+        if not raw_selected_symbol:
+            try:
+                val = str(data_sheet.cell(9, 10).value).strip().upper() # J9 cell fallback
+                if val and val != "NONE" and val != "NAN" and val != "0":
+                    raw_selected_symbol = val
+            except:
+                pass
 
         if not raw_selected_symbol:
             try:
