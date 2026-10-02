@@ -233,14 +233,11 @@ def fetch_and_update_option_chain(smart_api):
                 (full_scrip_df['name'].str.upper() == selected_symbol)
             ].copy()
         else:
-            # Precise Stock Options Filter (Stricts matching to prevent wrong index strikes)
+            # STRICT STOCK OPTIONS FILTER (Exact Name match to eliminate wrong indices)
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
-                (
-                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
-                )
+                (full_scrip_df['name'].str.upper() == selected_symbol)
             ].copy()
 
         if sym_options.empty:
@@ -277,6 +274,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
+        # SPOT PRICE FETCHING LOGIC
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -305,23 +303,27 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                spot_token = "2885"
-                spot_exchange = "NSE"
+                spot_token = ""
 
-        try:
-            spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
-            spot_price = 0.0
-            if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
-                item = spot_quote['data']['fetched'][0]
-                spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-        except Exception as e:
-            print(f"⚠ Spot fetch warning: {e}")
-            spot_price = 0.0
+        spot_price = 0.0
+        if spot_token:
+            try:
+                spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
+                    item = spot_quote['data']['fetched'][0]
+                    spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
+            except Exception as e:
+                print(f"⚠ Spot fetch warning: {e}")
         
+        # Fallback agar spot price live na mile
         if spot_price <= 0:
-            spot_price = float(current_expiry_options['strike'].median())
+            all_strikes_list = sorted(current_expiry_options['strike'].unique())
+            if all_strikes_list:
+                spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
+            else:
+                spot_price = 100.0
 
-        print(f"🎯 Symbol: {selected_symbol} | Spot Token: {spot_token} | Spot Exch: {spot_exchange} | Spot Price: {spot_price}")
+        print(f"🎯 Symbol: {selected_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
             data_sheet.update(range_name="J9", values=[[selected_symbol]])
