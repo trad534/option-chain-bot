@@ -154,19 +154,27 @@ def initialize_scrip_master(smart_api):
 
 def update_watchlist_once():
     try:
-        indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-        mcx_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
-        nifty50_stocks = [
-            'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
-            'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
-            'TMCV-EQ', 'TMPV-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'BAJFINANCE-EQ'
+        full_63_list = [
+            'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX',
+            'CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD',
+            'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 'SBIN-EQ', 
+            'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 'TMCV-EQ', 'TMPV-EQ', 
+            'TATASTEEL-EQ', 'ITC-EQ', 'BAJFINANCE-EQ', 'ASIANPAINT-EQ', 'HINDUNILVR-EQ', 
+            'MARUTI-EQ', 'TITAN-EQ', 'SUNPHARMA-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ', 'ONGC-EQ', 
+            'NTPC-EQ', 'POWERGRID-EQ', 'COALINDIA-EQ', 'ADANIENT-EQ', 'ADANIPORTS-EQ', 
+            'BAJAJ-AUTO-EQ', 'BAJAJFINSV-EQ', 'BPCL-EQ', 'BRITANNIA-EQ', 'CIPLA-EQ', 
+            'DRREDDY-EQ', 'EICHERMOT-EQ', 'GRASIM-EQ', 'HCLTECH-EQ', 'HEROMOTOCO-EQ', 
+            'HINDALCO-EQ', 'INDUSINDBK-EQ', 'M&M-EQ', 'NESTLEIND-EQ', 'SBILIFE-EQ', 
+            'SHRIRAMFIN-EQ', 'SUNPHARMA-EQ', 'TATACONSUM-EQ', 'TECHM-EQ', 'TRENT-EQ', 
+            'UPL-EQ', 'ZOMATO-EQ'
         ]
-        combined_symbols = indices_list + mcx_list + nifty50_stocks
+        # Remove duplicates while preserving order
+        combined_symbols = list(dict.fromkeys(full_63_list))
         watchlist_output = [[sym] for sym in combined_symbols]
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z250"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print("✅ Watchlist Successfully Written to Column Z!")
+            print(f"✅ Full Watchlist Successfully Written to Column Z! Total: {len(watchlist_output)}")
     except Exception as wl_err:
         print(f"⚠ Watchlist update error: {wl_err}")
 
@@ -204,7 +212,6 @@ def fetch_and_update_option_chain(smart_api):
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         
-        # Mapping Tata Motors to TMCV automatically
         if clean_symbol in ["TATAMOTORS", "TATA"]:
             clean_symbol = "TMCV"
 
