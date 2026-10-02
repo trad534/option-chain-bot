@@ -205,7 +205,7 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Bulletproof Fuzzy Matching for Options (Fixed variable declaration)
+        # Bulletproof Fuzzy Matching for Options
         search_keyword = clean_symbol
         if "TATA" in clean_symbol:
             search_keyword = "TATA"
@@ -261,6 +261,9 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
+        # ==========================================
+        # ULTRA-ROBUST SPOT TOKEN & PRICE RESOLUTION
+        # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -289,7 +292,15 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                spot_token = ""
+                # Fallback search if exact EQ match fails
+                fallback_eq = full_scrip_df[
+                    (full_scrip_df['exch_seg'] == 'NSE') & 
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
+                    (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
+                ]
+                if not fallback_eq.empty:
+                    spot_token = str(fallback_eq.iloc[0]['token']).strip()
+                    spot_exchange = "NSE"
 
         spot_price = 0.0
         if spot_token:
@@ -301,6 +312,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Spot fetch warning: {e}")
         
+        # Fallback to median strike if spot price retrieval fails or gives invalid range
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if all_strikes_list:
