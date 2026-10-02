@@ -213,31 +213,39 @@ def fetch_and_update_option_chain(smart_api):
         selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
-        # Strict Separation for Index vs Stock Options
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
         mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
 
         if selected_symbol in indices_array:
             target_exch_segs = ['NFO', 'BFO', 'BSE']
             target_inst_types = ['OPTIDX']
+            sym_options = full_scrip_df[
+                (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
+                (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
+                (full_scrip_df['name'].str.upper() == selected_symbol)
+            ].copy()
         elif selected_symbol in mcx_array:
             target_exch_segs = ['MCX']
             target_inst_types = ['OPTCOM', 'FUTCOM']
+            sym_options = full_scrip_df[
+                (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
+                (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
+                (full_scrip_df['name'].str.upper() == selected_symbol)
+            ].copy()
         else:
-            target_exch_segs = ['NFO']
-            target_inst_types = ['OPTSTK']
-
-        sym_options = full_scrip_df[
-            (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
-            (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-            (
-                (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
-            )
-        ].copy()
+            # Stock Options Filter
+            sym_options = full_scrip_df[
+                (full_scrip_df['exch_seg'] == 'NFO') & 
+                (full_scrip_df['instrumenttype'] == 'OPTSTK') &
+                (
+                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
+                    (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
+                )
+            ].copy()
 
         if sym_options.empty:
-            print(f"⚠ No options found in master for symbol: {selected_symbol}. Skipping update.")
+            print(f"⚠ No options found in master for symbol: {selected_symbol}. Clearing table.")
+            data_sheet.batch_clear(["A10:U100"])
             return
 
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
@@ -248,6 +256,7 @@ def fetch_and_update_option_chain(smart_api):
 
         if sym_options.empty:
             print(f"⚠ No future valid expiry dates found for {selected_symbol}")
+            data_sheet.batch_clear(["A10:U100"])
             return
 
         unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
