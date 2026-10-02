@@ -256,16 +256,16 @@ def fetch_and_update_option_chain(smart_api):
                 print(f"⚠ Spot fetch warning: {e}")
 
         # ==========================================
-        # STRICT OPTIONS FILTERING FOR TATA MOTORS / STOCKS
+        # ULTRA-FLEXIBLE OPTIONS FILTERING FOR TATA MOTORS / STOCKS
         # ==========================================
         if clean_symbol == "TATAMOTORS":
-            # Strict filtering for TATAMOTORS to prevent mixing with other TATA groups
+            # Search by checking any column or substring containing TATAMOTORS in NFO segment
             sym_options = full_scrip_df[
                 (full_scrip_df['strike'] > 0) &
                 (full_scrip_df['exch_seg'] == 'NFO') &
                 (
-                    (full_scrip_df['name'].astype(str).str.upper() == "TATAMOTORS") |
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith("TATAMOTORS"))
+                    (full_scrip_df['name'].astype(str).str.upper().str.contains("TATAMOTOR")) |
+                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains("TATAMOTOR"))
                 )
             ].copy()
         else:
