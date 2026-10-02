@@ -371,6 +371,9 @@ def fetch_and_update_option_chain(smart_api):
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
 
+        # ==========================================
+        # UNIVERSAL 41 STRIKES SLICING LOGIC
+        # ==========================================
         if len(all_master_strikes) > 0:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
             start_idx = max(0, closest_idx - 20)
@@ -378,11 +381,18 @@ def fetch_and_update_option_chain(smart_api):
             
             strikes = all_master_strikes[start_idx:end_idx]
             
-            if len(strikes) < 41 and len(all_master_strikes) >= 41:
-                if start_idx == 0:
-                    strikes = all_master_strikes[:41]
-                elif end_idx == len(all_master_strikes):
-                    strikes = all_master_strikes[-41:]
+            # Agar total available strikes 41 se kam hain, toh jitni available hain sabhi le lo
+            if len(all_master_strikes) < 41:
+                strikes = all_master_strikes
+            else:
+                # Agar 41 se zyada hain lekin window choti padd rahi hai toh adjust karo taaki exact 41 ho sakein
+                if len(strikes) < 41:
+                    if start_idx == 0:
+                        end_idx = min(len(all_master_strikes), 41)
+                        strikes = all_master_strikes[:end_idx]
+                    elif end_idx == len(all_master_strikes):
+                        start_idx = max(0, len(all_master_strikes) - 41)
+                        strikes = all_master_strikes[start_idx:]
         else:
             strikes = []
 
@@ -445,7 +455,6 @@ def fetch_and_update_option_chain(smart_api):
         ]]
 
         for st in strikes:
-            # Strictly match CE and PE based on strike and symbol ending suffix
             ce_sub = current_expiry_options[
                 (current_expiry_options['strike'] == st) & 
                 (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))
