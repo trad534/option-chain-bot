@@ -157,13 +157,8 @@ def initialize_scrip_master(smart_api):
 # ==========================================
 def update_watchlist_once():
     try:
-        # 1. Indices
         indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-        
-        # 2. MCX Commodities
         mcx_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
-        
-        # 3. Nifty 50 Stocks
         nifty50_stocks = [
             'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
             'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
@@ -183,7 +178,7 @@ def update_watchlist_once():
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z250"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print("✅ Watchlist (Indices, MCX, Nifty 50) Successfully Written to Column Z!")
+            print("✅ Watchlist Successfully Written to Column Z!")
     except Exception as wl_err:
         print(f"⚠ Watchlist update error: {wl_err}")
 
@@ -210,9 +205,6 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # ==========================================
-        # OPTION CHAIN PROCESSING FOR J4
-        # ==========================================
         raw_selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not raw_selected_symbol or raw_selected_symbol == "NONE":
             print("⚠ No valid symbol found in J4. Waiting...")
@@ -221,24 +213,28 @@ def fetch_and_update_option_chain(smart_api):
         selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
-        target_exch_segs = ['NFO', 'MCX', 'BFO']
-        if selected_symbol == 'SENSEX':
-            target_exch_segs = ['BFO', 'BSE']
+        # Strict Separation for Index vs Stock Options
+        indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
+        mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
+
+        if selected_symbol in indices_array:
+            target_exch_segs = ['NFO', 'BFO', 'BSE']
+            target_inst_types = ['OPTIDX']
+        elif selected_symbol in mcx_array:
+            target_exch_segs = ['MCX']
+            target_inst_types = ['OPTCOM', 'FUTCOM']
+        else:
+            target_exch_segs = ['NFO']
+            target_inst_types = ['OPTSTK']
 
         sym_options = full_scrip_df[
             (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
+            (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
             (
                 (full_scrip_df['name'].str.upper() == selected_symbol) | 
                 (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
-            ) &
-            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM']))
+            )
         ].copy()
-
-        if sym_options.empty:
-            sym_options = full_scrip_df[
-                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) &
-                (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'OPTCOM']))
-            ].copy()
 
         if sym_options.empty:
             print(f"⚠ No options found in master for symbol: {selected_symbol}. Skipping update.")
@@ -272,9 +268,6 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # ==========================================
-        # SPOT PRICE & TOKEN FINDER
-        # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -454,7 +447,6 @@ def run_bot_loop():
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
                 initialize_scrip_master(smart_api)
-                # Watchlist ko sirf ek baar likhein taaki blinking band ho jaye
                 update_watchlist_once()
                 break
             else:
