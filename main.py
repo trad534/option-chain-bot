@@ -59,7 +59,13 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
+    
+    # Data likhne ke liye upstox get data sheet
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
+    
+    # Symbol padhne ke liye Dashboard Sheet (pehla tab)
+    dashboard_sheet = spreadsheet.get_worksheet(0)
+    
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
@@ -204,19 +210,19 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # STRICTLY READ SYMBOL FROM J4 ONLY (NO FALLBACK)
+        # STRICTLY READ SYMBOL FROM DASHBOARD J4 ONLY
         # ==========================================
         raw_selected_symbol = "NIFTY"
         try:
-            val = str(data_sheet.cell(4, 10).value).strip().upper() # Cell J4
+            val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4 of Dashboard
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
         except Exception as e:
-            print(f"⚠ Error reading J4 symbol: {e}")
+            print(f"⚠ Error reading J4 symbol from Dashboard: {e}")
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol strictly from Dashboard J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
@@ -326,7 +332,6 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
-            # J9 par ab koi symbol overwrite nahi hoga, sirf spot price update hogi
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
