@@ -203,31 +203,36 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
+        # ==========================================
+        # BULLETPROOF SYMBOL DETECTION FROM ALL SHEETS
+        # ==========================================
         raw_selected_symbol = ""
-        try:
-            index_ws = spreadsheet.worksheet("Option chain index new")
-            val = str(index_ws.cell(4, 10).value).strip().upper()
-            if val and val != "NONE" and val != "NAN" and val != "0":
-                raw_selected_symbol = val
-        except Exception as e:
-            print(f"⚠ Could not read J4 from 'Option chain index new': {e}")
+        
+        # 1. Pehle sabhi sheets mein J4 cell ko scan karo
+        for ws in spreadsheet.worksheets():
+            try:
+                val = str(ws.cell(4, 10).value).strip().upper() # J4 is Row 4, Col 10
+                if val and val != "NONE" and val != "NAN" and val != "0" and val != "DATETIME":
+                    raw_selected_symbol = val
+                    break
+            except:
+                continue
 
+        # 2. Agar J4 na mile, toh upstox get data sheet ke J9 ko check karo
         if not raw_selected_symbol:
-            for ws in spreadsheet.worksheets():
-                try:
-                    val = str(ws.cell(4, 10).value).strip().upper()
-                    if val and val != "NONE" and val != "NAN" and val != "0" and ws.title != MAIN_SHEET_NAME:
-                        raw_selected_symbol = val
-                        break
-                except:
-                    continue
+            try:
+                val = str(data_sheet.cell(9, 10).value).strip().upper()
+                if val and val != "NONE" and val != "NAN" and val != "0":
+                    raw_selected_symbol = val
+            except:
+                pass
 
         if not raw_selected_symbol:
             raw_selected_symbol = "NIFTY"
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
-        print(f"🎯 Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol: {watchlist_symbol} (Clean: {clean_symbol})")
 
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
         mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
@@ -372,7 +377,7 @@ def fetch_and_update_option_chain(smart_api):
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
 
         # ==========================================
-        # UNIVERSAL 41 STRIKES SLICING LOGIC
+        # 41 STRIKES SLICING WITH SAFE FALLBACK
         # ==========================================
         if len(all_master_strikes) > 0:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -381,11 +386,9 @@ def fetch_and_update_option_chain(smart_api):
             
             strikes = all_master_strikes[start_idx:end_idx]
             
-            # Agar total available strikes 41 se kam hain, toh jitni available hain sabhi le lo
             if len(all_master_strikes) < 41:
                 strikes = all_master_strikes
             else:
-                # Agar 41 se zyada hain lekin window choti padd rahi hai toh adjust karo taaki exact 41 ho sakein
                 if len(strikes) < 41:
                     if start_idx == 0:
                         end_idx = min(len(all_master_strikes), 41)
