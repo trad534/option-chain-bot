@@ -205,10 +205,10 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Bulletproof Fuzzy Matching for Options (Handles TATAMOTORS / TATASTEEL / spaces)
+        # Bulletproof Fuzzy Matching for Options (Fixed variable declaration)
         search_keyword = clean_symbol
-        if "TATA" in clean_keyword:
-            search_keyword = "TATA" # Broad search to capture all TATA group options safely
+        if "TATA" in clean_symbol:
+            search_keyword = "TATA"
 
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
@@ -219,7 +219,6 @@ def fetch_and_update_option_chain(smart_api):
             )
         ].copy()
 
-        # Extra strict filter if generic TATA keyword was used, ensuring it matches the exact stock name
         if "TATA" in clean_symbol and not sym_options.empty:
             specific_filtered = sym_options[sym_options['symbol'].astype(str).str.upper().str.startswith(clean_symbol)]
             if not specific_filtered.empty:
