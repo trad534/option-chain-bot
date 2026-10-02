@@ -204,24 +204,23 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # UNIVERSAL & FOOLPROOF SYMBOL READING
+        # FOOLPROOF SYMBOL READING & CLEANING
         # ==========================================
         raw_selected_symbol = ""
-        
         try:
-            for ws in spreadsheet.worksheets():
-                val = str(ws.cell(4, 10).value).strip().upper()
-                if val and val != "NONE" and val != "NAN" and val != "0" and len(val) > 1:
-                    raw_selected_symbol = val
-                    break
-        except Exception as e:
-            print(f"⚠ Sheet scan warning: {e}")
+            val = str(data_sheet.cell(9, 10).value).strip().upper()
+            if val and val != "NONE" and val != "NAN" and val != "0":
+                raw_selected_symbol = val
+        except:
+            pass
 
         if not raw_selected_symbol:
             try:
-                val = str(data_sheet.cell(9, 10).value).strip().upper()
-                if val and val != "NONE" and val != "NAN" and val != "0":
-                    raw_selected_symbol = val
+                for ws in spreadsheet.worksheets():
+                    val = str(ws.cell(4, 10).value).strip().upper()
+                    if val and val != "NONE" and val != "NAN" and val != "0" and len(val) > 1:
+                        raw_selected_symbol = val
+                        break
             except:
                 pass
 
@@ -229,26 +228,18 @@ def fetch_and_update_option_chain(smart_api):
             raw_selected_symbol = "NIFTY"
 
         watchlist_symbol = raw_selected_symbol
-        clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
+        clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Universal Search across all segments for ANY selected symbol
+        # Ultra-flexible matching across all segments in Scrip Master
         sym_options = full_scrip_df[
-            (full_scrip_df['exch_seg'].isin(['NFO', 'BFO', 'BSE', 'MCX'])) & 
+            (full_scrip_df['strike'] > 0) &
             (
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
                 (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol)) |
                 (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
-            ) &
-            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCOM', 'FUTCOM']))
+            )
         ].copy()
-
-        if sym_options.empty:
-            print(f"⚠ Strict search failed for {clean_symbol}. Trying broad fallback search...")
-            sym_options = full_scrip_df[
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
-                (full_scrip_df['strike'] > 0)
-            ].copy()
 
         if sym_options.empty:
             print(f"❌ Critical: No options found for {clean_symbol}!")
