@@ -176,29 +176,34 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. AUTO-FETCH ALL SYMBOLS DIRECTLY FROM ANGEL ONE SCRIP MASTER INTO Z10:Z200
+        # 1. AUTO-FETCH CLEAN WATCHLIST SYMBOLS INTO Z10:Z200
         # ==========================================
         try:
             if full_scrip_df is not None and not full_scrip_df.empty:
-                indices_list = full_scrip_df[
-                    (full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & 
-                    (full_scrip_df['symbol'].isin(['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'NIFTY 50', 'NIFTY BANK']))
-                ]['symbol'].unique().tolist()
+                # 1. Clean Indices List
+                indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
                 
-                commodities_list = full_scrip_df[
+                # 2. Clean MCX Commodities List (Strictly main active symbols without random junk futures)
+                main_commodities = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
+                comm_df = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'MCX') & 
                     (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                    (full_scrip_df['symbol'].str.contains('CRUDEOIL|NATURALGAS|GOLD|SILVER|COPPER|ZINC|ALUMINI|LEAD', case=False, na=False))
-                ]['symbol'].unique().tolist()
+                    (full_scrip_df['symbol'].apply(lambda x: any(c in str(x) for c in main_commodities)))
+                ]
+                commodities_list = comm_df['symbol'].dropna().unique().tolist()[:15]
                 
+                # 3. Clean NSE Equity Stocks (-EQ format only)
                 nse_stocks_df = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'NSE') & 
-                    (full_scrip_df['symbol'].str.endswith('-EQ', na=False))
+                    (full_scrip_df['symbol'].str.endswith('-EQ', na=False)) &
+                    (~full_scrip_df['symbol'].str.contains('BE|BZ|GC|IL', na=False))
                 ]
                 stocks_list = nse_stocks_df['symbol'].dropna().unique().tolist()
                 
+                # Combine order: Indices -> Commodities -> Stocks
                 combined_symbols = indices_list + commodities_list + stocks_list
                 
+                # Remove duplicates while maintaining order
                 seen = set()
                 unique_combined = []
                 for sym in combined_symbols:
@@ -211,7 +216,7 @@ def fetch_and_update_option_chain(smart_api):
                 if watchlist_output:
                     data_sheet.batch_clear(["Z10:Z250"])
                     data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-                    print(f"✅ Automatically fetched all symbols from Angel One Scrip Master into Column Z!")
+                    print(f"✅ Clean Watchlist Updated in Column Z!")
         except Exception as wl_err:
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
