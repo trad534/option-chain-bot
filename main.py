@@ -159,7 +159,7 @@ def update_watchlist_once():
         nifty50_stocks = [
             'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
             'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
-            'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ'
+            'TMCV-EQ', 'TMPV-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'BAJFINANCE-EQ'
         ]
         combined_symbols = indices_list + mcx_list + nifty50_stocks
         watchlist_output = [[sym] for sym in combined_symbols]
@@ -203,6 +203,11 @@ def fetch_and_update_option_chain(smart_api):
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
+        
+        # Mapping Tata Motors to TMCV automatically
+        if clean_symbol in ["TATAMOTORS", "TATA"]:
+            clean_symbol = "TMCV"
+
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         # ==========================================
@@ -256,25 +261,15 @@ def fetch_and_update_option_chain(smart_api):
                 print(f"⚠ Spot fetch warning: {e}")
 
         # ==========================================
-        # ULTRA-FLEXIBLE OPTIONS FILTERING (SUPPORTS TATA MOTORS & ALL STOCKS)
+        # OPTIONS FILTERING
         # ==========================================
-        if "TATA" in clean_symbol:
-            sym_options = full_scrip_df[
-                (full_scrip_df['strike'] > 0) &
-                (full_scrip_df['exch_seg'] == 'NFO') &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper().str.contains("TATA")) |
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains("TATA"))
-                )
-            ].copy()
-        else:
-            sym_options = full_scrip_df[
-                (full_scrip_df['strike'] > 0) &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                )
-            ].copy()
+        sym_options = full_scrip_df[
+            (full_scrip_df['strike'] > 0) &
+            (
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
+            )
+        ].copy()
 
         if sym_options.empty:
             sym_options = full_scrip_df[
@@ -490,8 +485,8 @@ def run_bot_loop():
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
-        except Exception as e:
-            print(f"❌ Loop Error: {e}")
+        except Exception as _e:
+            print(f"❌ Loop Error: {_e}")
         time.sleep(5)
 
 if __name__ == "__main__":
