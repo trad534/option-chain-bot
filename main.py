@@ -124,11 +124,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER & WATCHLIST BUILDER
+# LIGHTNING-FAST CACHED SCRIP MASTER
 # ==========================================
 full_scrip_df = pd.DataFrame()
+eq_cache = {}          # {clean_symbol: (token, exch)}
+options_cache = {}     # {clean_symbol: dataframe_of_options}
 morning_oi_dict = {}
 baseline_date = None
+last_processed_symbol = None
 
 def update_fno_watchlist_alphabetical():
     global full_scrip_df
@@ -136,13 +139,11 @@ def update_fno_watchlist_alphabetical():
         if full_scrip_df.empty:
             return
             
-        # Fixed Indices & MCX list
         fixed_indices_mcx = [
             "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX",
             "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "COPPER", "ZINC", "ALUMINI", "LEAD"
         ]
         
-        # Extract all F&O stocks from NFO segment properly
         fno_df = full_scrip_df[
             (full_scrip_df['exch_seg'] == 'NFO') & 
             (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
@@ -153,32 +154,26 @@ def update_fno_watchlist_alphabetical():
         formatted_fno = []
         for sym in symbols:
             clean_s = sym.strip()
-            
-            # Skip dummy/test symbols like 011NSETEST, 021NSETEST, etc.
             if "NSETEST" in clean_s or "TEST" in clean_s:
                 continue
-                
             if clean_s and clean_s not in fixed_indices_mcx:
                 if clean_s in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
                     clean_s = "TMCV"
                 formatted_fno.append(f"{clean_s}-EQ")
                 
-        # Sort F&O stocks alphabetically from A to Z
         sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_fno)))
-        
-        # Combine: First Indices/MCX, then Sorted F&O Stocks
         final_watchlist = fixed_indices_mcx + sorted_fno_symbols
         
         watchlist_output = [[sym] for sym in final_watchlist]
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z700"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Test symbols removed. Total: {len(watchlist_output)}")
+            print(f"✅ Watchlist Updated Successfully! Total: {len(watchlist_output)}")
     except Exception as wl_err:
-        print(f"⚠ Watchlist alphabetical update error: {wl_err}")
+        print(f"⚠ Watchlist update error: {wl_err}")
 
 def initialize_scrip_master(smart_api):
-    global full_scrip_df
+    global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
@@ -194,79 +189,85 @@ def initialize_scrip_master(smart_api):
             
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
-                
-            print(f"✅ Angel One Scrip Master Loaded! Total Records: {len(full_scrip_df)}")
+
+            print("⚡ Pre-indexing EQ and Options for instant lookup...")
+            
+            # Pre-cache Equity tokens
+            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+            for _, row in nse_eq.iterrows():
+                sym = str(row['symbol']).strip().upper()
+                name = str(row['name']).strip().upper()
+                tok = str(row['token']).strip()
+                eq_cache[sym] = (tok, 'NSE')
+                eq_cache[name] = (tok, 'NSE')
+                if sym.endswith("-EQ"):
+                    eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+
+            # Pre-cache Options by Name
+            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
+            fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
+            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce')
+            fno_opts['parsed_expiry'] = fno_opts['parsed_expiry'].fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+            
+            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
+                options_cache[name.strip()] = group
+            
+            # Handle aliases like TMCV / TATAMOTORS
+            if "TMCV" in options_cache:
+                options_cache["TATAMOTORS"] = options_cache["TMCV"]
+                options_cache["TATA"] = options_cache["TMCV"]
+            elif "TATAMOTORS" in options_cache:
+                options_cache["TMCV"] = options_cache["TATAMOTORS"]
+
+            print(f"✅ Scrip Master Cached Successfully! Total Records: {len(full_scrip_df)}")
             update_fno_watchlist_alphabetical()
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP (LIGHTNING FAST)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global full_scrip_df, morning_oi_dict, baseline_date
+    global morning_oi_dict, baseline_date, last_processed_symbol, options_cache, eq_cache
     try:
         now_dt = datetime.now()
         current_time_str = now_dt.strftime('%H:%M:%S')
         current_date_str = now_dt.strftime('%Y-%m-%d')
-        
-        print(f"\n🔄 Loop executed at: {current_time_str}")
-        data_sheet.update(range_name="A2", values=[[f"Angel One Bot Working - {current_time_str}"]])
 
         if baseline_date != current_date_str:
             morning_oi_dict = {}
             baseline_date = current_date_str
 
-        if full_scrip_df is None or full_scrip_df.empty:
+        if not options_cache:
             initialize_scrip_master(smart_api)
-            if full_scrip_df.empty:
-                print("⚠ Scrip master empty, retrying next loop...")
+            if not options_cache:
                 return
 
+        # Instant read from J4
         raw_selected_symbol = "RELIANCE"
         try:
-            val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4
+            val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
         except Exception as e:
-            print(f"⚠ Error reading J4 symbol from sheet: {e}")
+            pass
 
-        watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        
         if clean_symbol in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
             clean_symbol = "TMCV"
 
-        print(f"🎯 Active Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        # If symbol changed, log it immediately
+        if last_processed_symbol != clean_symbol:
+            print(f"\n⚡ Symbol Switched Instantly to: {clean_symbol}")
+            last_processed_symbol = clean_symbol
 
-        # ==========================================
-        # SPOT TOKEN & PRICE RESOLUTION FIRST
-        # ==========================================
+        # Fast spot token lookup from memory cache
         spot_token = ""
         spot_exchange = "NSE"
-        
-        eq_match = full_scrip_df[
-            (full_scrip_df['exch_seg'] == 'NSE') & 
-            (
-                (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
-                (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-            ) &
-            (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
-        ]
-        
-        if not eq_match.empty:
-            spot_token = str(eq_match.iloc[0]['token']).strip()
-            spot_exchange = "NSE"
-        else:
-            fallback_eq = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NSE') & 
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) &
-                (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))
-            ]
-            if not fallback_eq.empty:
-                spot_token = str(fallback_eq.iloc[0]['token']).strip()
-                spot_exchange = "NSE"
+        if clean_symbol in eq_cache:
+            spot_token, spot_exchange = eq_cache[clean_symbol]
+        elif clean_symbol + "-EQ" in eq_cache:
+            spot_token, spot_exchange = eq_cache[clean_symbol + "-EQ"]
 
         spot_price = 0.0
         if spot_token:
@@ -275,46 +276,28 @@ def fetch_and_update_option_chain(smart_api):
                 if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
                     item = spot_quote['data']['fetched'][0]
                     spot_price = float(item.get('ltp', item.get('LTP', item.get('close', 0))))
-            except Exception as e:
-                print(f"⚠ Spot fetch warning: {e}")
+            except Exception:
+                pass
 
-        # ==========================================
-        # OPTIONS FILTERING
-        # ==========================================
-        sym_options = full_scrip_df[
-            (full_scrip_df['strike'] > 0) &
-            (
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-            )
-        ].copy()
+        # Fast options retrieval from memory cache
+        sym_options = options_cache.get(clean_symbol, pd.DataFrame())
+        if sym_options.empty:
+            # Fallback search in cache keys
+            for key in options_cache:
+                if clean_symbol in key:
+                    sym_options = options_cache[key]
+                    break
 
         if sym_options.empty:
-            sym_options = full_scrip_df[
-                (full_scrip_df['strike'] > 0) &
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
-            ].copy()
-
-        if sym_options.empty:
-            print(f"❌ Critical: No options found for {clean_symbol}!")
+            print(f"❌ No options found in cache for {clean_symbol}")
             return
 
-        sym_options['strike'] = pd.to_numeric(sym_options['strike'], errors='coerce')
-        sym_options = sym_options[sym_options['strike'] > 0]
-
-        sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
-        if sym_options['parsed_expiry'].isna().all():
-            sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], errors='coerce')
-            
-        sym_options = sym_options.dropna(subset=['parsed_expiry'])
         today_date = pd.Timestamp(now_dt.date())
-        sym_options = sym_options[sym_options['parsed_expiry'] >= today_date]
-
-        if sym_options.empty:
-            print(f"⚠ No valid expiry dates found for {clean_symbol}")
+        valid_opts = sym_options[sym_options['parsed_expiry'] >= today_date].copy()
+        if valid_opts.empty:
             return
 
-        unique_expiries_dt = sorted(sym_options['parsed_expiry'].unique())
+        unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
 
         active_expiries = expiry_strings_sorted[:4]
@@ -323,7 +306,7 @@ def fetch_and_update_option_chain(smart_api):
 
         current_expiry = active_expiries[0]
         current_expiry_dt = unique_expiries_dt[0]
-        current_expiry_options = sym_options[sym_options['parsed_expiry'] == current_expiry_dt].copy()
+        current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
 
         lot_size = 1
         if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty:
@@ -334,44 +317,29 @@ def fetch_and_update_option_chain(smart_api):
 
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
-            if all_strikes_list:
-                spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
-            else:
-                spot_price = 100.0
+            spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-        print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
-
+        # Update headers instantly
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
-            
             expiry_cells = [
                 ['A3', active_expiries[0]], ['A4', active_expiries[1]], 
                 ['A5', active_expiries[2]], ['A6', active_expiries[3]]
             ]
             data_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
-        except Exception as sheet_err:
-            print(f"⚠ Error updating header cells: {sheet_err}")
+        except Exception:
+            pass
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
-
-        if len(all_master_strikes) > 0:
+        if all_master_strikes:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
             start_idx = max(0, closest_idx - 20)
             end_idx = min(len(all_master_strikes), closest_idx + 21)
             strikes = all_master_strikes[start_idx:end_idx]
-            
             if len(all_master_strikes) < 41:
                 strikes = all_master_strikes
-            else:
-                if len(strikes) < 41:
-                    if start_idx == 0:
-                        end_idx = min(len(all_master_strikes), 41)
-                        strikes = all_master_strikes[:end_idx]
-                    elif end_idx == len(all_master_strikes):
-                        start_idx = max(0, len(all_master_strikes) - 41)
-                        strikes = all_master_strikes[start_idx:]
         else:
             strikes = []
 
@@ -396,8 +364,8 @@ def fetch_and_update_option_chain(smart_api):
                     res = smart_api.getMarketData("FULL", {exch: batch_tokens})
                     if res and res.get('status') and res.get('data'):
                         all_fetched_quotes.extend(res['data'].get('fetched', []))
-                except Exception as batch_err:
-                    print(f"⚠ Batch fetch error for {exch}: {batch_err}")
+                except Exception:
+                    pass
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
@@ -465,9 +433,7 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Table Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
-        else:
-            print("⚠ Warning: output_rows has only header, no strike rows generated!")
+            print(f"⚡ Instant Update: {clean_symbol} refreshed successfully!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -476,7 +442,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Angel One Bot Loop Thread...")
+    print("🚀 Starting Lightning-Fast Angel One Bot Thread...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -494,17 +460,17 @@ def run_bot_loop():
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
-                time.sleep(10)
+                time.sleep(5)
         except Exception as e:
             print(f"❌ Session Generation Exception: {e}")
-            time.sleep(10)
+            time.sleep(5)
 
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(5)
+        time.sleep(1)  # Lightning fast 1-second refresh cycle!
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
