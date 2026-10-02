@@ -153,7 +153,7 @@ def initialize_scrip_master(smart_api):
         print(f"⚠ Scrip Master Download Error: {e}")
 
 # ==========================================
-# UPDATE WATCHLIST ONCE (Stops Blinking)
+# UPDATE WATCHLIST ONCE
 # ==========================================
 def update_watchlist_once():
     try:
@@ -233,7 +233,6 @@ def fetch_and_update_option_chain(smart_api):
                 (full_scrip_df['name'].str.upper() == selected_symbol)
             ].copy()
         else:
-            # STRICT STOCK OPTIONS FILTER (Exact Name match to eliminate wrong indices)
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
@@ -274,7 +273,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # SPOT PRICE FETCHING LOGIC
+        # SPOT PRICE FETCHING
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -315,7 +314,6 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Spot fetch warning: {e}")
         
-        # Fallback agar spot price live na mile
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if all_strikes_list:
@@ -339,15 +337,18 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating header cells: {sheet_err}")
 
+        # EXACT 41 STRIKES SLICING LOGIC
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
-        if all_master_strikes:
+        if len(all_master_strikes) > 0:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
             start_idx = max(0, closest_idx - 20)
             end_idx = min(len(all_master_strikes), closest_idx + 21)
+            
             strikes = all_master_strikes[start_idx:end_idx]
             
-            if len(strikes) < 40 and len(all_master_strikes) >= 40:
+            # Ensure we pull exact window if bounds hit edges
+            if len(strikes) < 41 and len(all_master_strikes) >= 41:
                 if start_idx == 0:
                     strikes = all_master_strikes[:41]
                 elif end_idx == len(all_master_strikes):
