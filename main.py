@@ -44,7 +44,6 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
-INDEX_SHEET_NAME = "Option chain index new"
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -61,7 +60,6 @@ try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    index_sheet = spreadsheet.worksheet(INDEX_SHEET_NAME)
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
@@ -146,7 +144,7 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
-                full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
+                full_scrip_df.loc[full_scrip_df['strike'] > 5000000, 'strike'] = full_scrip_df['strike'] / 100
                 
             print(f"✅ Angel One Scrip Master Loaded! Total Records: {len(full_scrip_df)}")
     except Exception as e:
@@ -205,53 +203,66 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # DIRECTLY READ FROM 'Option chain index new' SHEET CELL J4
-        raw_selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
-        if not raw_selected_symbol or raw_selected_symbol == "NONE":
-            print("⚠ No valid symbol found in J4 of Option chain index new. Waiting...")
-            return
+        # READ J4 CELL FROM WORKSHEETS AUTOMATICALLY
+        raw_selected_symbol = ""
+        for ws in spreadsheet.worksheets():
+            try:
+                val = str(ws.cell(4, 10).value).strip().upper() # Row 4, Col 10 = J4
+                if val and val != "NONE" and val != "NAN" and val != "0":
+                    raw_selected_symbol = val
+                    break
+            except:
+                continue
 
-        selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
-        print(f"🎯 Selected Symbol from 'Option chain index new' J4: {selected_symbol}")
+        if not raw_selected_symbol:
+            raw_selected_symbol = "NIFTY"
+
+        # Raw symbol matches Z column (e.g. TATASTEEL-EQ)
+        watchlist_symbol = raw_selected_symbol
+        # Clean symbol for database searching (e.g. TATASTEEL)
+        clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
+        print(f"🎯 Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
         mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
 
-        # ROBUST FILTERING FOR INDEX, MCX AND STOCKS
-        if selected_symbol in indices_array:
+        if clean_symbol in indices_array:
             target_exch_segs = ['NFO', 'BFO', 'BSE']
             target_inst_types = ['OPTIDX']
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
                 (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-                (full_scrip_df['name'].str.upper() == selected_symbol)
+                (full_scrip_df['name'].str.upper() == clean_symbol)
             ].copy()
-        elif selected_symbol in mcx_array:
+        elif clean_symbol in mcx_array:
             target_exch_segs = ['MCX']
             target_inst_types = ['OPTCOM', 'FUTCOM']
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
                 (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
                 (
-                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
+                    (full_scrip_df['name'].str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].str.upper().str.startswith(clean_symbol))
                 )
             ].copy()
         else:
-            # Stocks Option Filtering (Handles OPTSTK and symbol prefix mapping correctly)
+            # STOCK OPTIONS FILTERING
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
                 (
-                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
+                    (full_scrip_df['name'].str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].str.upper().str.startswith(clean_symbol))
                 )
             ].copy()
 
         if sym_options.empty:
-            print(f"⚠ No options found in master for symbol: {selected_symbol}. Clearing table.")
+            print(f"⚠ No options found in master for symbol: {clean_symbol}. Clearing table.")
             data_sheet.batch_clear(["A10:U100"])
             return
+
+        sym_options['strike'] = pd.to_numeric(sym_options['strike'], errors='coerce')
+        sym_options = sym_options[sym_options['strike'] > 0]
 
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
@@ -260,7 +271,7 @@ def fetch_and_update_option_chain(smart_api):
         sym_options = sym_options[sym_options['parsed_expiry'] >= today_date]
 
         if sym_options.empty:
-            print(f"⚠ No future valid expiry dates found for {selected_symbol}")
+            print(f"⚠ No future valid expiry dates found for {clean_symbol}")
             data_sheet.batch_clear(["A10:U100"])
             return
 
@@ -282,7 +293,6 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
-        # SPOT / UNDERLYING PRICE FETCHING FOR INDEX, MCX & STOCKS
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -294,26 +304,24 @@ def fetch_and_update_option_chain(smart_api):
             "SENSEX": ("999907000", "BSE")
         }
         
-        if selected_symbol in spot_map:
-            spot_token, spot_exchange = spot_map[selected_symbol]
-        elif selected_symbol in mcx_array:
-            # For MCX, pick the underlying future or spot token from master
+        if clean_symbol in spot_map:
+            spot_token, spot_exchange = spot_map[clean_symbol]
+        elif clean_symbol in mcx_array:
             fut_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'MCX') & 
                 (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                (full_scrip_df['name'].str.upper() == selected_symbol)
+                (full_scrip_df['name'].str.upper() == clean_symbol)
             ]
             if not fut_match.empty:
                 spot_token = str(fut_match.iloc[0]['token']).strip()
                 spot_exchange = "MCX"
         else:
-            # Stock Underlying Spot Fetching
             eq_match = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NSE') & 
                 (
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol + "-EQ") |
-                    (full_scrip_df['name'].str.upper() == selected_symbol)
+                    (full_scrip_df['symbol'].str.upper() == clean_symbol) | 
+                    (full_scrip_df['symbol'].str.upper() == clean_symbol + "-EQ") |
+                    (full_scrip_df['name'].str.upper() == clean_symbol)
                 ) &
                 (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
             ]
@@ -341,10 +349,10 @@ def fetch_and_update_option_chain(smart_api):
             else:
                 spot_price = 100.0
 
-        print(f"🎯 Symbol: {selected_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
+        print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
-            data_sheet.update(range_name="J9", values=[[selected_symbol]])
+            data_sheet.update(range_name="J9", values[[watchlist_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
@@ -357,7 +365,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as sheet_err:
             print(f"⚠ Error updating header cells: {sheet_err}")
 
-        # EXACT 41 STRIKES SLICING LOGIC
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
         if len(all_master_strikes) > 0:
@@ -459,7 +466,7 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol} with {len(strikes)} strikes!")
+            print(f"🎯 Option Chain Table Updated Successfully for {clean_symbol} with {len(strikes)} strikes!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
