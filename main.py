@@ -205,15 +205,25 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Ultra-robust matching for options (Handles stock naming conventions in Angel One)
+        # Bulletproof Fuzzy Matching for Options (Handles TATAMOTORS / TATASTEEL / spaces)
+        search_keyword = clean_symbol
+        if "TATA" in clean_keyword:
+            search_keyword = "TATA" # Broad search to capture all TATA group options safely
+
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
             (
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol)) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+                (full_scrip_df['name'].astype(str).str.upper().str.contains(clean_symbol)) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(search_keyword))
             )
         ].copy()
+
+        # Extra strict filter if generic TATA keyword was used, ensuring it matches the exact stock name
+        if "TATA" in clean_symbol and not sym_options.empty:
+            specific_filtered = sym_options[sym_options['symbol'].astype(str).str.upper().str.startswith(clean_symbol)]
+            if not specific_filtered.empty:
+                sym_options = specific_filtered
 
         if sym_options.empty:
             print(f"❌ Critical: No options found for {clean_symbol}!")
