@@ -205,18 +205,19 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Flexible filtering for stock/index options
+        # Flexible matching for stocks like TATAMOTORS (handles spacing like TATA MOTORS if any)
+        alt_clean_symbol = clean_symbol.replace("TATA", "TATA ") if "TATA" in clean_symbol else clean_symbol
+
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
             (
                 (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol + "_")) |
+                (full_scrip_df['name'].astype(str).str.upper() == alt_clean_symbol) |
                 (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
             )
         ].copy()
 
         if sym_options.empty:
-            # Fallback search if exact startswith fails
             sym_options = full_scrip_df[
                 (full_scrip_df['strike'] > 0) &
                 (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
@@ -278,7 +279,8 @@ def fetch_and_update_option_chain(smart_api):
                 (
                     (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
                     (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
+                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
+                    (full_scrip_df['name'].astype(str).str.upper() == alt_clean_symbol)
                 ) &
                 (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
             ]
