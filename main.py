@@ -44,7 +44,7 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
-SYMBOL_SHEET_NAME = "Option chain index new"  # Jahan J4 mein symbol likha hai
+SYMBOL_SHEET_NAME = "Option chain index new"
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -60,13 +60,8 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    
-    # Data likhne ke liye upstox get data sheet
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    
-    # Symbol padhne ke liye Option chain index new sheet
     dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
-    
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
@@ -157,9 +152,6 @@ def initialize_scrip_master(smart_api):
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
 
-# ==========================================
-# UPDATE WATCHLIST ONCE
-# ==========================================
 def update_watchlist_once():
     try:
         indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
@@ -167,19 +159,10 @@ def update_watchlist_once():
         nifty50_stocks = [
             'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
             'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
-            'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ',
-            'HINDUNILVR-EQ', 'ASIANPAINT-EQ', 'MARUTI-EQ', 'TITAN-EQ', 'ULTRACEMCO-EQ',
-            'NTPC-EQ', 'POWERGRID-EQ', 'BAJAJFINSV-EQ', 'WIPRO-EQ', 'ONGC-EQ',
-            'COALINDIA-EQ', 'ADANIENT-EQ', 'ADANIPORTS-EQ', 'GRASIM-EQ', 'HINDALCO-EQ',
-            'JSWSTEEL-EQ', 'TECHM-EQ', 'NESTLEIND-EQ', 'CIPLA-EQ', 'DRREDDY-EQ',
-            'EICHERMOT-EQ', 'BRITANNIA-EQ', 'HEROMOTOCO-EQ', 'APOLLOHOSP-EQ', 'BPCL-EQ',
-            'SBILIFE-EQ', 'HDFCLIFE-EQ', 'TATACONSUM-EQ', 'DIVISLAB-EQ', 'SHRIRAMFIN-EQ',
-            'BAJAJ-AUTO-EQ', 'LTIM-EQ', 'TRENT-EQ', 'BEL-EQ', 'M&M-EQ'
+            'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ'
         ]
-        
         combined_symbols = indices_list + mcx_list + nifty50_stocks
         watchlist_output = [[sym] for sym in combined_symbols]
-        
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z250"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
@@ -210,9 +193,6 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # ==========================================
-        # STRICTLY READ SYMBOL FROM J4 OF 'Option chain index new'
-        # ==========================================
         raw_selected_symbol = "NIFTY"
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4
@@ -225,14 +205,22 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
+        # Flexible filtering for stock/index options
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
             (
                 (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol)) |
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol + "_")) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
             )
         ].copy()
+
+        if sym_options.empty:
+            # Fallback search if exact startswith fails
+            sym_options = full_scrip_df[
+                (full_scrip_df['strike'] > 0) &
+                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
+            ].copy()
 
         if sym_options.empty:
             print(f"❌ Critical: No options found for {clean_symbol}!")
@@ -246,7 +234,6 @@ def fetch_and_update_option_chain(smart_api):
             sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], errors='coerce')
             
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
-
         today_date = pd.Timestamp(now_dt.date())
         sym_options = sym_options[sym_options['parsed_expiry'] >= today_date]
 
@@ -300,18 +287,7 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                mcx_fut = full_scrip_df[
-                    (full_scrip_df['exch_seg'] == 'MCX') & 
-                    (
-                        (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                        (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                    )
-                ]
-                if not mcx_fut.empty:
-                    spot_token = str(mcx_fut.iloc[0]['token']).strip()
-                    spot_exchange = "MCX"
-                else:
-                    spot_token = ""
+                spot_token = ""
 
         spot_price = 0.0
         if spot_token:
@@ -468,7 +444,6 @@ def fetch_and_update_option_chain(smart_api):
 # ==========================================
 def run_bot_loop():
     print("🚀 Starting Angel One Bot Loop Thread...")
-    
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
