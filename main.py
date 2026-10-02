@@ -203,11 +203,10 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # READ J4 CELL FROM WORKSHEETS AUTOMATICALLY
         raw_selected_symbol = ""
         for ws in spreadsheet.worksheets():
             try:
-                val = str(ws.cell(4, 10).value).strip().upper() # Row 4, Col 10 = J4
+                val = str(ws.cell(4, 10).value).strip().upper()
                 if val and val != "NONE" and val != "NAN" and val != "0":
                     raw_selected_symbol = val
                     break
@@ -217,9 +216,7 @@ def fetch_and_update_option_chain(smart_api):
         if not raw_selected_symbol:
             raw_selected_symbol = "NIFTY"
 
-        # Raw symbol matches Z column (e.g. TATASTEEL-EQ)
         watchlist_symbol = raw_selected_symbol
-        # Clean symbol for database searching (e.g. TATASTEEL)
         clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
         print(f"🎯 Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
@@ -246,7 +243,6 @@ def fetch_and_update_option_chain(smart_api):
                 )
             ].copy()
         else:
-            # STOCK OPTIONS FILTERING
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
@@ -352,7 +348,7 @@ def fetch_and_update_option_chain(smart_api):
         print(f"🎯 Symbol: {clean_symbol} | Spot Token: {spot_token} | Spot Price: {spot_price}")
 
         try:
-            data_sheet.update(range_name="J9", values[[watchlist_symbol]])
+            data_sheet.update(range_name="J9", values=[[watchlist_symbol]])
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
