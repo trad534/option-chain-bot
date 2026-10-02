@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Option Chain Bot is active and running!"
+    return "Angel One Option Chain Bot is active and running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -124,7 +124,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# SCRIP MASTER LOADER
+# SCRIP MASTER LOADER (ANGEL ONE)
 # ==========================================
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
@@ -148,9 +148,44 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
                 full_scrip_df.loc[full_scrip_df['strike'] > 500000, 'strike'] = full_scrip_df['strike'] / 100
                 
-            print(f"✅ Scrip Master Loaded Successfully! Total Records: {len(full_scrip_df)}")
+            print(f"✅ Angel One Scrip Master Loaded! Total Records: {len(full_scrip_df)}")
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
+
+# ==========================================
+# UPDATE WATCHLIST ONCE (Stops Blinking)
+# ==========================================
+def update_watchlist_once():
+    try:
+        # 1. Indices
+        indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
+        
+        # 2. MCX Commodities
+        mcx_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
+        
+        # 3. Nifty 50 Stocks
+        nifty50_stocks = [
+            'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
+            'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
+            'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ',
+            'HINDUNILVR-EQ', 'ASIANPAINT-EQ', 'MARUTI-EQ', 'TITAN-EQ', 'ULTRACEMCO-EQ',
+            'NTPC-EQ', 'POWERGRID-EQ', 'BAJAJFINSV-EQ', 'WIPRO-EQ', 'ONGC-EQ',
+            'COALINDIA-EQ', 'ADANIENT-EQ', 'ADANIPORTS-EQ', 'GRASIM-EQ', 'HINDALCO-EQ',
+            'JSWSTEEL-EQ', 'TECHM-EQ', 'NESTLEIND-EQ', 'CIPLA-EQ', 'DRREDDY-EQ',
+            'EICHERMOT-EQ', 'BRITANNIA-EQ', 'HEROMOTOCO-EQ', 'APOLLOHOSP-EQ', 'BPCL-EQ',
+            'SBILIFE-EQ', 'HDFCLIFE-EQ', 'TATACONSUM-EQ', 'DIVISLAB-EQ', 'SHRIRAMFIN-EQ',
+            'BAJAJ-AUTO-EQ', 'LTIM-EQ', 'TRENT-EQ', 'BEL-EQ', 'M&M-EQ'
+        ]
+        
+        combined_symbols = indices_list + mcx_list + nifty50_stocks
+        watchlist_output = [[sym] for sym in combined_symbols]
+        
+        if watchlist_output:
+            data_sheet.batch_clear(["Z10:Z250"])
+            data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
+            print("✅ Watchlist (Indices, MCX, Nifty 50) Successfully Written to Column Z!")
+    except Exception as wl_err:
+        print(f"⚠ Watchlist update error: {wl_err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -163,7 +198,7 @@ def fetch_and_update_option_chain(smart_api):
         current_date_str = now_dt.strftime('%Y-%m-%d')
         
         print(f"\n🔄 Loop executed at: {current_time_str}")
-        data_sheet.update(range_name="A2", values=[[f"Render is working - {current_time_str}"]])
+        data_sheet.update(range_name="A2", values=[[f"Angel One Bot Working - {current_time_str}"]])
 
         if baseline_date != current_date_str:
             morning_oi_dict = {}
@@ -176,55 +211,15 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # 1. AUTO-FETCH WATCHLIST INTO Z10:Z250
-        # ==========================================
-        try:
-            if full_scrip_df is not None and not full_scrip_df.empty:
-                indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-                commodities_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
-                
-                priority_stocks = [
-                    'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
-                    'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
-                    'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ'
-                ]
-
-                nse_stocks_df = full_scrip_df[
-                    (full_scrip_df['exch_seg'] == 'NSE') & 
-                    (full_scrip_df['symbol'].str.endswith('-EQ', na=False)) &
-                    (~full_scrip_df['symbol'].str.contains('BE|BZ|GC|IL', na=False))
-                ]
-                all_other_stocks = nse_stocks_df['symbol'].dropna().unique().tolist()
-                
-                combined_symbols = indices_list + commodities_list + priority_stocks + all_other_stocks
-                
-                seen = set()
-                unique_combined = []
-                for sym in combined_symbols:
-                    if sym not in seen:
-                        seen.add(sym)
-                        unique_combined.append(sym)
-
-                watchlist_output = [[sym] for sym in unique_combined[:191]]
-                
-                if watchlist_output:
-                    data_sheet.batch_clear(["Z10:Z250"])
-                    data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-                    print(f"✅ Watchlist Updated in exact order in Column Z!")
-        except Exception as wl_err:
-            print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
-
-        # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4 (Auto-Strip -EQ)
+        # OPTION CHAIN PROCESSING FOR J4
         # ==========================================
         raw_selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not raw_selected_symbol or raw_selected_symbol == "NONE":
             print("⚠ No valid symbol found in J4. Waiting...")
             return
 
-        # Automatically strip '-EQ' or trailing whitespace so it never causes lookup failure
         selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
-        print(f"🎯 Selected Symbol from J4 (Cleaned): {selected_symbol}")
+        print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
         target_exch_segs = ['NFO', 'MCX', 'BFO']
         if selected_symbol == 'SENSEX':
@@ -278,7 +273,7 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = 1
 
         # ==========================================
-        # SPOT PRICE & TOKEN FINDER (Strict Cash Segment)
+        # SPOT PRICE & TOKEN FINDER
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -308,16 +303,8 @@ def fetch_and_update_option_chain(smart_api):
                 spot_token = str(eq_match.iloc[0]['token']).strip()
                 spot_exchange = "NSE"
             else:
-                comm_match = full_scrip_df[
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol) & 
-                    (full_scrip_df['exch_seg'] == 'MCX')
-                ]
-                if not comm_match.empty:
-                    spot_token = str(comm_match.iloc[0]['token']).strip()
-                    spot_exchange = "MCX"
-                else:
-                    spot_token = "2885"  # Fallback for Reliance NSE token
-                    spot_exchange = "NSE"
+                spot_token = "2885"
+                spot_exchange = "NSE"
 
         try:
             spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
@@ -442,7 +429,7 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Table Updated & Cleaned Successfully for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -451,7 +438,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Bot Loop Thread...")
+    print("🚀 Starting Angel One Bot Loop Thread...")
     
     try:
         smart_api = SmartConnect(api_key=API_KEY)
@@ -461,12 +448,14 @@ def run_bot_loop():
         
     while True:
         try:
-            print("🔄 Attempting to generate session...")
+            print("🔄 Attempting to generate Angel One session...")
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Angel One Session Generated Successfully!")
                 initialize_scrip_master(smart_api)
+                # Watchlist ko sirf ek baar likhein taaki blinking band ho jaye
+                update_watchlist_once()
                 break
             else:
                 print(f"⚠ Session Failed Response: {data}")
