@@ -44,6 +44,7 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
+SYMBOL_SHEET_NAME = "Option chain index new"  # Jahan J4 mein symbol likha hai
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -63,8 +64,8 @@ try:
     # Data likhne ke liye upstox get data sheet
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     
-    # Symbol padhne ke liye Dashboard Sheet (pehla tab)
-    dashboard_sheet = spreadsheet.get_worksheet(0)
+    # Symbol padhne ke liye Option chain index new sheet
+    dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
     
     print("✅ SUCCESS: Google Sheets Connected Successfully!")
 except Exception as e:
@@ -210,19 +211,19 @@ def fetch_and_update_option_chain(smart_api):
                 return
 
         # ==========================================
-        # STRICTLY READ SYMBOL FROM DASHBOARD J4 ONLY
+        # STRICTLY READ SYMBOL FROM J4 OF 'Option chain index new'
         # ==========================================
         raw_selected_symbol = "NIFTY"
         try:
-            val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4 of Dashboard
+            val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # Cell J4
             if val and val != "NONE" and val != "NAN" and val != "0":
                 raw_selected_symbol = val
         except Exception as e:
-            print(f"⚠ Error reading J4 symbol from Dashboard: {e}")
+            print(f"⚠ Error reading J4 symbol from sheet: {e}")
 
         watchlist_symbol = raw_selected_symbol
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        print(f"🎯 Active Selected Symbol strictly from Dashboard J4: {watchlist_symbol} (Clean: {clean_symbol})")
+        print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
         sym_options = full_scrip_df[
             (full_scrip_df['strike'] > 0) &
