@@ -205,13 +205,14 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
+        # DIRECTLY READ FROM 'Option chain index new' SHEET CELL J4
         raw_selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not raw_selected_symbol or raw_selected_symbol == "NONE":
-            print("⚠ No valid symbol found in J4. Waiting...")
+            print("⚠ No valid symbol found in J4 of Option chain index new. Waiting...")
             return
 
         selected_symbol = raw_selected_symbol.replace("-EQ", "").strip()
-        print(f"🎯 Selected Symbol from J4: {selected_symbol}")
+        print(f"🎯 Selected Symbol from 'Option chain index new' J4: {selected_symbol}")
 
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
         mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
@@ -236,7 +237,10 @@ def fetch_and_update_option_chain(smart_api):
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
-                (full_scrip_df['name'].str.upper() == selected_symbol)
+                (
+                    (full_scrip_df['name'].str.upper() == selected_symbol) | 
+                    (full_scrip_df['symbol'].str.upper().str.startswith(selected_symbol))
+                )
             ].copy()
 
         if sym_options.empty:
@@ -347,7 +351,6 @@ def fetch_and_update_option_chain(smart_api):
             
             strikes = all_master_strikes[start_idx:end_idx]
             
-            # Ensure we pull exact window if bounds hit edges
             if len(strikes) < 41 and len(all_master_strikes) >= 41:
                 if start_idx == 0:
                     strikes = all_master_strikes[:41]
