@@ -203,15 +203,26 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
+        # Read selected symbol strictly from "Option chain index new" tab cell J4
         raw_selected_symbol = ""
-        for ws in spreadsheet.worksheets():
-            try:
-                val = str(ws.cell(4, 10).value).strip().upper()
-                if val and val != "NONE" and val != "NAN" and val != "0":
-                    raw_selected_symbol = val
-                    break
-            except:
-                continue
+        try:
+            index_ws = spreadsheet.worksheet("Option chain index new")
+            val = str(index_ws.cell(4, 10).value).strip().upper()
+            if val and val != "NONE" and val != "NAN" and val != "0":
+                raw_selected_symbol = val
+        except Exception as e:
+            print(f"⚠ Could not read J4 from 'Option chain index new': {e}")
+
+        # Fallback if not found
+        if not raw_selected_symbol:
+            for ws in spreadsheet.worksheets():
+                try:
+                    val = str(ws.cell(4, 10).value).strip().upper()
+                    if val and val != "NONE" and val != "NAN" and val != "0" and ws.title != MAIN_SHEET_NAME:
+                        raw_selected_symbol = val
+                        break
+                except:
+                    continue
 
         if not raw_selected_symbol:
             raw_selected_symbol = "NIFTY"
@@ -223,7 +234,6 @@ def fetch_and_update_option_chain(smart_api):
         indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
         mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
 
-        # Accurate Filtering for Index, MCX and Stocks
         if clean_symbol in indices_array:
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'].isin(['NFO', 'BFO', 'BSE'])) & 
