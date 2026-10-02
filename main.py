@@ -205,33 +205,26 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         print(f"🎯 Active Selected Symbol strictly from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        # Ultra-flexible matching for tricky stocks like TATAMOTORS / TATASTEEL
+        # Ultra-flexible matching for all stocks & indices
         sym_options = pd.DataFrame()
-        if "TATA" in clean_symbol:
+        
+        # 1. Try exact match on 'name' or starting match on 'symbol'
+        sym_options = full_scrip_df[
+            (full_scrip_df['strike'] > 0) &
+            (
+                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
+                (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
+            )
+        ].copy()
+
+        # 2. If empty, try searching anywhere in symbol or name (handles TATAMOTORS, etc.)
+        if sym_options.empty:
             sym_options = full_scrip_df[
                 (full_scrip_df['strike'] > 0) &
                 (
-                    (full_scrip_df['name'].astype(str).str.upper().str.contains("TATA")) |
+                    (full_scrip_df['name'].astype(str).str.upper().str.contains(clean_symbol)) |
                     (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
                 )
-            ].copy()
-            # Filter specifically for the exact stock prefix
-            if not sym_options.empty:
-                sym_options = sym_options[sym_options['symbol'].astype(str).str.upper().str.startswith(clean_symbol)]
-
-        if sym_options.empty:
-            sym_options = full_scrip_df[
-                (full_scrip_df['strike'] > 0) &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) |
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                )
-            ].copy()
-
-        if sym_options.empty:
-            sym_options = full_scrip_df[
-                (full_scrip_df['strike'] > 0) &
-                (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
             ].copy()
 
         if sym_options.empty:
