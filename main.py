@@ -133,11 +133,12 @@ def initialize_scrip_master(smart_api):
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=20)
+        resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json()
             full_scrip_df = pd.DataFrame(scrip_data)
             
+            # Standardize columns
             if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns:
                 full_scrip_df['token'] = full_scrip_df['symboltoken']
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns:
@@ -220,38 +221,16 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").strip()
         print(f"🎯 Selected Symbol from J4: {watchlist_symbol} (Clean: {clean_symbol})")
 
-        indices_array = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-        mcx_array = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD', 'MENTHAOIL', 'CRUDEOILM', 'NATGASMINI']
+        # Flexible filtering for all instruments (Index, MCX, Stocks)
+        sym_options = full_scrip_df[
+            (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol)) | 
+            (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
+        ].copy()
 
-        if clean_symbol in indices_array:
-            target_exch_segs = ['NFO', 'BFO', 'BSE']
-            target_inst_types = ['OPTIDX']
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
-                (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-            ].copy()
-        elif clean_symbol in mcx_array:
-            target_exch_segs = ['MCX']
-            target_inst_types = ['OPTCOM', 'FUTCOM']
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
-                (full_scrip_df['instrumenttype'].isin(target_inst_types)) &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
-                )
-            ].copy()
-        else:
-            # STOCK OPTIONS - Robust matching for OPTSTK
-            sym_options = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NFO') & 
-                (full_scrip_df['instrumenttype'] == 'OPTSTK') &
-                (
-                    (full_scrip_df['name'].astype(str).str.upper() == clean_symbol) | 
-                    (full_scrip_df['symbol'].astype(str).str.upper().str.contains(clean_symbol))
-                )
-            ].copy()
+        # Keep only options (CE / PE)
+        sym_options = sym_options[
+            sym_options['symbol'].astype(str).str.upper().str.endswith(('CE', 'PE'))
+        ].copy()
 
         print(f"📊 Total raw option rows matched for {clean_symbol}: {len(sym_options)}")
 
@@ -263,7 +242,11 @@ def fetch_and_update_option_chain(smart_api):
         sym_options['strike'] = pd.to_numeric(sym_options['strike'], errors='coerce')
         sym_options = sym_options[sym_options['strike'] > 0]
 
+        # Robust Date Parsing
         sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], format='%d%b%Y', errors='coerce')
+        if sym_options['parsed_expiry'].isna().all():
+            sym_options['parsed_expiry'] = pd.to_datetime(sym_options['expiry'], errors='coerce')
+        
         sym_options = sym_options.dropna(subset=['parsed_expiry'])
 
         today_date = pd.Timestamp(now_dt.date())
@@ -292,6 +275,7 @@ def fetch_and_update_option_chain(smart_api):
             except:
                 lot_size = 1
 
+        # Spot / Underlying Price Fetching
         spot_token = ""
         spot_exchange = "NSE"
         
@@ -305,29 +289,20 @@ def fetch_and_update_option_chain(smart_api):
         
         if clean_symbol in spot_map:
             spot_token, spot_exchange = spot_map[clean_symbol]
-        elif clean_symbol in mcx_array:
-            fut_match = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'MCX') & 
-                (full_scrip_df['instrumenttype'] == 'FUTCOM') &
-                (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
-            ]
-            if not fut_match.empty:
-                spot_token = str(fut_match.iloc[0]['token']).strip()
-                spot_exchange = "MCX"
         else:
             eq_match = full_scrip_df[
-                (full_scrip_df['exch_seg'] == 'NSE') & 
+                (full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'MCX'])) & 
                 (
                     (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol) | 
                     (full_scrip_df['symbol'].astype(str).str.upper() == clean_symbol + "-EQ") |
                     (full_scrip_df['name'].astype(str).str.upper() == clean_symbol)
                 ) &
-                (~full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM', 'FUTSTK', 'FUTIDX']))
+                (~full_scrip_df['symbol'].astype(str).str.upper().str.endswith(('CE', 'PE')))
             ]
             
             if not eq_match.empty:
                 spot_token = str(eq_match.iloc[0]['token']).strip()
-                spot_exchange = "NSE"
+                spot_exchange = str(eq_match.iloc[0]['exch_seg']).strip()
             else:
                 spot_token = ""
 
