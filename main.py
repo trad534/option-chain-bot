@@ -233,13 +233,13 @@ def fetch_and_update_option_chain(smart_api):
                 (full_scrip_df['name'].str.upper() == selected_symbol)
             ].copy()
         else:
-            # Stock Options Filter
+            # Flexible Stock Options Filter for complete strikes collection
             sym_options = full_scrip_df[
                 (full_scrip_df['exch_seg'] == 'NFO') & 
                 (full_scrip_df['instrumenttype'] == 'OPTSTK') &
                 (
                     (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                    (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
+                    (full_scrip_df['symbol'].str.upper().str.contains(selected_symbol))
                 )
             ].copy()
 
@@ -339,11 +339,19 @@ def fetch_and_update_option_chain(smart_api):
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         
+        # Expanded strike range to show total ~40-41 strikes properly around spot price
         if all_master_strikes:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
             start_idx = max(0, closest_idx - 20)
             end_idx = min(len(all_master_strikes), closest_idx + 21)
             strikes = all_master_strikes[start_idx:end_idx]
+            
+            # Fallback if range is smaller than desired
+            if len(strikes) < 40 and len(all_master_strikes) >= 40:
+                if start_idx == 0:
+                    strikes = all_master_strikes[:41]
+                elif end_idx == len(all_master_strikes):
+                    strikes = all_master_strikes[-41:]
         else:
             strikes = []
 
@@ -431,7 +439,7 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol}!")
+            print(f"🎯 Option Chain Table Updated Successfully for {selected_symbol} with {len(strikes)} strikes!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
