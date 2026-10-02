@@ -142,9 +142,10 @@ def initialize_scrip_master(smart_api):
                 full_scrip_df['token'] = full_scrip_df['symboltoken']
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns:
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+            
+            # Correct strike formatting (Angel One stores strikes multiplied by 100)
             if 'strike' in full_scrip_df.columns:
-                full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0)
-                full_scrip_df.loc[full_scrip_df['strike'] > 5000000, 'strike'] = full_scrip_df['strike'] / 100
+                full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
                 
             print(f"✅ Angel One Scrip Master Loaded! Total Records: {len(full_scrip_df)}")
     except Exception as e:
