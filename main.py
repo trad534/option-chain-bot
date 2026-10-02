@@ -180,20 +180,15 @@ def fetch_and_update_option_chain(smart_api):
         # ==========================================
         try:
             if full_scrip_df is not None and not full_scrip_df.empty:
-                # 1. Index List
                 indices_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']
-                
-                # 2. MCX Commodities List
                 commodities_list = ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINI', 'LEAD']
                 
-                # 3. Top / Heavyweight Stocks (Sabse upar)
                 priority_stocks = [
                     'RELIANCE-EQ', 'TCS-EQ', 'INFY-EQ', 'HDFCBANK-EQ', 'ICICIBANK-EQ', 
                     'SBIN-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'LT-EQ', 'AXISBANK-EQ', 
                     'TATAMOTORS-EQ', 'TATASTEEL-EQ', 'ITC-EQ', 'SUNPHARMA-EQ', 'BAJFINANCE-EQ'
                 ]
 
-                # 4. Remaining NSE Equity Stocks (-EQ format)
                 nse_stocks_df = full_scrip_df[
                     (full_scrip_df['exch_seg'] == 'NSE') & 
                     (full_scrip_df['symbol'].str.endswith('-EQ', na=False)) &
@@ -201,10 +196,8 @@ def fetch_and_update_option_chain(smart_api):
                 ]
                 all_other_stocks = nse_stocks_df['symbol'].dropna().unique().tolist()
                 
-                # Combine order: Index -> MCX -> Priority Stocks -> Remaining Stocks
                 combined_symbols = indices_list + commodities_list + priority_stocks + all_other_stocks
                 
-                # Remove duplicates while preserving exact order
                 seen = set()
                 unique_combined = []
                 for sym in combined_symbols:
@@ -222,7 +215,7 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Auto-fetch watchlist symbols error: {wl_err}")
 
         # ==========================================
-        # 2. OPTION CHAIN PROCESSING FOR J4
+        # 2. OPTION CHAIN PROCESSING FOR J4 (Fixed for Stocks & MCX)
         # ==========================================
         selected_symbol = str(index_sheet.acell('J4').value).strip().upper()
         if not selected_symbol or selected_symbol == "NONE":
@@ -231,6 +224,8 @@ def fetch_and_update_option_chain(smart_api):
 
         print(f"🎯 Selected Symbol from J4: {selected_symbol}")
 
+        clean_search_name = selected_symbol.replace("-EQ", "").strip()
+
         target_exch_segs = ['NFO', 'MCX', 'BFO']
         if selected_symbol == 'SENSEX':
             target_exch_segs = ['BFO', 'BSE']
@@ -238,16 +233,16 @@ def fetch_and_update_option_chain(smart_api):
         sym_options = full_scrip_df[
             (full_scrip_df['exch_seg'].isin(target_exch_segs)) & 
             (
-                (full_scrip_df['name'].str.upper() == selected_symbol) | 
-                (full_scrip_df['symbol'].str.startswith(selected_symbol, na=False))
+                (full_scrip_df['name'].str.upper() == clean_search_name) | 
+                (full_scrip_df['symbol'].str.startswith(clean_search_name, na=False))
             ) &
-            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
+            (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'FUTCOM', 'OPTCOM']))
         ].copy()
 
         if sym_options.empty:
             sym_options = full_scrip_df[
-                (full_scrip_df['symbol'].str.contains(selected_symbol, case=False, na=False)) &
-                (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR']))
+                (full_scrip_df['symbol'].str.contains(clean_search_name, case=False, na=False)) &
+                (full_scrip_df['instrumenttype'].isin(['OPTIDX', 'OPTSTK', 'OPTCUR', 'OPTCOM']))
             ].copy()
 
         if sym_options.empty:
@@ -283,7 +278,7 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = 1
 
         # ==========================================
-        # SPOT PRICE & TOKEN FINDER FOR INDEX / STOCKS
+        # SPOT PRICE & TOKEN FINDER FOR INDEX / STOCKS / MCX
         # ==========================================
         spot_token = ""
         spot_exchange = "NSE"
@@ -301,11 +296,11 @@ def fetch_and_update_option_chain(smart_api):
         else:
             spot_match = full_scrip_df[
                 (
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol + "-EQ") | 
-                    (full_scrip_df['symbol'].str.upper() == selected_symbol) |
-                    (full_scrip_df['name'].str.upper() == selected_symbol)
+                    (full_scrip_df['symbol'].str.upper() == selected_symbol) | 
+                    (full_scrip_df['symbol'].str.upper() == clean_search_name + "-EQ") |
+                    (full_scrip_df['name'].str.upper() == clean_search_name)
                 ) & 
-                (full_scrip_df['exch_seg'] == 'NSE')
+                (full_scrip_df['exch_seg'].isin(['NSE', 'MCX']))
             ]
             if not spot_match.empty:
                 eq_check = spot_match[spot_match['symbol'].str.endswith('-EQ', na=False)]
