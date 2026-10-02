@@ -143,7 +143,6 @@ def initialize_scrip_master(smart_api):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns:
                 full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             
-            # Correct strike formatting (Angel One stores strikes multiplied by 100)
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
                 
@@ -204,7 +203,6 @@ def fetch_and_update_option_chain(smart_api):
                 print("⚠ Scrip master empty, retrying next loop...")
                 return
 
-        # Read selected symbol strictly from "Option chain index new" tab cell J4
         raw_selected_symbol = ""
         try:
             index_ws = spreadsheet.worksheet("Option chain index new")
@@ -214,7 +212,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception as e:
             print(f"⚠ Could not read J4 from 'Option chain index new': {e}")
 
-        # Fallback if not found
         if not raw_selected_symbol:
             for ws in spreadsheet.worksheets():
                 try:
@@ -259,8 +256,6 @@ def fetch_and_update_option_chain(smart_api):
                     (full_scrip_df['symbol'].astype(str).str.upper().str.startswith(clean_symbol))
                 )
             ].copy()
-
-        print(f"📊 Total options matched for {clean_symbol}: {len(sym_options)}")
 
         if sym_options.empty:
             print(f"⚠ No options found for symbol: {clean_symbol}. Clearing table.")
@@ -375,7 +370,6 @@ def fetch_and_update_option_chain(smart_api):
             print(f"⚠ Error updating header cells: {sheet_err}")
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
-        print(f"📊 Total strikes available for expiry {current_expiry}: {len(all_master_strikes)}")
 
         if len(all_master_strikes) > 0:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -451,8 +445,15 @@ def fetch_and_update_option_chain(smart_api):
         ]]
 
         for st in strikes:
-            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
-            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
+            # Strictly match CE and PE based on strike and symbol ending suffix
+            ce_sub = current_expiry_options[
+                (current_expiry_options['strike'] == st) & 
+                (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))
+            ]
+            pe_sub = current_expiry_options[
+                (current_expiry_options['strike'] == st) & 
+                (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))
+            ]
 
             ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
             pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
