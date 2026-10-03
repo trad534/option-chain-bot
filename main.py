@@ -138,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STICKY STATUS)
+# MASTER SCENARIO ENGINE (FIXED STICKY STATUS & K3)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -246,12 +246,10 @@ def execute_python_scenario_tracker():
             prev_strike = float(get_memory("PREV_STRK_" + cache_key, strike))
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
-            # STICKY FIX: Prevent instant fluctuation back to stable strong unless percentage holds strong solidly
             if raw_state == "STRONG":
                 if current_weak_hist in ["wtt", "wtb"]:
-                    # Check if percentage is convincingly above threshold (>80% to avoid minor ticks flickering)
                     if top_obj['pct'] < 82.0:
-                        return current_weak_hist + " to strong" # Keep showing transition until fully stable
+                        return current_weak_hist + " to strong"
                     
                     transition_val = current_weak_hist + " to strong"
                     remove_memory("WEAK_HIST_" + cache_key)
@@ -314,7 +312,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
