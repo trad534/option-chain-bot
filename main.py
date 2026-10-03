@@ -97,6 +97,28 @@ def safe_update_cell(sheet, cell_name, new_value):
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
+# COLOR FORMATTING FOR K3 CELL
+# ==========================================
+def update_k3_with_color(sheet, cell_name, text_value):
+    try:
+        sheet.update_acell(cell_name, text_value)
+        text_lower = text_value.lower()
+        if "bull" in text_lower:
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+        elif "bear" in text_lower or "bloodbath" in text_lower:
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+        else:
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+
+        sheet.format(cell_name, {
+            "textFormat": {
+                "foregroundColor": color_dict
+            }
+        })
+    except Exception as e:
+        print(f"⚠ K3 Color Formatting Error: {e}")
+
+# ==========================================
 # ROBUST IV & GREEKS
 # ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
@@ -160,7 +182,6 @@ def execute_python_scenario_tracker():
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        # CE Scanning (Row 15 to 28)
         for r in range(15, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -185,7 +206,6 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
-        # PE Scanning (Row 8 to 21)
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -270,7 +290,6 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # CE Winner Engine
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -298,7 +317,6 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # PE Winner Engine
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -414,7 +432,6 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        # Robust State Selection with Priority for Active Weak States (WTB/WTT)
         if "wtb" in ceOiResult['scenarioStatus'] or "wtt" in ceOiResult['scenarioStatus']:
             finalCeState = ceOiResult['scenarioStatus']
         elif "wtb" in ceVolResult['scenarioStatus'] or "wtt" in ceVolResult['scenarioStatus']:
@@ -463,7 +480,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = "Nifty is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = "Nifty is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": 
+        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": 
             k3Text = "Nifty is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
@@ -475,7 +492,9 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "U5", finalU5)
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
-        safe_update_cell(dashboard_sheet, "K3", k3Text)
+        
+        # Updated with color logic for K3
+        update_k3_with_color(dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
 
@@ -698,9 +717,6 @@ def initialize_scrip_master(smart_api):
     except Exception as e:
         print(f"⚠ Scrip Master Error: {e}")
 
-# ==========================================
-# MAIN THREADS
-# ==========================================
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
 options_cache = {}
