@@ -133,7 +133,6 @@ morning_oi_dict = {}
 baseline_date = None
 watchlist_symbols = []
 
-# Persistent Memory for 265+ Symbols (Type 1 Logic States, Timestamps & Shifts)
 symbol_states_memory = {}
 
 def update_fno_watchlist_alphabetical():
@@ -467,11 +466,10 @@ def process_type_1_logic_in_memory(symbol, df_rows, spot_price, now_dt):
     checkPe = finalPeState
 
     # ==========================================
-    # 🎯 ALL 27 EXACT SCENARIOS MAPPING (Word-to-Word from your Apps Script)
+    # 🎯 ALL 27 EXACT SCENARIOS MAPPING (Pure Python Syntax)
     # ==========================================
     k3Text = f"{symbol} is Neutral"
 
-    if checkCe === "wtt" && checkPe === "wtb" -> # Python syntax mapped exactly below:
     if checkCe == "wtt" and checkPe == "wtb": 
         k3Text = f"{symbol} is 8th scenario both side Risky"
     elif checkCe == "wtb" and checkPe == "wtt": 
@@ -529,7 +527,7 @@ def process_type_1_logic_in_memory(symbol, df_rows, spot_price, now_dt):
 
     finalD5 = ceOiResult['text'] if ceWinner == "BOTH" else ("(-----)" if ceWinner == "VOL" else ceOiResult['text'])
     finalH5 = ceVolResult['text'] if ceWinner == "BOTH" else (ceVolResult['text'] if ceWinner == "VOL" else "(-----)")
-    finalU5 = peOiResult['text'] if ceWinner == "BOTH" else ("(-----)" if ceWinner == "VOL" else peOiResult['text'])
+    finalU5 = peOiResult['text'] if ceWinner == "BOTH" else ("(-----)" if peWinner == "VOL" else peOiResult['text'])
     finalQ5 = peVolResult['text'] if ceWinner == "BOTH" else (peVolResult['text'] if peWinner == "VOL" else "(-----)")
 
     return finalD5, finalH5, finalQ5, finalU5, k3Text
@@ -552,7 +550,6 @@ def fetch_and_update_option_chain(smart_api):
             if not options_cache:
                 return
 
-        # Dynamic Symbol Selection from Sheet J4 (Row 4, Col 10)
         selected_symbol = "RELIANCE"
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
@@ -723,7 +720,6 @@ def fetch_and_update_option_chain(smart_api):
                 'pe_oi': pe_q['oi']
             })
 
-        # Run Type 1 Logic Engine in Memory with all 27 scenarios
         finalD5, finalH5, finalQ5, finalU5, k3Text = process_type_1_logic_in_memory(clean_symbol, logic_rows_payload, spot_price, now_dt)
 
         try:
