@@ -339,9 +339,11 @@ def execute_python_scenario_tracker():
         peOiResult = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
-        finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
         finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
-        finalQ5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
+        
+        # 🎯 SWAPPED H5 & Q5 HERE TO FIX THE DISPLAY ISSUE
+        finalH5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
+        finalQ5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
 
         # Write cells first so H5 and Q5 are updated
         dashboard_sheet.update(range_name="D5", values=[[finalD5]])
@@ -368,8 +370,8 @@ def execute_python_scenario_tracker():
             if "wtb" in val_str: return "wtb"
             return "stable strong"
 
-        ce_state_str = parse_side_state(h5_val)
-        pe_state_str = parse_side_state(q5_val)
+        ce_state_str = parse_side_state(q5_val) # Q5 is now correctly mapped to CE result
+        pe_state_str = parse_side_state(h5_val) # H5 is now correctly mapped to PE result
 
         k3Text = "Nifty is Neutral"
 
