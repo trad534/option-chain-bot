@@ -350,12 +350,14 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # 🎯 100% SAFE K3 UPDATE BLOCK & 27 SCENARIOS
+        # 🎯 ULTIMATE DEBUG & K3 DIRECT UPDATE BLOCK
         # ==========================================
         try:
-            h5_val = str(dashboard_sheet.cell(5, 8).value).lower() if dashboard_sheet.cell(5, 8).value else ""
-            q5_val = str(dashboard_sheet.cell(5, 17).value).lower() if dashboard_sheet.cell(5, 17).value else ""
-        except:
+            h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()
+            q5_val = str(dashboard_sheet.cell(5, 17).value or "").lower()
+            print(f"🔍 DEBUG READ -> H5: '{h5_val}' | Q5: '{q5_val}'")
+        except Exception as e:
+            print(f"⚠ Cell Read Error: {e}")
             h5_val, q5_val = "", ""
 
         ce_state_str = "stable strong"
@@ -399,10 +401,10 @@ def execute_python_scenario_tracker():
         elif ce_state_str == "wtt to strong" and pe_state_str == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
         dashboard_sheet.update(range_name="K3", values=[[[k3Text]]])
-        print(f"✅ Direct Cell-Read Scenarios Updated! Market Status: {k3Text}")
+        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {ce_state_str}, PE State: {pe_state_str})")
 
     except Exception as err:
-        print(f"⚠ Scenario Engine Error: {err}")
+        print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -624,7 +626,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Safe Direct Cell-Read Engine...")
+    print("🚀 Starting Unified Python Bot with Debug & Direct Cell-Read Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
