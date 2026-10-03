@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Strict Winner-Based 27 Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Exact Apps Script 27 Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -156,11 +156,11 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 19: continue
 
-            strike_val = row_data[13] # Col N
+            strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            ce_oi_val, ce_vol_val = row_data[7], row_data[8] # Col H, I
+            ce_oi_val, ce_vol_val = row_data[7], row_data[8]
             ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
             ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
@@ -179,11 +179,11 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 19: continue
 
-            strike_val = row_data[13] # Col N
+            strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            pe_vol_val, pe_oi_val = row_data[18], row_data[19] # Col S, T
+            pe_vol_val, pe_oi_val = row_data[18], row_data[19]
             pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
             pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
 
@@ -385,24 +385,14 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        # 🎯 STRICT WINNER-BASED STATE MAPPING FOR K3 SCENARIO (FIXED)
-        if ceWinner == "VOL":
-            finalCeState = ceVolResult.get('scenarioStatus', 'stable strong')
-        elif ceWinner == "OI":
-            finalCeState = ceOiResult.get('scenarioStatus', 'stable strong')
-        else: # BOTH
-            finalCeState = ceVolResult.get('scenarioStatus', 'stable strong')
-            if "to strong" in ceOiResult.get('scenarioStatus', ''):
-                finalCeState = ceOiResult.get('scenarioStatus')
+        # 🎯 EXACT APPS SCRIPT STATE ASSIGNMENT LOGIC
+        finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
-        if peWinner == "VOL":
-            finalPeState = peVolResult.get('scenarioStatus', 'stable strong')
-        elif peWinner == "OI":
-            finalPeState = peOiResult.get('scenarioStatus', 'stable strong')
-        else: # BOTH
-            finalPeState = peVolResult.get('scenarioStatus', 'stable strong')
-            if "to strong" in peOiResult.get('scenarioStatus', ''):
-                finalPeState = peOiResult.get('scenarioStatus')
+        if ceWinner == "BOTH":
+            finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
+        if peWinner == "BOTH":
+            finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
         k3Text = "Nifty is Neutral"
 
@@ -447,7 +437,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
         dashboard_sheet.update(range_name="K3", values=[[[k3Text]]])
 
-        print(f"✅ Strict Winner-Based Scenarios Engine Updated! Market Status: {k3Text}")
+        print(f"✅ Exact Apps Script State Mapping & Scenarios Updated! Market Status: {k3Text}")
 
     except Exception as err:
         print(f"⚠ Scenario Engine Error: {err}")
@@ -617,7 +607,7 @@ def fetch_and_update_option_chain(smart_api):
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
 
-        # 🎯 RUN STRICT WINNER & 27 SCENARIOS ENGINE IMMEDIATELY
+        # 🎯 RUN EXACT WINNER & SCENARIOS ENGINE IMMEDIATELY
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -672,7 +662,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Strict Winner-Based Scenarios Engine...")
+    print("🚀 Starting Unified Python Bot with Exact Apps Script Mapping...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
