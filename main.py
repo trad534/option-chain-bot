@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Background State Engine is active and running!"
+    return "Angel One Option Chain Bot is active and running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -124,18 +124,18 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# GLOBAL CACHES & STATE ENGINE MEMORY (265+ SYMBOLS 9:15 AM - 3:30 PM)
+# CACHED SCRIP MASTER & STATE VARIABLES
 # ==========================================
 full_scrip_df = pd.DataFrame()
 eq_cache = {}          
 options_cache = {}     
 morning_oi_dict = {}
 baseline_date = None
-watchlist_symbols = []
-symbol_states_memory = {}
+cached_selected_symbol = None
+sheet_read_counter = 0
 
 def update_fno_watchlist_alphabetical():
-    global full_scrip_df, watchlist_symbols
+    global full_scrip_df
     try:
         if full_scrip_df.empty:
             return
@@ -163,13 +163,13 @@ def update_fno_watchlist_alphabetical():
                 formatted_fno.append(f"{clean_s}-EQ")
                 
         sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_fno)))
-        final_watchlist_full = fixed_indices_mcx + sorted_fno_symbols
-        watchlist_output = [[sym] for sym in final_watchlist_full]
+        final_watchlist = fixed_indices_mcx + sorted_fno_symbols
         
+        watchlist_output = [[sym] for sym in final_watchlist]
         if watchlist_output:
             data_sheet.batch_clear(["Z10:Z700"])
             data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Total Symbols: {len(watchlist_output)}")
+            print(f"✅ Watchlist Updated Successfully! Total: {len(watchlist_output)}")
     except Exception as wl_err:
         print(f"⚠ Watchlist update error: {wl_err}")
 
@@ -223,346 +223,10 @@ def initialize_scrip_master(smart_api):
         print(f"⚠ Scrip Master Download Error: {e}")
 
 # ==========================================
-# 🎯 EXACT PROVEN MATRIX ENGINE (V67 SHIFTED OPTIMIZED)
-# ==========================================
-def process_strict_independent_matrix(symbol, range_values, now_dt):
-    global symbol_states_memory
-    
-    today_str = now_dt.strftime('%Y-%m-%d')
-    if symbol not in symbol_states_memory:
-        symbol_states_memory[symbol] = {
-            'run_date': today_str,
-            'cache': {}
-        }
-    
-    mem = symbol_states_memory[symbol]
-    if mem['run_date'] != today_str:
-        mem['run_date'] = today_str
-        mem['cache'] = {}
-        
-    cache = mem['cache']
-    
-    MARKET_ROW = 18 
-    ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
-    
-    # STRICT SCANNING FOR CE SIDE ONLY: Row 15 to Row 28
-    for r in range(15, 29):
-        if r == MARKET_ROW: continue
-        let_array_index = r - 8
-        if let_array_index < 0 or let_array_index >= len(range_values): continue
-        
-        strike_val = range_values[let_array_index][13] # Column N is index 13
-        strike = strike_val if strike_val not in [None, ""] else 0
-        try:
-            strike = float(strike)
-        except:
-            strike = 0
-        if not strike: continue
-        
-        ce_oi_val  = range_values[let_array_index][7]  # Column H is index 7
-        ce_vol_val = range_values[let_array_index][8]  # Column I is index 8
-        
-        ce_oi_raw  = str(ce_oi_val).replace("%", "").strip() if ce_oi_val not in [None, ""] else "0"
-        ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val not in [None, ""] else "0"
-        
-        if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
-        if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
-        
-        ceOiArray.append({'strike': strike, 'val': float(pd.to_numeric(pd.Series([ce_oi_raw]), errors='coerce').iloc[0]) or 0, 'row': r})
-        ceVolArray.append({'strike': strike, 'val': float(pd.to_numeric(pd.Series([ce_vol_raw]), errors='coerce').iloc[0]) or 0, 'row': r})
-
-    # STRICT SCANNING FOR PE SIDE ONLY: Row 8 to Row 21
-    for r in range(8, 22):
-        if r == MARKET_ROW: continue
-        let_array_index = r - 8
-        if let_array_index < 0 or let_array_index >= len(range_values): continue
-        
-        strike_val = range_values[let_array_index][13] # Column N is index 13
-        strike = strike_val if strike_val not in [None, ""] else 0
-        try:
-            strike = float(strike)
-        except:
-            strike = 0
-        if not strike: continue
-        
-        pe_vol_val = range_values[let_array_index][18] # Column S is index 18
-        pe_oi_val  = range_values[let_array_index][19] # Column T is index 19
-        
-        pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val not in [None, ""] else "0"
-        pe_oi_raw  = str(pe_oi_val).replace("%", "").strip() if pe_oi_val not in [None, ""] else "0"
-        
-        if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
-        if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
-        
-        peVolArray.append({'strike': strike, 'val': float(pd.to_numeric(pd.Series([pe_vol_raw]), errors='coerce').iloc[0]) or 0, 'row': r})
-        peOiArray.append({'strike': strike, 'val': float(pd.to_numeric(pd.Series([pe_oi_raw]), errors='coerce').iloc[0]) or 0, 'row': r})
-
-    def extractTopTwo(dataArray):
-        if not dataArray: return { 'highest': {'strike':0, 'val':0, 'row':0}, 'second': {'strike':0, 'val':0, 'row':0}, 'pct': 0 }
-        filtered = [item for item in dataArray if item['val'] > 0]
-        if not filtered: return { 'highest': {'strike':0, 'val':0, 'row':0}, 'second': {'strike':0, 'val':0, 'row':0}, 'pct': 0 }
-        filtered.sort(key=lambda x: x['val'], reverse=True)
-        
-        highest = filtered[0]
-        second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
-        pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
-        return { 'highest': highest, 'second': second, 'pct': pct }
-
-    ceVolTop = extractTopTwo(ceVolArray)
-    ceOiTop  = extractTopTwo(ceOiArray)
-    peVolTop = extractTopTwo(peVolArray)
-    peOiTop  = extractTopTwo(peOiArray)
-
-    if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']:
-        return "(-----)", "(-----)", "(-----)", "(-----)", f"{symbol} is Neutral"
-
-    def detectLiveStateAdvanced(topObj, isPutSide):
-        if not topObj or topObj['highest']['val'] == 0 or topObj['pct'] < 75.0: return "STRONG"
-        if isPutSide:
-            return "wtb" if topObj['second']['strike'] < topObj['highest']['strike'] else "wtt"
-        else:
-            return "wtt" if topObj['second']['strike'] > topObj['highest']['strike'] else "wtb"
-
-    ceVolRawState = detectLiveStateAdvanced(ceVolTop, False)
-    ceOiRawState  = detectLiveStateAdvanced(ceOiTop, False)
-    peVolRawState = detectLiveStateAdvanced(peVolTop, True)  
-    peOiRawState  = detectLiveStateAdvanced(peOiTop, True)
-
-    def getFullStatusString(topObj, rawState, cacheKey):
-        if not topObj or not topObj['highest']['strike']: return "stable strong"
-        strike = topObj['highest']['strike']
-        prevStrike = cache.get("PREV_STRK_" + cacheKey, strike)
-        currentWeakHist = cache.get("WEAK_HIST_" + cacheKey, "")
-        
-        if rawState == "STRONG":
-            if currentWeakHist == "wtt": return "wtt to strong"
-            if currentWeakHist == "wtb": return "wtb to strong"
-            if strike != prevStrike: return "strong"
-            return "stable strong"
-        return rawState
-
-    ceVolStatusText = getFullStatusString(ceVolTop, ceVolRawState, "CE_VOL")
-    ceOiStatusText  = getFullStatusString(ceOiTop, ceOiRawState, "CE_OI")
-    peVolStatusText = getFullStatusString(peVolTop, peVolRawState, "PE_VOL")
-    peOiStatusText  = getFullStatusString(peOiTop, peOiRawState, "PE_OI")
-
-    ceOiIsStable100  = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
-    ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
-    peOiIsStable100  = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-    peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
-
-    # CE Winner Logic
-    ceWinner = "VOL"
-    if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
-        ceWinner = "BOTH"
-    elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']:
-        ceWinner = "BOTH"
-    elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
-        ceWinner = "BOTH"
-    elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']:
-        ceWinner = "OI"
-    elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']:
-        ceWinner = "VOL"
-    elif ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceOiTop['highest']['strike'] and ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']:
-        ceWinner = "OI"
-    elif ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike'] and ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']:
-        ceWinner = "VOL"
-    else:
-        ceOiActiveRow = ceOiTop['highest']['row']
-        if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
-        ceVolActiveRow = ceVolTop['highest']['row']
-        if ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0: ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
-        if ceVolActiveRow != ceOiActiveRow:
-            ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
-        else:
-            ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
-
-    # PE Winner Logic
-    peWinner = "VOL"
-    if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
-        peWinner = "BOTH"
-    elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and peOiTop['second']['strike'] < peOiTop['highest']['strike'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']:
-        peWinner = "BOTH"
-    elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
-        peWinner = "BOTH"
-    elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and peVolTop['second']['strike'] < peOiTop['highest']['strike']:
-        peWinner = "OI"
-    elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and peOiTop['second']['strike'] < peOiTop['highest']['strike']:
-        peWinner = "VOL"
-    elif peOiIsStable100 and not peVolIsStable100 and peVolTop['second']['strike'] < peOiTop['highest']['strike'] and peOiTop['highest']['strike'] > peVolTop['highest']['strike']:
-        peWinner = "OI"
-    elif peVolIsStable100 and not peOiIsStable100 and peOiTop['second']['strike'] < peOiTop['highest']['strike'] and peVolTop['highest']['strike'] > peOiTop['highest']['strike']:
-        peWinner = "VOL"
-    else:
-        peOiActiveRow = peOiTop['highest']['row']
-        if peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
-        peVolActiveRow = peVolTop['highest']['row']
-        if peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-        if peVolActiveRow != peOiActiveRow:
-            peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
-        else:
-            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
-
-    if ceOiRawState in ["wtt", "wtb"]: cache["WEAK_HIST_CE_OI"] = ceOiRawState
-    if ceVolRawState in ["wtt", "wtb"]: cache["WEAK_HIST_CE_VOL"] = ceVolRawState
-    if peOiRawState in ["wtt", "wtb"]: cache["WEAK_HIST_PE_OI"] = peOiRawState
-    if peVolRawState in ["wtt", "wtb"]: cache["WEAK_HIST_PE_VOL"] = peVolRawState
-
-    currentTimeStr = now_dt.strftime('%I:%M %p').lower()
-
-    def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
-        if not topObj or not topObj['highest']['strike']:
-            return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong"}
-
-        strike = topObj['highest']['strike']
-        secondStrike = topObj['second']['strike'] if topObj['second']['val'] > 0 else strike
-        prevStrike = cache.get("PREV_STRK_" + cacheKey, strike)
-        if "PREV_STRK_" + cacheKey not in cache: cache["PREV_STRK_" + cacheKey] = strike
-
-        displayStatus = finalStatusText
-        scenarioStatus = finalStatusText
-        isShifting = False
-        shiftType = cache.get("SHIFT_TYPE_" + cacheKey, "")
-        shiftFromStrike = cache.get("SHIFT_FROM_" + cacheKey, 0)
-        lastTargetStrike = cache.get("SHIFT_TARGET_" + cacheKey, 0)
-
-        if cache.get("IS_SHIFTED_" + cacheKey) == "true":
-            if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
-                cache["IS_SHIFTED_" + cacheKey] = "false"
-                cache["PREV_STRK_" + cacheKey] = strike
-                cache.pop("SHIFT_TARGET_" + cacheKey, None)
-
-        if strike != prevStrike and prevStrike > 0 and finalStatusText in ["wtb", "wtt"]:
-            if strike < prevStrike:
-                shiftType = "top to bottom"
-                scenarioStatus = "wtb"
-            else:
-                shiftType = "bottom to top"
-                scenarioStatus = "wtt"
-            cache["IS_SHIFTED_" + cacheKey] = "true"
-            cache["SHIFT_TYPE_" + cacheKey] = shiftType
-            cache["SHIFT_FROM_" + cacheKey] = prevStrike
-            cache["SHIFT_TARGET_" + cacheKey] = secondStrike
-
-        if cache.get("IS_SHIFTED_" + cacheKey) == "true":
-            if rawState == "STRONG" or finalStatusText in ["stable strong", "wtt to strong", "wtb to strong"]:
-                cache["IS_SHIFTED_" + cacheKey] = "false"
-                cache["PREV_STRK_" + cacheKey] = strike
-                isShifting = False
-                scenarioStatus = finalStatusText
-            else:
-                isShifting = True
-                shiftType = cache.get("SHIFT_TYPE_" + cacheKey)
-                scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
-        else:
-            cache["PREV_STRK_" + cacheKey] = strike
-            scenarioStatus = finalStatusText
-
-        if not isWinner and rawState != "STRONG":
-            displayStatus = "stable strong"
-            scenarioStatus = "stable strong"
-
-        displayTime = cache.get("TIME_" + cacheKey)
-        lastRecordedStatus = cache.get("LAST_STATUS_" + cacheKey, "")
-        isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
-
-        if isTriggerStatus and displayStatus != lastRecordedStatus:
-            displayTime = currentTimeStr
-            cache["TIME_" + cacheKey] = displayTime
-            cache["LAST_STATUS_" + cacheKey] = displayStatus
-        elif not displayTime:
-            displayTime = currentTimeStr
-            cache["TIME_" + cacheKey] = displayTime
-            cache["LAST_STATUS_" + cacheKey] = displayStatus
-
-        if isShifting:
-            outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {shiftType})"
-        else:
-            if displayStatus == "stable strong":
-                outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
-            elif "to strong" in displayStatus:
-                outputText = f"({displayTime} - {sideLabel} - {strike})\n   ({displayStatus})"
-            else:
-                weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n({weakDir})"
-
-        return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus}
-
-    ceOiResult  = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
-    ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
-    peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
-    peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
-
-    finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-    finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
-
-    if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
-    if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
-
-    checkCe = finalCeState
-    checkPe = finalPeState
-
-    # 27 Core Scenarios Mapping exactly matching your rules
-    k3Text = f"{symbol} is Neutral"
-
-    if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol} is 8th scenario both side Risky"
-    elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol} is 9th scenario both side Risky"
-    elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol} is Neutral"
-    elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol} is slightly Bearish"
-    elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol} is slightly Bearish"
-    elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol} is slightly bullish"
-    elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol} is slightly bullish"
-    elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol} is Bullrun"
-    elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol} is bloodbath"
-    elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol} is confirm Bloodbath"
-    elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol} is confirm Bloodbath"
-    elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol} is slightly bullish (Both side trade)"
-    elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol} is slightly bullish (Both side trade)"
-    elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol} is confirm Bull Run"
-    elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol} is confirm Bull Run"
-    elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol} is slightly Bearish (Both side trade)"
-    elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol} is slightly Bearish (both side trade)"
-    elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol} is slightly Bullish"
-    elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol} is slightly Bullish"
-    elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol} is slightly Bearish"
-    elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol} is slightly Bearish"
-    elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol} is 8th scenario both side Risky trade"
-    elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol} is 9th scenario both side Risky trade"
-    elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol} is confirm Bull Run"
-    elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol} is confirm bloodbath"
-
-    finalD5 = ceOiResult['text'] if ceWinner == "BOTH" else ("(-----)" if ceWinner == "VOL" else ceOiResult['text'])
-    finalH5 = ceVolResult['text'] if ceWinner == "BOTH" else (ceVolResult['text'] if ceWinner == "VOL" else "(-----)")
-    finalU5 = peOiResult['text'] if ceWinner == "BOTH" else ("(-----)" if peWinner == "VOL" else peOiResult['text'])
-    finalQ5 = peVolResult['text'] if ceWinner == "BOTH" else (peVolResult['text'] if peWinner == "VOL" else "(-----)")
-
-    if ceWinner == "VOL":
-        finalD5 = "(-----)"
-        finalH5 = ceVolResult['text']
-    elif ceWinner == "OI":
-        finalD5 = ceOiResult['text']
-        finalH5 = "(-----)"
-    elif ceWinner == "BOTH":
-        finalD5 = ceOiResult['text']
-        finalH5 = ceVolResult['text']
-
-    if peWinner == "VOL":
-        finalU5 = "(-----)"
-        finalQ5 = peVolResult['text']
-    elif peWinner == "OI":
-        finalU5 = peOiResult['text']
-        finalQ5 = "(-----)"
-    elif peWinner == "BOTH":
-        finalU5 = peOiResult['text']
-        finalQ5 = peVolResult['text']
-
-    return finalD5, finalH5, finalQ5, finalU5, k3Text
-
-# ==========================================
-# FETCH & BACKGROUND STATE ENGINE LOOP (9:15 AM TO 3:30 PM)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, options_cache, eq_cache, watchlist_symbols
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, sheet_read_counter
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -576,19 +240,27 @@ def fetch_and_update_option_chain(smart_api):
             if not options_cache:
                 return
 
-        selected_symbol = "RELIANCE"
+        # Optimized reading: Check J4 symbol dynamically
+        raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
+        
+        # Read from sheet every cycle or fallback safely
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-            if val and val not in ["NONE", "NAN", "0", ""]:
-                selected_symbol = val
+            if val and val != "NONE" and val != "NAN" and val != "0":
+                raw_selected_symbol = val
         except Exception:
             pass
 
-        clean_symbol = selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
+        clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
             clean_symbol = "TMCV"
 
-        spot_token, spot_exchange = "", "NSE"
+        if cached_selected_symbol != clean_symbol:
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+            cached_selected_symbol = clean_symbol
+
+        spot_token = ""
+        spot_exchange = "NSE"
         if clean_symbol in eq_cache:
             spot_token, spot_exchange = eq_cache[clean_symbol]
         elif clean_symbol + "-EQ" in eq_cache:
@@ -641,6 +313,18 @@ def fetch_and_update_option_chain(smart_api):
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
+        try:
+            data_sheet.update(range_name="K9", values=[[spot_price]])
+            data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
+            data_sheet.update(range_name="A7", values=[[lot_size]])
+            expiry_cells = [
+                ['A3', active_expiries[0]], ['A4', active_expiries[1]], 
+                ['A5', active_expiries[2]], ['A6', active_expiries[3]]
+            ]
+            data_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
+        except Exception:
+            pass
+
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         if all_master_strikes:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -667,7 +351,8 @@ def fetch_and_update_option_chain(smart_api):
         for exch, tokens_list in exchange_tokens_map.items():
             for i in range(0, len(tokens_list), 40):
                 batch_tokens = tokens_list[i:i+40]
-                if not batch_tokens: continue
+                if not batch_tokens:
+                    continue
                 try:
                     res = smart_api.getMarketData("FULL", {exch: batch_tokens})
                     if res and res.get('status') and res.get('data'):
@@ -737,46 +422,11 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        try:
-            dashboard_sheet.update(range_name="K9", values=[[spot_price]])
-            dashboard_sheet.update(range_name="L9", values=[[str(current_expiry)]])
-            dashboard_sheet.update(range_name="A7", values=[[lot_size]])
-            expiry_cells = [
-                ['A3', active_expiries[0]], ['A4', active_expiries[1]], 
-                ['A5', active_expiries[2]], ['A6', active_expiries[3]]
-            ]
-            dashboard_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
-            
-            if len(output_rows) > 1:
-                last_row_num = 10 + len(output_rows) - 1
-                dashboard_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
-                dashboard_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-
-            # Read A8:T20 or A8:T28 range values for exact matrix calculation
-            range_values = dashboard_sheet.get("A8:T28")
-
-            # Run Matrix Engine
-            finalD5, finalH5, finalQ5, finalU5, k3Text = process_strict_independent_matrix(clean_symbol, range_values, now_dt)
-
-            dashboard_sheet.update(range_name="D5", values=[[finalD5]])
-            dashboard_sheet.update(range_name="H5", values=[[finalH5]])
-            dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
-            dashboard_sheet.update(range_name="U5", values=[[finalU5]])
-            dashboard_sheet.update(range_name="K3", values=[[k3Text]])
-            
-            # K3 Color Formatting (Blue for Bullish, Red for Bearish, Black for Neutral)
-            k3_lower = k3Text.lower()
-            if "bullrun" in k3_lower or "bull run" in k3_lower or "bullish" in k3_lower:
-                color_fmt = {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 1.0}}
-            elif "bloodbath" in k3_lower or "bearish" in k3_lower:
-                color_fmt = {"foregroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}}
-            else:
-                color_fmt = {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}}
-
-            dashboard_sheet.format("K3", {"textFormat": color_fmt, "textFormat": {"bold": True}})
-            print(f"⚡ Refreshed & All 27 Scenarios Synchronized Successfully for {clean_symbol}!")
-        except Exception as sheet_err:
-            print(f"⚠ Google Sheet Batch Write Error: {sheet_err}")
+        if len(output_rows) > 1:
+            last_row_num = 10 + len(output_rows) - 1
+            data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
+            data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
+            print(f"⚡ Refreshed Successfully for {clean_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -785,7 +435,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Optimized Angel One Background State Engine...")
+    print("🚀 Starting Optimized Angel One Bot Thread...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
