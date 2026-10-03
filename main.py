@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import pyotp
 import gspread
+import gspread.utils
 from scipy.stats import norm
 from scipy.optimize import brentq
 from datetime import datetime, timedelta
@@ -97,9 +98,9 @@ def safe_update_cell(sheet, cell_name, new_value):
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING FOR K3 CELL
+# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
 # ==========================================
-def update_k3_with_color(sheet, cell_name, text_value):
+def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
@@ -110,11 +111,32 @@ def update_k3_with_color(sheet, cell_name, text_value):
         else:
             color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
-        sheet.format(cell_name, {
-            "textFormat": {
-                "foregroundColor": color_dict
-            }
-        })
+        row, col = gspread.utils.a1_to_rowcol(cell_name)
+        
+        body = {
+            "requests": [
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet.id,
+                            "startRowIndex": row - 1,
+                            "endRowIndex": row,
+                            "startColumnIndex": col - 1,
+                            "endColumnIndex": col
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "foregroundColor": color_dict
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.foregroundColor"
+                    }
+                }
+            ]
+        }
+        spreadsheet_obj.batch_update(body)
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
@@ -493,8 +515,8 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated with color logic for K3
-        update_k3_with_color(dashboard_sheet, "K3", k3Text)
+        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
+        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
 
