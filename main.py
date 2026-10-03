@@ -138,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (ISOLATED MAPPING)
+# MASTER SCENARIO ENGINE (CORRECTED WINNERS)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -268,12 +268,12 @@ def execute_python_scenario_tracker():
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # Strictly Independent PE Winner
+        # Corrected Strictly Independent PE Winner
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike']:
             peWinner = "BOTH"
         else:
-            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+            peWinner = "VOL" if peVolTop['highest']['row'] <= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
@@ -642,7 +642,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Isolated Exact Logic Python Bot...")
+    print("🚀 Starting Corrected Winner Logic Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
