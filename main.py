@@ -223,8 +223,9 @@ def execute_python_scenario_tracker():
 
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
 
+        # Updated without rigid 75% filter so wtb/wtt triggers correctly
         def detect_live_state_advanced(top_obj, is_put_side):
-            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
+            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['second']['val'] == 0:
                 return "STRONG"
             if is_put_side:
                 return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
@@ -236,7 +237,6 @@ def execute_python_scenario_tracker():
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        # Clean status string directly from raw state without aggressive sticky memory clashing
         def get_clean_status_string(raw_state):
             if raw_state == "STRONG":
                 return "stable strong"
