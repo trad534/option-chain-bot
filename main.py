@@ -138,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT APPS SCRIPT LOGIC)
+# MASTER SCENARIO ENGINE (FIXED STICKY STATUS)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -246,16 +246,19 @@ def execute_python_scenario_tracker():
             prev_strike = float(get_memory("PREV_STRK_" + cache_key, strike))
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
-            # FIXED: Agar raw state STRONG hai, toh check karo kya pehle weak tha (transition to strong)
+            # STICKY FIX: Prevent instant fluctuation back to stable strong unless percentage holds strong solidly
             if raw_state == "STRONG":
                 if current_weak_hist in ["wtt", "wtb"]:
+                    # Check if percentage is convincingly above threshold (>80% to avoid minor ticks flickering)
+                    if top_obj['pct'] < 82.0:
+                        return current_weak_hist + " to strong" # Keep showing transition until fully stable
+                    
                     transition_val = current_weak_hist + " to strong"
                     remove_memory("WEAK_HIST_" + cache_key)
                     return transition_val
                 if strike != prev_strike: return "strong"
                 return "stable strong"
             
-            # Agar raw state weak hai, toh history save rakho
             set_memory("WEAK_HIST_" + cache_key, raw_state)
             return raw_state
 
@@ -305,13 +308,13 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -419,7 +422,7 @@ def execute_python_scenario_tracker():
         if ceWinner == "BOTH":
             finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH":
-            finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
+            finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
 
         checkCe = finalCeState
         checkPe = finalPeState
@@ -694,7 +697,7 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
-def run_bot_loop():
+def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
@@ -730,4 +733,4 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    run_bot_loop()
+    run_bot_lock_loop()
