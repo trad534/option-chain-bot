@@ -246,7 +246,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # Winner Engines
+        # Standard Winner Engines
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
@@ -338,11 +338,10 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
+        # Strictly governed by Winner Engine
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
-        finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
-        
-        # 🎯 CORRECTED MAPPING FOR H5 (CE VOL) AND Q5 (PE VOL)
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
+        finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
         finalQ5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
 
         # Write cells to Dashboard Sheet
@@ -352,7 +351,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # 🎯 K3 CELL UPDATE BLOCK
+        # K3 CELL UPDATE BLOCK
         # ==========================================
         try:
             h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()   # H5 (CE Vol)
@@ -370,7 +369,6 @@ def execute_python_scenario_tracker():
             if "wtb" in val_str: return "wtb"
             return "stable strong"
 
-        # Now H5 is CE state and Q5 is PE state correctly parsed
         ce_state_str = parse_side_state(h5_val) 
         pe_state_str = parse_side_state(q5_val) 
 
@@ -631,7 +629,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Corrected H5/Q5 Side Mapping...")
+    print("🚀 Starting Unified Python Bot with Winner-Driven Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
