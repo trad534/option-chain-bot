@@ -138,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (CORRECTED WINNERS)
+# MASTER SCENARIO ENGINE (RESTORED ORIGINAL WINNERS)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -160,7 +160,7 @@ def execute_python_scenario_tracker():
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        # CE Scanning (Row 15 to 28 strictly isolated)
+        # CE Scanning (Row 15 to 28)
         for r in range(15, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -183,7 +183,7 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
-        # PE Scanning (Row 8 to 21 strictly isolated)
+        # PE Scanning (Row 8 to 21)
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -261,19 +261,19 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # Strictly Independent CE Winner
+        # CE Winner
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike']:
             ceWinner = "BOTH"
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # Corrected Strictly Independent PE Winner
+        # PE Winner (Restored to original working condition)
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike']:
             peWinner = "BOTH"
         else:
-            peWinner = "VOL" if peVolTop['highest']['row'] <= peOiTop['highest']['row'] else "OI"
+            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
@@ -642,7 +642,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Corrected Winner Logic Python Bot...")
+    print("🚀 Starting Bot with Restored Original Logic...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
