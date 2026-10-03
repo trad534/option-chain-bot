@@ -246,7 +246,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # Standard Winner Engines
+        # Winner Engines
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
@@ -338,7 +338,6 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        # Strictly governed by Winner Engine
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
         finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
@@ -351,15 +350,17 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # K3 CELL UPDATE BLOCK
+        # 🎯 100% SMART K3 CELL UPDATE BLOCK (FIXED)
         # ==========================================
         try:
+            d5_val = str(dashboard_sheet.cell(5, 4).value or "").lower()   # D5 (CE OI)
             h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()   # H5 (CE Vol)
             q5_val = str(dashboard_sheet.cell(5, 17).value or "").lower()  # Q5 (PE Vol)
-            print(f"🔍 DEBUG READ -> H5 (CE Vol): '{h5_val}' | Q5 (PE Vol): '{q5_val}'")
+            u5_val = str(dashboard_sheet.cell(5, 21).value or "").lower()  # U5 (PE OI)
+            print(f"🔍 DEBUG READ -> D5: '{d5_val}' | H5: '{h5_val}' | Q5: '{q5_val}' | U5: '{u5_val}'")
         except Exception as e:
             print(f"⚠ Cell Read Error: {e}")
-            h5_val, q5_val = "", ""
+            d5_val, h5_val, q5_val, u5_val = "", "", "", ""
 
         def parse_side_state(val_str):
             if "to strong" in val_str:
@@ -369,8 +370,12 @@ def execute_python_scenario_tracker():
             if "wtb" in val_str: return "wtb"
             return "stable strong"
 
-        ce_state_str = parse_side_state(h5_val) 
-        pe_state_str = parse_side_state(q5_val) 
+        # Smart Selection: Agar Vol cell mein (-----) hai toh OI cell (D5/U5) ki state read karega!
+        active_ce_text = h5_val if "(-----)" not in h5_val and h5_val.strip() != "" else d5_val
+        active_pe_text = q5_val if "(-----)" not in q5_val and q5_val.strip() != "" else u5_val
+
+        ce_state_str = parse_side_state(active_ce_text)
+        pe_state_str = parse_side_state(active_pe_text)
 
         k3Text = "Nifty is Neutral"
 
@@ -629,7 +634,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Winner-Driven Engine...")
+    print("🚀 Starting Unified Python Bot with Smart Winner-Aware K3 Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
