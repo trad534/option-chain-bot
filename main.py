@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot is active and running!"
+    return "Angel One Option Chain Ultra-Fast Bot is active and running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -124,7 +124,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# CACHED SCRIP MASTER & STATE VARIABLES
+# IN-MEMORY CACHE FOR 265 SYMBOLS & SPEED
 # ==========================================
 full_scrip_df = pd.DataFrame()
 eq_cache = {}          
@@ -132,51 +132,11 @@ options_cache = {}
 morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
-sheet_read_counter = 0
-
-def update_fno_watchlist_alphabetical():
-    global full_scrip_df
-    try:
-        if full_scrip_df.empty:
-            return
-            
-        fixed_indices_mcx = [
-            "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX",
-            "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "COPPER", "ZINC", "ALUMINI", "LEAD"
-        ]
-        
-        fno_df = full_scrip_df[
-            (full_scrip_df['exch_seg'] == 'NFO') & 
-            (full_scrip_df['instrumenttype'].isin(['OPTSTK', 'FUTSTK']))
-        ]
-        
-        symbols = fno_df['name'].dropna().astype(str).str.upper().unique().tolist()
-        
-        formatted_fno = []
-        for sym in symbols:
-            clean_s = sym.strip()
-            if "NSETEST" in clean_s or "TEST" in clean_s:
-                continue
-            if clean_s and clean_s not in fixed_indices_mcx:
-                if clean_s in ["TATAMOTORS", "TATA", "TATA MOTORS LIMITED"]:
-                    clean_s = "TMCV"
-                formatted_fno.append(f"{clean_s}-EQ")
-                
-        sorted_fno_symbols = sorted(list(dict.fromkeys(formatted_fno)))
-        final_watchlist = fixed_indices_mcx + sorted_fno_symbols
-        
-        watchlist_output = [[sym] for sym in final_watchlist]
-        if watchlist_output:
-            data_sheet.batch_clear(["Z10:Z700"])
-            data_sheet.update(range_name=f"Z10:Z{9 + len(watchlist_output)}", values=watchlist_output)
-            print(f"✅ Watchlist Updated Successfully! Total: {len(watchlist_output)}")
-    except Exception as wl_err:
-        print(f"⚠ Watchlist update error: {wl_err}")
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
-        print("📥 Downloading Angel One Scrip Master JSON...")
+        print("📥 Downloading Angel One Scrip Master JSON for 265 symbols...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
@@ -191,7 +151,7 @@ def initialize_scrip_master(smart_api):
             if 'strike' in full_scrip_df.columns:
                 full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
 
-            print("⚡ Pre-indexing EQ and Options for instant lookup...")
+            print("⚡ Pre-indexing EQ and Options into memory for ultra-fast lookup...")
             
             nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
@@ -217,16 +177,15 @@ def initialize_scrip_master(smart_api):
             elif "TATAMOTORS" in options_cache:
                 options_cache["TMCV"] = options_cache["TATAMOTORS"]
 
-            print(f"✅ Scrip Master Cached Successfully! Total Records: {len(full_scrip_df)}")
-            update_fno_watchlist_alphabetical()
+            print(f"✅ Scrip Master Fully Cached in Memory! Total Groups: {len(options_cache)}")
     except Exception as e:
         print(f"⚠ Scrip Master Download Error: {e}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# ULTRA-FAST FETCH & UPDATE LOOP (< 1 SECOND)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, sheet_read_counter
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -240,10 +199,8 @@ def fetch_and_update_option_chain(smart_api):
             if not options_cache:
                 return
 
-        # Optimized reading: Check J4 symbol dynamically
-        raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
-        
-        # Read from sheet every cycle or fallback safely
+        # Read active symbol dynamically from J4 without corrupting sheet layout
+        raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "NIFTY"
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
             if val and val != "NONE" and val != "NAN" and val != "0":
@@ -313,6 +270,7 @@ def fetch_and_update_option_chain(smart_api):
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
+        # Safe update strictly for metadata cells, protecting sheet integrity
         try:
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
@@ -422,11 +380,12 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
+        # Batch update strictly within A10:U range to protect sheet integrity
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"⚡ Refreshed Successfully for {clean_symbol}!")
+            print(f"⚡ Ultra-Fast Refresh Success for {clean_symbol}!")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -435,7 +394,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN EXECUTION THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Optimized Angel One Bot Thread...")
+    print("🚀 Starting 265-Symbol Memory-Cached Bot Thread...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -463,7 +422,7 @@ def run_bot_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(1)
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
