@@ -320,16 +320,17 @@ def execute_python_scenario_tracker():
                 set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
 
+            # 🎯 Using :g to remove .0 from whole numbers
             if is_shifting:
-                output_text = f"({display_time} - {side_label}-{strike}-{display_status}-{second_strike})\n   (shifted {shift_type})"
+                output_text = f"({display_time} - {side_label}-{strike:g}-{display_status}-{second_strike:g})\n   (shifted {shift_type})"
             else:
                 if display_status == "stable strong":
-                    output_text = f"({display_time} - {side_label} - {strike})\n    (stable strong)"
+                    output_text = f"({display_time} - {side_label} - {strike:g})\n    (stable strong)"
                 elif "to strong" in display_status:
-                    output_text = f"({display_time} - {side_label} - {strike})\n   ({display_status})"
+                    output_text = f"({display_time} - {side_label} - {strike:g})\n   ({display_status})"
                 else:
                     weak_dir = "weak towards top" if display_status == "wtt" else "weak towards bottom"
-                    output_text = f"({display_time} - {side_label}-{strike}-{display_status}-{second_strike})\n({weak_dir})"
+                    output_text = f"({display_time} - {side_label}-{strike:g}-{display_status}-{second_strike:g})\n({weak_dir})"
 
             return {'text': output_text}
 
@@ -400,7 +401,6 @@ def execute_python_scenario_tracker():
         elif ce_state_str == "wtb to strong" and pe_state_str == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
         elif ce_state_str == "wtt to strong" and pe_state_str == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
-        # Using update_acell for error-free updating of K3
         dashboard_sheet.update_acell("K3", k3Text)
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {ce_state_str}, PE State: {pe_state_str})")
 
@@ -435,7 +435,7 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
-        # 🎯 SYMBOL CHANGE RESET CHECK (Prevents False Shifting on Symbol Switch)
+        # 🎯 SYMBOL CHANGE RESET CHECK
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
             script_memory.clear()
@@ -577,7 +577,6 @@ def fetch_and_update_option_chain(smart_api):
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
 
-        # 🎯 RUN SCENARIO TRACKER AFTER SHEET UPDATE
         execute_python_scenario_tracker()
 
     except Exception as ex:
