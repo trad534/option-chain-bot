@@ -435,6 +435,11 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
+        # 🎯 SYMBOL CHANGE RESET CHECK (Prevents False Shifting on Symbol Switch)
+        if cached_selected_symbol and cached_selected_symbol != clean_symbol:
+            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
+            script_memory.clear()
+
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
