@@ -350,7 +350,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # 🎯 ULTIMATE DEBUG & K3 DIRECT UPDATE BLOCK
+        # 🎯 100% SAFE K3 CELL UPDATE BLOCK
         # ==========================================
         try:
             h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()
@@ -400,7 +400,8 @@ def execute_python_scenario_tracker():
         elif ce_state_str == "wtb to strong" and pe_state_str == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
         elif ce_state_str == "wtt to strong" and pe_state_str == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
-        dashboard_sheet.update(range_name="K3", values=[[[k3Text]]])
+        # Using update_acell for error-free updating of K3
+        dashboard_sheet.update_acell("K3", k3Text)
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {ce_state_str}, PE State: {pe_state_str})")
 
     except Exception as err:
@@ -626,7 +627,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Debug & Direct Cell-Read Engine...")
+    print("🚀 Starting Unified Python Bot with Safe Update Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
