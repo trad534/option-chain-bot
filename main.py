@@ -320,7 +320,6 @@ def execute_python_scenario_tracker():
                 set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
 
-            # 🎯 Using :g to remove .0 from whole numbers
             if is_shifting:
                 output_text = f"({display_time} - {side_label}-{strike:g}-{display_status}-{second_strike:g})\n   (shifted {shift_type})"
             else:
@@ -351,7 +350,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # 🎯 100% SAFE K3 CELL UPDATE BLOCK
+        # 🎯 100% SAFE K3 CELL UPDATE BLOCK (FIXED)
         # ==========================================
         try:
             h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()
@@ -361,17 +360,16 @@ def execute_python_scenario_tracker():
             print(f"⚠ Cell Read Error: {e}")
             h5_val, q5_val = "", ""
 
-        ce_state_str = "stable strong"
-        if "wtt" in h5_val: ce_state_str = "wtt"
-        elif "wtb" in h5_val: ce_state_str = "wtb"
-        elif "to strong" in h5_val:
-            ce_state_str = "wtt to strong" if "wtt" in h5_val else "wtb to strong"
+        def parse_side_state(val_str):
+            if "to strong" in val_str:
+                if "wtt" in val_str: return "wtt to strong"
+                if "wtb" in val_str: return "wtb to strong"
+            if "wtt" in val_str: return "wtt"
+            if "wtb" in val_str: return "wtb"
+            return "stable strong"
 
-        pe_state_str = "stable strong"
-        if "wtt" in q5_val: pe_state_str = "wtt"
-        elif "wtb" in q5_val: pe_state_str = "wtb"
-        elif "to strong" in q5_val:
-            pe_state_str = "wtt to strong" if "wtt" in q5_val else "wtb to strong"
+        ce_state_str = parse_side_state(h5_val)
+        pe_state_str = parse_side_state(q5_val)
 
         k3Text = "Nifty is Neutral"
 
