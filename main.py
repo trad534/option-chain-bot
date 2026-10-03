@@ -35,7 +35,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
-# CONFIGURATION & GOOGLE SHEETS
+# CONFIGURATION & STRICT GOOGLE SHEET MAPPING
 # ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -43,8 +43,8 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
-SYMBOL_SHEET_NAME = "Option chain index new"
+MAIN_SHEET_NAME = "Option chain index new"  # Option Chain & K3 Scenario output
+SYMBOL_SHEET_NAME = "upstox get data"       # J4 Symbol input & Spot/Expiry data
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -60,9 +60,9 @@ def get_gspread_client():
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheets Connected Successfully!")
+    dashboard_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)   # Option chain index new
+    data_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)      # upstox get data
+    print("✅ SUCCESS: Google Sheets Connected with Strict Tab Mapping!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
@@ -245,11 +245,9 @@ def compute_python_scenarios(rows_data, symbol_key):
     check_ce = "stable strong" if ce_raw_state == "STRONG" else ce_raw_state
     check_pe = "stable strong" if pe_raw_state == "STRONG" else pe_raw_state
 
-    # ==========================================
-    # EXACT 27 SCENARIOS WITH DYNAMIC SYMBOL NAME
-    # ==========================================
     prefix_name = symbol_key
 
+    # Exact 27 Scenarios Mapping
     if check_ce == "wtt" and check_pe == "wtb":
         k3_text = f"{prefix_name} is 8th scenario both side Risky"
     elif check_ce == "wtb" and check_pe == "wtt":
@@ -306,7 +304,7 @@ def compute_python_scenarios(rows_data, symbol_key):
     return k3_text, ce_vol_top, ce_oi_top, pe_vol_top, pe_oi_top
 
 # ==========================================
-# FETCH & UPDATE LOOP WITH MEMORY PRESERVATION
+# FETCH & UPDATE LOOP WITH CORRECTED SHEET TARGETS
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_memory, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -325,7 +323,8 @@ def fetch_and_update_option_chain(smart_api):
 
         raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
         try:
-            val = str(dashboard_sheet.cell(4, 10).value).strip().upper() # J4 cell
+            # Reading J4 cell strictly from 'upstox get data' tab
+            val = str(data_sheet.cell(4, 10).value).strip().upper() 
             if val and val not in ["NONE", "NAN", "0"]:
                 raw_selected_symbol = val
         except Exception:
@@ -448,13 +447,16 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 0:
             k3_text, _, _, _, _ = compute_python_scenarios(output_rows, clean_symbol)
 
+            # Writing table data and K3 strictly to 'Option chain index new'
+            last_row_num = 9 + len(output_rows)
+            dashboard_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
+            dashboard_sheet.update(range_name="K3", value=[[k3_text]])
+
+            # Writing helper data strictly to 'upstox get data'
             data_sheet.update(range_name="K9", values=[[spot_price]])
             data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
             data_sheet.update(range_name="A7", values=[[lot_size]])
             
-            last_row_num = 9 + len(output_rows)
-            dashboard_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
-            dashboard_sheet.update(range_name="K3", value=[[k3_text]])
             print(f"⚡ Successfully Refreshed & Synced for {clean_symbol} | Scenario: {k3_text}")
 
     except Exception as ex:
@@ -464,7 +466,7 @@ def fetch_and_update_option_chain(smart_api):
 # MAIN THREADS
 # ==========================================
 def run_bot_loop():
-    print("🚀 Starting Advanced Memory-Synced Bot Thread with Dynamic 27 Scenarios...")
+    print("🚀 Starting Advanced Memory-Synced Bot Thread...")
     smart_api = SmartConnect(api_key=API_KEY)
     
     while True:
