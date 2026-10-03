@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & 27 Scenarios Engine is active and running!"
+    return "Angel One Option Chain Bot & Strict 27 Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -68,7 +68,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON EQUIVALENT OF APPS SCRIPT MEMORY
+# PYTHON MEMORY STORE
 # ==========================================
 script_memory = {}
 global_run_date = ""
@@ -96,8 +96,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         ltp = intrinsic + 0.05
 
     def objective_function(sigma):
-        if sigma <= 0:
-            sigma = 1e-4
+        if sigma <= 0: sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
         price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
@@ -121,15 +120,12 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
 
     return {
-        'iv': round(sigma * 100, 2),
-        'delta': round(delta, 3),
-        'gamma': round(gamma, 4),
-        'theta': round(theta, 2),
-        'vega': round(vega_val, 2)
+        'iv': round(sigma * 100, 2), 'delta': round(delta, 3),
+        'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)
     }
 
 # ==========================================
-# MASTER NO-CLICK ENGINE (ALL 27 SCENARIOS)
+# EXACT APPS SCRIPT PORT: SCENARIO ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -146,12 +142,12 @@ def execute_python_scenario_tracker():
             script_memory.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
-        if not range_values:
-            return
+        if not range_values: return
 
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
+        # CE Scanning (Row 15 to 28)
         for r in range(15, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -160,11 +156,11 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 19: continue
 
-            strike_val = row_data[13]
+            strike_val = row_data[13] # Col N
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            ce_oi_val, ce_vol_val = row_data[7], row_data[8]
+            ce_oi_val, ce_vol_val = row_data[7], row_data[8] # Col H, I
             ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
             ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
@@ -174,6 +170,7 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
+        # PE Scanning (Row 8 to 21)
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -182,11 +179,11 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 19: continue
 
-            strike_val = row_data[13]
+            strike_val = row_data[13] # Col N
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            pe_vol_val, pe_oi_val = row_data[18], row_data[19]
+            pe_vol_val, pe_oi_val = row_data[18], row_data[19] # Col S, T
             pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
             pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
 
@@ -211,6 +208,8 @@ def execute_python_scenario_tracker():
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
+        if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
+
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
                 return "STRONG"
@@ -225,8 +224,7 @@ def execute_python_scenario_tracker():
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
         def get_full_status_string(top_obj, raw_state, cache_key):
-            if not top_obj or not top_obj['highest']['strike']:
-                return "stable strong"
+            if not top_obj or not top_obj['highest']['strike']: return "stable strong"
             strike = top_obj['highest']['strike']
             prev_strike = float(get_memory("PREV_STRK_" + cache_key, strike))
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
@@ -248,14 +246,55 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # CE & PE Winner Engines
-        ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike']:
+        # ==========================================
+        # 🏆 EXACT TRIPLE PRIORITY WINNER ENGINE (CE)
+        # ==========================================
+        ceWinner = "VOL"
+        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']:
+            ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
+            ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100:
+            ceWinner = "OI"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100:
+            ceWinner = "VOL"
+        else:
+            ceOiActiveRow = ceOiTop['highest']['row']
+            if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
+            ceVolActiveRow = ceVolTop['highest']['row']
+            if ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0: ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
+            
+            if ceVolActiveRow != ceOiActiveRow:
+                ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
+            else:
+                ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike']:
+        # ==========================================
+        # 🏆 EXACT TRIPLE PRIORITY WINNER ENGINE (PE)
+        # ==========================================
+        peWinner = "VOL"
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and peOiTop['second']['strike'] < peOiTop['highest']['strike'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']:
+            peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
+            peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100:
+            peWinner = "OI"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100:
+            peWinner = "VOL"
+        else:
+            peOiActiveRow = peOiTop['highest']['row']
+            if peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
+            peVolActiveRow = peVolTop['highest']['row']
+            if peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+            
+            if peVolActiveRow != peOiActiveRow:
+                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
+            else:
+                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
@@ -266,7 +305,7 @@ def execute_python_scenario_tracker():
 
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj['highest']['strike']:
-                return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong"}
+                return {'text': "(-----)", 'scenarioStatus': "stable strong"}
 
             strike = top_obj['highest']['strike']
             second_strike = top_obj['second']['strike'] if top_obj['second']['val'] > 0 else strike
@@ -339,7 +378,7 @@ def execute_python_scenario_tracker():
                     weak_dir = "weak towards top" if display_status == "wtt" else "weak towards bottom"
                     output_text = f"({display_time} - {side_label}-{strike}-{display_status}-{second_strike})\n({weak_dir})"
 
-            return {'text': output_text, 'status': display_status, 'scenarioStatus': scenario_status}
+            return {'text': output_text, 'scenarioStatus': scenario_status}
 
         ceOiResult = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
         ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
@@ -354,62 +393,33 @@ def execute_python_scenario_tracker():
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
         # ==========================================
-        # 🎯 ALL 27 CORE SCENARIOS CONTINUATION MATRIX
+        # 🎯 ALL 27 CORE SCENARIOS MATRIX
         # ==========================================
-        if finalCeState == "wtt" and finalPeState == "wtb":
-            k3Text = "Nifty is 8th scenario both side Risky"
-        elif finalCeState == "wtb" and finalPeState == "wtt":
-            k3Text = "Nifty is 9th scenario both side Risky"
-        elif finalCeState == "stable strong" and finalPeState == "stable strong":
-            k3Text = "Nifty is Neutral"
-        elif finalCeState == "wtb" and finalPeState == "stable strong":
-            k3Text = "Nifty is slightly Bearish"
-        elif finalCeState == "stable strong" and finalPeState == "wtb":
-            k3Text = "Nifty is slightly Bearish"
-        elif finalCeState == "wtt" and finalPeState == "stable strong":
-            k3Text = "Nifty is slightly bullish"
-        elif finalCeState == "stable strong" and finalPeState == "wtt":
-            k3Text = "Nifty is slightly bullish"
-        elif finalCeState == "wtt" and finalPeState == "wtt":
-            k3Text = "Nifty is Bullrun"
-        elif finalCeState == "wtb" and finalPeState == "wtb":
-            k3Text = "Nifty is bloodbath"
-        elif finalCeState == "wtb" and finalPeState == "wtt to strong":
-            k3Text = "Nifty is confirm Bloodbath"
-        elif finalCeState == "wtt to strong" and finalPeState == "wtb":
-            k3Text = "Nifty is confirm Bloodbath"
-        elif finalCeState == "wtt" and finalPeState == "wtt to strong":
-            k3Text = "Nifty is slightly bullish (Both side trade)"
-        elif finalCeState == "wtt to strong" and finalPeState == "wtt":
-            k3Text = "Nifty is slightly bullish (Both side trade)"
-        elif finalCeState == "wtt" and finalPeState == "wtb to strong":
-            k3Text = "Nifty is confirm Bull Run"
-        elif finalCeState == "wtb to strong" and finalPeState == "wtt":
-            k3Text = "Nifty is confirm Bull Run"
-        elif finalCeState == "wtb to strong" and finalPeState == "wtb":
-            k3Text = "Nifty is slightly Bearish (Both side trade)"
-        elif finalCeState == "wtb" and finalPeState == "wtb to strong":
-            k3Text = "Nifty is slightly Bearish (both side trade)"
-        elif finalCeState == "wtb to strong" and finalPeState == "stable strong":
-            k3Text = "Nifty is slightly Bullish"
-        elif finalCeState == "stable strong" and finalPeState == "wtb to strong":
-            k3Text = "Nifty is slightly Bullish"
-        elif finalCeState == "wtt to strong" and finalPeState == "stable strong":
-            k3Text = "Nifty is slightly Bearish"
-        elif finalCeState == "stable strong" and finalPeState == "wtt to strong":
-            k3Text = "Nifty is slightly Bearish"
-        elif finalCeState == "wtt to strong" and finalPeState == "wtb to strong":
-            k3Text = "Nifty is 8th scenario both side Risky trade"
-        elif finalCeState == "wtb to strong" and finalPeState == "wtt to strong":
-            k3Text = "Nifty is 9th scenario both side Risky trade"
-        elif finalCeState == "wtb to strong" and finalPeState == "wtb to strong":
-            k3Text = "Nifty is confirm Bull Run"
-        elif finalCeState == "wtt to strong" and finalPeState == "wtt to strong":
-            k3Text = "Nifty is confirm bloodbath"
-        elif finalCeState == "wtt" and finalPeState == "wtb":
-            k3Text = "Nifty is 8th scenario both side Risky"
-        elif finalCeState == "wtb" and finalPeState == "wtt":
-            k3Text = "Nifty is 9th scenario both side Risky"
+        if finalCeState == "wtt" and finalPeState == "wtb": k3Text = "Nifty is 8th scenario both side Risky"
+        elif finalCeState == "wtb" and finalPeState == "wtt": k3Text = "Nifty is 9th scenario both side Risky"
+        elif finalCeState == "stable strong" and finalPeState == "stable strong": k3Text = "Nifty is Neutral"
+        elif finalCeState == "wtb" and finalPeState == "stable strong": k3Text = "Nifty is slightly Bearish"
+        elif finalCeState == "stable strong" and finalPeState == "wtb": k3Text = "Nifty is slightly Bearish"
+        elif finalCeState == "wtt" and finalPeState == "stable strong": k3Text = "Nifty is slightly bullish"
+        elif finalCeState == "stable strong" and finalPeState == "wtt": k3Text = "Nifty is slightly bullish"
+        elif finalCeState == "wtt" and finalPeState == "wtt": k3Text = "Nifty is Bullrun"
+        elif finalCeState == "wtb" and finalPeState == "wtb": k3Text = "Nifty is bloodbath"
+        elif finalCeState == "wtb" and finalPeState == "wtt to strong": k3Text = "Nifty is confirm Bloodbath"
+        elif finalCeState == "wtt to strong" and finalPeState == "wtb": k3Text = "Nifty is confirm Bloodbath"
+        elif finalCeState == "wtt" and finalPeState == "wtt to strong": k3Text = "Nifty is slightly bullish (Both side trade)"
+        elif finalCeState == "wtt to strong" and finalPeState == "wtt": k3Text = "Nifty is slightly bullish (Both side trade)"
+        elif finalCeState == "wtt" and finalPeState == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
+        elif finalCeState == "wtb to strong" and finalPeState == "wtt": k3Text = "Nifty is confirm Bull Run"
+        elif finalCeState == "wtb to strong" and finalPeState == "wtb": k3Text = "Nifty is slightly Bearish (Both side trade)"
+        elif finalCeState == "wtb" and finalPeState == "wtb to strong": k3Text = "Nifty is slightly Bearish (both side trade)"
+        elif finalCeState == "wtb to strong" and finalPeState == "stable strong": k3Text = "Nifty is slightly Bullish"
+        elif finalCeState == "stable strong" and finalPeState == "wtb to strong": k3Text = "Nifty is slightly Bullish"
+        elif finalCeState == "wtt to strong" and finalPeState == "stable strong": k3Text = "Nifty is slightly Bearish"
+        elif finalCeState == "stable strong" and finalPeState == "wtt to strong": k3Text = "Nifty is slightly Bearish"
+        elif finalCeState == "wtt to strong" and finalPeState == "wtb to strong": k3Text = "Nifty is 8th scenario both side Risky trade"
+        elif finalCeState == "wtb to strong" and finalPeState == "wtt to strong": k3Text = "Nifty is 9th scenario both side Risky trade"
+        elif finalCeState == "wtb to strong" and finalPeState == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
+        elif finalCeState == "wtt to strong" and finalPeState == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
@@ -423,13 +433,13 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
         dashboard_sheet.update(range_name="K3", values=[[[k3Text]]])
 
-        print(f"✅ All 27 Scenarios Calculated & Updated Successfully! Market Status: {k3Text}")
+        print(f"✅ Exact Winner Logic & 27 Scenarios Updated! Market Status: {k3Text}")
 
     except Exception as err:
         print(f"⚠ Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (COMBINED WITH ENGINE)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -454,8 +464,7 @@ def fetch_and_update_option_chain(smart_api):
             pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        if clean_symbol in ["TATAMOTORS", "TATA"]:
-            clean_symbol = "TMCV"
+        if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
@@ -498,10 +507,7 @@ def fetch_and_update_option_chain(smart_api):
         current_expiry_dt = unique_expiries_dt[0]
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
 
-        lot_size = 1
-        if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty:
-            try: lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
-            except: lot_size = 1
+        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         if spot_price <= 0:
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -596,9 +602,8 @@ def fetch_and_update_option_chain(smart_api):
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            print(f"⚡ Refreshed Option Chain for {clean_symbol}!")
 
-        # 🎯 RUN FULL 27 SCENARIOS ENGINE IMMEDIATELY AFTER DATA REFRESH
+        # 🎯 RUN EXACT WINNER & SCENARIO ENGINE IMMEDIATELY
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -653,7 +658,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot & Full 27 Scenarios Engine...")
+    print("🚀 Starting Unified Python Bot with Exact Winner & Scenarios Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
