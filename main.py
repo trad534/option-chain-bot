@@ -28,7 +28,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Strict 27 Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Full 27 Scenarios Engine is active and running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -125,7 +125,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# EXACT APPS SCRIPT PORT: SCENARIO ENGINE
+# EXACT APPS SCRIPT PORT: 27 SCENARIOS ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -385,12 +385,26 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        k3Text = "Nifty is Neutral"
-        finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        # Corrected Winner-based State Mapping for K3
+        if ceWinner == "OI":
+            finalCeState = ceOiResult.get('scenarioStatus', 'stable strong')
+        elif ceWinner == "VOL":
+            finalCeState = ceVolResult.get('scenarioStatus', 'stable strong')
+        else:
+            finalCeState = ceVolResult.get('scenarioStatus', 'stable strong')
+            if "to strong" in ceOiResult.get('scenarioStatus', ''):
+                finalCeState = ceOiResult.get('scenarioStatus')
 
-        if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
-        if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
+        if peWinner == "OI":
+            finalPeState = peOiResult.get('scenarioStatus', 'stable strong')
+        elif peWinner == "VOL":
+            finalPeState = peVolResult.get('scenarioStatus', 'stable strong')
+        else:
+            finalPeState = peVolResult.get('scenarioStatus', 'stable strong')
+            if "to strong" in peOiResult.get('scenarioStatus', ''):
+                finalPeState = peOiResult.get('scenarioStatus')
+
+        k3Text = "Nifty is Neutral"
 
         # ==========================================
         # 🎯 ALL 27 CORE SCENARIOS MATRIX
@@ -433,7 +447,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
         dashboard_sheet.update(range_name="K3", values=[[[k3Text]]])
 
-        print(f"✅ Exact Winner Logic & 27 Scenarios Updated! Market Status: {k3Text}")
+        print(f"✅ Full 27 Scenarios & Winner Engine Updated! Market Status: {k3Text}")
 
     except Exception as err:
         print(f"⚠ Scenario Engine Error: {err}")
@@ -603,7 +617,7 @@ def fetch_and_update_option_chain(smart_api):
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
 
-        # 🎯 RUN EXACT WINNER & SCENARIO ENGINE IMMEDIATELY
+        # 🎯 RUN EXACT WINNER & 27 SCENARIOS ENGINE IMMEDIATELY
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -658,7 +672,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Exact Winner & Scenarios Engine...")
+    print("🚀 Starting Unified Python Bot with Complete 27 Scenarios & Corrected K3 Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
