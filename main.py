@@ -349,9 +349,14 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="H5", values=[[finalH5]])
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
-        # 🎯 READ DIRECTLY FROM CELLS H5 & Q5 FOR ABSOLUTE ACCURACY IN K3
-        h5_val = str(dashboard_sheet.cell(5, 8).value).lower()
-        q5_val = str(dashboard_sheet.cell(5, 17).value).lower()
+        # ==========================================
+        # 🎯 100% SAFE K3 UPDATE BLOCK & 27 SCENARIOS
+        # ==========================================
+        try:
+            h5_val = str(dashboard_sheet.cell(5, 8).value).lower() if dashboard_sheet.cell(5, 8).value else ""
+            q5_val = str(dashboard_sheet.cell(5, 17).value).lower() if dashboard_sheet.cell(5, 17).value else ""
+        except:
+            h5_val, q5_val = "", ""
 
         ce_state_str = "stable strong"
         if "wtt" in h5_val: ce_state_str = "wtt"
@@ -367,9 +372,6 @@ def execute_python_scenario_tracker():
 
         k3Text = "Nifty is Neutral"
 
-        # ==========================================
-        # 🎯 ALL 27 CORE SCENARIOS MATRIX
-        # ==========================================
         if ce_state_str == "wtt" and pe_state_str == "wtb": k3Text = "Nifty is 8th scenario both side Risky"
         elif ce_state_str == "wtb" and pe_state_str == "wtt": k3Text = "Nifty is 9th scenario both side Risky"
         elif ce_state_str == "stable strong" and pe_state_str == "stable strong": k3Text = "Nifty is Neutral"
@@ -622,7 +624,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Direct Cell-Read Engine...")
+    print("🚀 Starting Unified Python Bot with Safe Direct Cell-Read Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
