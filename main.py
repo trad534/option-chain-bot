@@ -350,7 +350,7 @@ def execute_python_scenario_tracker():
         dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
 
         # ==========================================
-        # 🎯 100% SMART K3 CELL UPDATE BLOCK (FIXED)
+        # 🎯 ADVANCED STATE-PARSING K3 ENGINE
         # ==========================================
         try:
             d5_val = str(dashboard_sheet.cell(5, 4).value or "").lower()   # D5 (CE OI)
@@ -363,14 +363,25 @@ def execute_python_scenario_tracker():
             d5_val, h5_val, q5_val, u5_val = "", "", "", ""
 
         def parse_side_state(val_str):
-            if "to strong" in val_str:
-                if "wtt" in val_str: return "wtt to strong"
-                if "wtb" in val_str: return "wtb to strong"
-            if "wtt" in val_str: return "wtt"
-            if "wtb" in val_str: return "wtb"
+            val_lower = str(val_str).lower()
+            if "(-----)" in val_lower or val_lower.strip() == "":
+                return "stable strong"
+            
+            if "wtt to strong" in val_lower or ("wtt" in val_lower and "strong" in val_lower):
+                return "wtt to strong"
+            if "wtb to strong" in val_lower or ("wtb" in val_lower and "strong" in val_lower):
+                return "wtb to strong"
+            
+            if "stable strong" in val_lower or ("strong" in val_lower and "wtt" not in val_lower and "wtb" not in val_lower):
+                return "stable strong"
+                
+            if "wtt" in val_lower:
+                return "wtt"
+            if "wtb" in val_lower:
+                return "wtb"
+                
             return "stable strong"
 
-        # Smart Selection: Agar Vol cell mein (-----) hai toh OI cell (D5/U5) ki state read karega!
         active_ce_text = h5_val if "(-----)" not in h5_val and h5_val.strip() != "" else d5_val
         active_pe_text = q5_val if "(-----)" not in q5_val and q5_val.strip() != "" else u5_val
 
@@ -634,7 +645,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Smart Winner-Aware K3 Engine...")
+    print("🚀 Starting Unified Python Bot with Advanced State Parser...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
