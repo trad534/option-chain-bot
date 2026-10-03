@@ -138,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STICKY STATUS & K3)
+# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -414,13 +414,25 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        # Robust State Selection with Priority for Active Weak States (WTB/WTT)
+        if "wtb" in ceOiResult['scenarioStatus'] or "wtt" in ceOiResult['scenarioStatus']:
+            finalCeState = ceOiResult['scenarioStatus']
+        elif "wtb" in ceVolResult['scenarioStatus'] or "wtt" in ceVolResult['scenarioStatus']:
+            finalCeState = ceVolResult['scenarioStatus']
+        else:
+            finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
+
+        if "wtb" in peOiResult['scenarioStatus'] or "wtt" in peOiResult['scenarioStatus']:
+            finalPeState = peOiResult['scenarioStatus']
+        elif "wtb" in peVolResult['scenarioStatus'] or "wtt" in peVolResult['scenarioStatus']:
+            finalPeState = peVolResult['scenarioStatus']
+        else:
+            finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH":
             finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH":
-            finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
+            finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
         checkCe = finalCeState
         checkPe = finalPeState
@@ -451,7 +463,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = "Nifty is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = "Nifty is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text, "Nifty is confirm bloodbath" = "Nifty is confirm bloodbath", "Nifty is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
