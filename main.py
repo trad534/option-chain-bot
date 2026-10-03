@@ -92,7 +92,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.4)
+            time.sleep(0.3)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -167,13 +167,15 @@ def execute_python_scenario_tracker():
             if array_index < 0 or array_index >= len(range_values): continue
             
             row_data = range_values[array_index]
-            if len(row_data) <= 19: continue
+            if len(row_data) <= 13: continue
 
             strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            ce_oi_val, ce_vol_val = row_data[7], row_data[8]
+            ce_oi_val = row_data[7] if len(row_data) > 7 else "0"
+            ce_vol_val = row_data[8] if len(row_data) > 8 else "0"
+            
             ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
             ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
@@ -196,7 +198,9 @@ def execute_python_scenario_tracker():
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            pe_vol_val, pe_oi_val = row_data[18], row_data[19]
+            pe_vol_val = row_data[18] if len(row_data) > 18 else "0"
+            pe_oi_val = row_data[19] if len(row_data) > 19 else "0"
+            
             pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
             pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
 
@@ -242,11 +246,17 @@ def execute_python_scenario_tracker():
             prev_strike = float(get_memory("PREV_STRK_" + cache_key, strike))
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
+            # FIXED: Agar raw state STRONG hai, toh check karo kya pehle weak tha (transition to strong)
             if raw_state == "STRONG":
-                if current_weak_hist == "wtt": return "wtt to strong"
-                if current_weak_hist == "wtb": return "wtb to strong"
+                if current_weak_hist in ["wtt", "wtb"]:
+                    transition_val = current_weak_hist + " to strong"
+                    remove_memory("WEAK_HIST_" + cache_key)
+                    return transition_val
                 if strike != prev_strike: return "strong"
                 return "stable strong"
+            
+            # Agar raw state weak hai, toh history save rakho
+            set_memory("WEAK_HIST_" + cache_key, raw_state)
             return raw_state
 
         ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
@@ -259,21 +269,21 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # CE Winner Engine (Exact match with Apps Script)
+        # CE Winner Engine
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -287,11 +297,11 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # PE Winner Engine (Exact match with Apps Script)
+        # PE Winner Engine
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -301,7 +311,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -314,11 +324,6 @@ def execute_python_scenario_tracker():
                 peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
-
-        if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
@@ -408,7 +413,6 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        # Exact scenario state mapping
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
@@ -632,7 +636,10 @@ def fetch_and_update_option_chain(smart_api):
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
-            data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
+            try:
+                data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
+            except Exception:
+                pass
 
         execute_python_scenario_tracker()
 
