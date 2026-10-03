@@ -68,10 +68,11 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE
+# PYTHON MEMORY STORE & CACHE FOR QUOTA SAVING
 # ==========================================
 script_memory = {}
 global_run_date = ""
+last_written_values = {}
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -82,6 +83,18 @@ def set_memory(key, value):
 def remove_memory(key):
     if key in script_memory:
         del script_memory[key]
+
+def safe_update_cell(sheet, cell_name, new_value):
+    global last_written_values
+    cache_key = f"{sheet.title}_{cell_name}"
+    str_val = str(new_value)
+    if last_written_values.get(cache_key) != str_val:
+        try:
+            sheet.update_acell(cell_name, str_val)
+            last_written_values[cache_key] = str_val
+            time.sleep(0.5) # Gentle pause to prevent quota hitting
+        except Exception as e:
+            print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
 # ROBUST IV & GREEKS
@@ -125,7 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (DIRECT CELL READ)
+# MASTER SCENARIO ENGINE (QUOTA OPTIMIZED)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -343,21 +356,20 @@ def execute_python_scenario_tracker():
         finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
         finalQ5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
 
-        # Write cells to Dashboard Sheet
-        dashboard_sheet.update(range_name="D5", values=[[finalD5]])
-        dashboard_sheet.update(range_name="U5", values=[[finalU5]])
-        dashboard_sheet.update(range_name="H5", values=[[finalH5]])
-        dashboard_sheet.update(range_name="Q5", values=[[finalQ5]])
+        # 🎯 SMART CONDITIONAL WRITES (PREVENTS 429 QUOTA ERROR)
+        safe_update_cell(dashboard_sheet, "D5", finalD5)
+        safe_update_cell(dashboard_sheet, "U5", finalU5)
+        safe_update_cell(dashboard_sheet, "H5", finalH5)
+        safe_update_cell(dashboard_sheet, "Q5", finalQ5)
 
         # ==========================================
-        # 🎯 ADVANCED STATE-PARSING K3 ENGINE
+        # 🎯 ADVANCED K3 ENGINE WITH SMART QUOTA PROTECTION
         # ==========================================
         try:
             d5_val = str(dashboard_sheet.cell(5, 4).value or "").lower()   # D5 (CE OI)
             h5_val = str(dashboard_sheet.cell(5, 8).value or "").lower()   # H5 (CE Vol)
             q5_val = str(dashboard_sheet.cell(5, 17).value or "").lower()  # Q5 (PE Vol)
             u5_val = str(dashboard_sheet.cell(5, 21).value or "").lower()  # U5 (PE OI)
-            print(f"🔍 DEBUG READ -> D5: '{d5_val}' | H5: '{h5_val}' | Q5: '{q5_val}' | U5: '{u5_val}'")
         except Exception as e:
             print(f"⚠ Cell Read Error: {e}")
             d5_val, h5_val, q5_val, u5_val = "", "", "", ""
@@ -366,20 +378,16 @@ def execute_python_scenario_tracker():
             val_lower = str(val_str).lower()
             if "(-----)" in val_lower or val_lower.strip() == "":
                 return "stable strong"
-            
             if "wtt to strong" in val_lower or ("wtt" in val_lower and "strong" in val_lower):
                 return "wtt to strong"
             if "wtb to strong" in val_lower or ("wtb" in val_lower and "strong" in val_lower):
                 return "wtb to strong"
-            
             if "stable strong" in val_lower or ("strong" in val_lower and "wtt" not in val_lower and "wtb" not in val_lower):
                 return "stable strong"
-                
             if "wtt" in val_lower:
                 return "wtt"
             if "wtb" in val_lower:
                 return "wtb"
-                
             return "stable strong"
 
         active_ce_text = h5_val if "(-----)" not in h5_val and h5_val.strip() != "" else d5_val
@@ -416,7 +424,7 @@ def execute_python_scenario_tracker():
         elif ce_state_str == "wtb to strong" and pe_state_str == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
         elif ce_state_str == "wtt to strong" and pe_state_str == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
-        dashboard_sheet.update_acell("K3", k3Text)
+        safe_update_cell(dashboard_sheet, "K3", k3Text)
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {ce_state_str}, PE State: {pe_state_str})")
 
     except Exception as err:
@@ -502,11 +510,12 @@ def fetch_and_update_option_chain(smart_api):
             spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
         try:
-            data_sheet.update(range_name="K9", values=[[spot_price]])
-            data_sheet.update(range_name="L9", values=[[str(current_expiry)]])
-            data_sheet.update(range_name="A7", values=[[lot_size]])
+            safe_update_cell(data_sheet, "K9", spot_price)
+            safe_update_cell(data_sheet, "L9", str(current_expiry))
+            safe_update_cell(data_sheet, "A7", lot_size)
             expiry_cells = [['A3', active_expiries[0]], ['A4', active_expiries[1]], ['A5', active_expiries[2]], ['A6', active_expiries[3]]]
-            data_sheet.batch_update([{'range': cell, 'values': [[val]]} for cell, val in expiry_cells])
+            for cell, val in expiry_cells:
+                safe_update_cell(data_sheet, cell, val)
         except Exception:
             pass
 
@@ -645,7 +654,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_loop():
-    print("🚀 Starting Unified Python Bot with Advanced State Parser...")
+    print("🚀 Starting Quota-Optimized Unified Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
