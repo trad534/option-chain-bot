@@ -101,12 +101,12 @@ def execute_strict_independent_matrix():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        global_run_date = get_memory("GLOBAL_RUN_DATE_TRUE_FINAL_V9", "")
-        force_clean = get_memory("FORCE_CLEAN_TRUE_FINAL_V9", "")
+        global_run_date = get_memory("GLOBAL_RUN_DATE_TRUE_FINAL_V10", "")
+        force_clean = get_memory("FORCE_CLEAN_TRUE_FINAL_V10", "")
         if global_run_date != today_str or force_clean != "YES":
             script_memory.clear()
-            set_memory("GLOBAL_RUN_DATE_TRUE_FINAL_V9", today_str)
-            set_memory("FORCE_CLEAN_TRUE_FINAL_V9", "YES")
+            set_memory("GLOBAL_RUN_DATE_TRUE_FINAL_V10", today_str)
+            set_memory("FORCE_CLEAN_TRUE_FINAL_V10", "YES")
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -114,55 +114,47 @@ def execute_strict_independent_matrix():
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        # CE Scanning: Row 15 to 28
-        for r in range(15, 29):
+        # Corrected Loop & Safe Column Mapping
+        for r in range(8, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
             if array_index < 0 or array_index >= len(range_values): continue
             
             row_data = range_values[array_index]
-            if len(row_data) <= 13: continue
+            while len(row_data) < 20:
+                row_data.append("")
 
             strike_val = row_data[13] # Column N
-            strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
+            strike = float(strike_val) if strike_val not in [None, "", "NAN"] and str(strike_val).replace('.','',1).isdigit() else 0
             if not strike: continue
 
-            ce_oi_val = row_data[7] if len(row_data) > 7 else "0"   # Column H
-            ce_vol_val = row_data[8] if len(row_data) > 8 else "0"  # Column I
-            
-            ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
-            ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
+            # CE Scanning: Rows 15 to 28
+            if 15 <= r <= 28:
+                ce_oi_val = row_data[7] if len(row_data) > 7 else "0"   # Column H
+                ce_vol_val = row_data[8] if len(row_data) > 8 else "0"  # Column I
+                
+                ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
+                ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
-            if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
-            if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
+                if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
+                if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
 
-            ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
-            ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
+                ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
+                ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
-        # PE Scanning: Row 8 to 21
-        for r in range(8, 22):
-            if r == MARKET_ROW: continue
-            array_index = r - 8
-            if array_index < 0 or array_index >= len(range_values): continue
-            
-            row_data = range_values[array_index]
-            if len(row_data) <= 19: continue
+            # PE Scanning: Rows 8 to 21
+            if 8 <= r <= 21:
+                pe_vol_val = row_data[18] if len(row_data) > 18 else "0" # Column S
+                pe_oi_val = row_data[19] if len(row_data) > 19 else "0"  # Column T
+                
+                pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
+                pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
 
-            strike_val = row_data[13] # Column N
-            strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
-            if not strike: continue
+                if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
+                if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
 
-            pe_vol_val = row_data[18] if len(row_data) > 18 else "0" # Column S
-            pe_oi_val = row_data[19] if len(row_data) > 19 else "0"  # Column T
-            
-            pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
-            pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
-
-            if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
-            if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
-
-            peVolArray.append({'strike': strike, 'val': float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
-            peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
+                peVolArray.append({'strike': strike, 'val': float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
+                peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
         def extract_top_two(data_array):
             if not data_array:
@@ -184,7 +176,6 @@ def execute_strict_independent_matrix():
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']:
             return
 
-        # EXACT GAS detectLiveStateAdvanced Logic
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
                 return "STRONG"
@@ -201,8 +192,6 @@ def execute_strict_independent_matrix():
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj['highest'] or not top_obj['highest']['strike'] or top_obj['highest']['strike'] == 0:
                 return "stable strong"
-            
-            # Agar percentage 75% ya usse zyada hai, toh yeh seedha WTT/WTB return karega ("to strong" nahi banega)
             if top_obj['pct'] >= 75.0:
                 return raw_state
 
@@ -229,7 +218,7 @@ def execute_strict_independent_matrix():
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         # ==========================
-        # CE WINNER ENGINE (CORRECTED)
+        # CE WINNER ENGINE (FIXED)
         # ==========================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
@@ -259,7 +248,7 @@ def execute_strict_independent_matrix():
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         # ==========================
-        # PE WINNER ENGINE (CORRECTED)
+        # PE WINNER ENGINE (FIXED)
         # ==========================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
@@ -273,8 +262,8 @@ def execute_strict_independent_matrix():
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+            ceWinner = "OI"
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -295,9 +284,6 @@ def execute_strict_independent_matrix():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        # ==========================
-        # CALCULATE INDEPENDENT CELL (EXACT GAS)
-        # ==========================
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj['highest'] or not top_obj['highest']['strike'] or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -397,9 +383,7 @@ def execute_strict_independent_matrix():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # ==========================================
-        # 27 SCENARIOS MAPPING (EXACT GAS MATCH)
-        # ==========================================
+        # 27 Scenarios Mapping
         if checkCe == "wtt" and checkPe == "wtb": k3Text = "Nifty is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = "Nifty is 9th scenario both side Risky"
         elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = "Nifty is Neutral"
