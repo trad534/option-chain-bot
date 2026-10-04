@@ -353,9 +353,6 @@ def execute_strict_independent_matrix():
             
             display_time = get_memory("TIME_" + cache_key)
             last_recorded_status = get_memory("LAST_STATUS_" + cache_key, "")
-            is_trigger_status = (
-                displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or is_shifting
-            ) if 'displayStatus' in locals() or True else False
 
             is_trig = display_status in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or is_shifting
 
@@ -387,7 +384,7 @@ def execute_strict_independent_matrix():
 
         k3Text = "Nifty is Neutral"
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -421,7 +418,7 @@ def execute_strict_independent_matrix():
         elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = "Nifty is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = "Nifty is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = "Nifty is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkCe == "wtb to strong": k3Text = "Nifty is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = "Nifty is confirm bloodbath"
 
         finalD5, finalH5, finalQ5, finalU5 = "(-----)", "(-----)", "(-----)", "(-----)"
@@ -445,8 +442,12 @@ def execute_strict_independent_matrix():
     except Exception as err:
         print(f"❌ Strict Engine Error: {err}")
 
-# Dummy loop runner or background executor trigger
+# Background runner thread setup for Flask + Main Loop
 if __name__ == "__main__":
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
     print("🚀 Exact GAS Matched Python Engine started...")
     while True:
         execute_strict_independent_matrix()
