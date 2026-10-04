@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Scenario Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -182,7 +182,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
+# MASTER SCENARIO ENGINE (FIXED STRIKE SHIFT & WTT LOGIC)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -313,7 +313,7 @@ def execute_python_scenario_tracker():
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         # ==========================
-        # CE WINNER ENGINE (FIXED)
+        # CE WINNER ENGINE
         # ==========================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
@@ -343,7 +343,7 @@ def execute_python_scenario_tracker():
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         # ==========================
-        # PE WINNER ENGINE (FIXED)
+        # PE WINNER ENGINE
         # ==========================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
@@ -358,7 +358,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -368,6 +368,7 @@ def execute_python_scenario_tracker():
             if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0:
                 peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
             if peVolActiveRow != peOiActiveRow:
+                ceWinner = "VOL" # placeholder safety
                 peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
@@ -424,6 +425,14 @@ def execute_python_scenario_tracker():
             else:
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 scenario_status = final_status_text
+
+            # BUG FIX: Ensure correct label propagation on strike shift without false 'Strong' trigger
+            if top_obj['pct'] >= 100.0 and top_obj['second']['val'] > 0 and top_obj['second']['val'] < top_obj['highest']['val']:
+                if side_label.startswith("Eos") and raw_state == "STRONG":
+                    # Fix for PE volume shifting issue
+                    if top_obj['second']['strike'] > top_obj['highest']['strike']:
+                        display_status = "wtt"
+                        scenario_status = "wtt"
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
@@ -482,7 +491,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -517,8 +525,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": 
-            k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
@@ -530,7 +537,6 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
