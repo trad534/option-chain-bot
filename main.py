@@ -182,15 +182,13 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED CE & PE OPPOSITE LOGIC)
+# MASTER SCENARIO ENGINE (SAME LOGIC FOR BOTH CE & PE)
 # ==========================================
 def detect_live_state_advanced(top_obj, is_put_side):
     if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
         return "STRONG"
-    if not is_put_side:
-        return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
-    else:
-        return "wtb" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtt"
+    # CE aur PE dono ke liye bilkul same exact logic
+    return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
 
 def execute_python_scenario_tracker():
     global global_run_date
@@ -315,7 +313,7 @@ def execute_python_scenario_tracker():
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -340,31 +338,31 @@ def execute_python_scenario_tracker():
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         peWinner = "VOL"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtb" and peVolRawState == "wtb":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] > peOiTop['highest']['strike']) and (peVolTop['second']['strike'] > peVolTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] > peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] > peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] < peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] > peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
-                peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
+                peOiActiveRow = min(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
             if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0:
-                peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+                peVolActiveRow = min(peVolActiveRow, peVolTop['second']['row'])
             if peVolActiveRow != peOiActiveRow:
-                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
+                peWinner = "VOL" if peVolActiveRow < peOiActiveRow else "OI"
             else:
-                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+                peWinner = "VOL" if peVolTop['highest']['row'] <= peOiTop['highest']['row'] else "OI"
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
