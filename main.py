@@ -182,7 +182,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY & FALSE STRONG PATCH)
+# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -419,14 +419,6 @@ def execute_python_scenario_tracker():
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 scenario_status = final_status_text
 
-            # ==========================================
-            # STRICT BUG FIX: FALSE STRONG / TO STRONG PATCH (e.g. 78% or intermediate pct)
-            # ==========================================
-            if side_label.startswith("Eos") and top_obj['highest']['val'] > 0:
-                if top_obj['pct'] < 100.0:
-                    display_status = "wtt" if second_strike > strike else "wtb"
-                    scenario_status = display_status
-
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
                 scenario_status = "stable strong"
@@ -532,6 +524,7 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
+        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
