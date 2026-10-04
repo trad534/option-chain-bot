@@ -182,7 +182,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (STABLE HYSTERESIS ENGINE)
+# MASTER SCENARIO ENGINE (CORRECTED PE DIRECTION)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -269,7 +269,6 @@ def execute_python_scenario_tracker():
 
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
 
-        # FIXED WITH HYSTERESIS BUFFER (Prevents boundary flickering around 75%)
         def detect_live_state_advanced(top_obj, is_put_side, cache_key):
             if not top_obj or top_obj['highest']['val'] == 0:
                 return "STRONG"
@@ -282,7 +281,8 @@ def execute_python_scenario_tracker():
                 return "STRONG"
             
             if is_put_side:
-                state = "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
+                # CORRECTED FOR PUT SIDE: If second strike > highest strike, it's wtt, else wtb
+                state = "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
             else:
                 state = "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
             
@@ -380,7 +380,7 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
+        def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text, is_put_side=False):
             if not top_obj or not top_obj['highest']['strike']: 
                 return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
             
@@ -406,12 +406,20 @@ def execute_python_scenario_tracker():
                     remove_memory("SHIFT_TARGET_" + cache_key)
 
             if strike != prev_strike and prev_strike > 0 and (final_status_text in ["wtb", "wtt"]):
-                if strike < prev_strike:
-                    shift_type = "top to bottom"
-                    scenario_status = "wtb"
+                if is_put_side:
+                    if strike > prev_strike:
+                        shift_type = "bottom to top"
+                        scenario_status = "wtt"
+                    else:
+                        shift_type = "top to bottom"
+                        scenario_status = "wtb"
                 else:
-                    shift_type = "bottom to top"
-                    scenario_status = "wtt"
+                    if strike < prev_strike:
+                        shift_type = "top to bottom"
+                        scenario_status = "wtb"
+                    else:
+                        shift_type = "bottom to top"
+                        scenario_status = "wtt"
                 set_memory("IS_SHIFTED_" + cache_key, "true")
                 set_memory("SHIFT_TYPE_" + cache_key, shift_type)
                 set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
@@ -426,7 +434,10 @@ def execute_python_scenario_tracker():
                 else:
                     is_shifting = True
                     shift_type = get_memory("SHIFT_TYPE_" + cache_key)
-                    scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
+                    if is_put_side:
+                        scenario_status = "wtt" if shift_type == "bottom to top" else "wtb"
+                    else:
+                        scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
             else:
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 scenario_status = final_status_text
@@ -457,10 +468,10 @@ def execute_python_scenario_tracker():
 
             return {'text': output_text, 'status': display_status, 'scenarioStatus': scenario_status, 'rawState': raw_state}
 
-        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
-        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
-        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
-        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
+        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText, False)
+        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText, False)
+        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText, True)
+        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText, True)
 
         if "wtb" in ceOiResult['scenarioStatus'] or "wtt" in ceOiResult['scenarioStatus']:
             finalCeState = ceOiResult['scenarioStatus']
