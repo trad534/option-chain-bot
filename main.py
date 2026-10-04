@@ -182,8 +182,16 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
+# MASTER SCENARIO ENGINE (FIXED CE & PE OPPOSITE LOGIC)
 # ==========================================
+def detect_live_state_advanced(top_obj, is_put_side):
+    if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
+        return "STRONG"
+    if not is_put_side:
+        return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
+    else:
+        return "wtb" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtt"
+
 def execute_python_scenario_tracker():
     global global_run_date
     try:
@@ -269,14 +277,6 @@ def execute_python_scenario_tracker():
 
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
 
-        def detect_live_state_advanced(top_obj, is_put_side):
-            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
-                return "STRONG"
-            if is_put_side:
-                return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
-            else:
-                return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
-
         ceVolRawState = detect_live_state_advanced(ceVolTop, False)
         ceOiRawState = detect_live_state_advanced(ceOiTop, False)
         peVolRawState = detect_live_state_advanced(peVolTop, True)
@@ -352,7 +352,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -476,7 +476,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -524,7 +523,6 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
