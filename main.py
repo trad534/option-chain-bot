@@ -286,12 +286,6 @@ def execute_python_scenario_tracker():
             if not top_obj or not top_obj['highest']['strike']: return "stable strong"
             strike = top_obj['highest']['strike']
             prev_strike = float(get_memory("PREV_STRK_" + cache_key, strike))
-            
-            # Agar market mein raw_state wapas 'wtt' ya 'wtb' ban gaya hai, toh turant fresh state do!
-            if raw_state in ["wtt", "wtb"]:
-                set_memory("WEAK_HIST_" + cache_key, raw_state)
-                return raw_state
-
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
@@ -299,7 +293,9 @@ def execute_python_scenario_tracker():
                     if top_obj['pct'] < 82.0:
                         return current_weak_hist + " to strong"
                     
-                    return current_weak_hist + " to strong"
+                    transition_val = current_weak_hist + " to strong"
+                    remove_memory("WEAK_HIST_" + cache_key)
+                    return transition_val
                 if strike != prev_strike: return "strong"
                 return "stable strong"
             
@@ -356,7 +352,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -480,6 +476,7 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
+        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -514,7 +511,8 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": 
+            k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
@@ -526,6 +524,7 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
+        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
