@@ -182,7 +182,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
+# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY & S20 FIX)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -256,7 +256,10 @@ def execute_python_scenario_tracker():
             filtered = [item for item in data_array if item['val'] > 0]
             if not filtered:
                 return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
-            filtered.sort(key=lambda x: x['val'], reverse=True)
+            
+            # S20 fix applied here to safely extract top rows without skipping row 20
+            filtered.sort(key=lambda x: (x['val'], x['row']), reverse=True)
+            
             highest = filtered[0]
             second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
@@ -352,7 +355,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -524,7 +527,6 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
