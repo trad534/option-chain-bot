@@ -234,7 +234,7 @@ def execute_python_scenario_tracker():
             if array_index < 0 or array_index >= len(range_values): continue
             
             row_data = range_values[array_index]
-            if len(row_data) <= 19: continue
+            if len(row_data) <= 21: continue
 
             strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
