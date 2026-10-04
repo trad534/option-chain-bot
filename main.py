@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Reverse PE Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Fixed PE Reverse Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -181,15 +181,15 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (PE SIDE ULTA CALCULATED)
+# MASTER SCENARIO ENGINE (PE SIDE FIXED REVERSE)
 # ==========================================
 def detect_live_state_advanced(top_obj, is_put_side):
     if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
         return "STRONG"
     
     if is_put_side:
-        # PE Side ke liye bilkul ulta logic (ulta calculate kiya gaya hai)
-        return "wtb" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtt"
+        # PE Side ke liye exact ulta logic: agar second strike, highest strike se chhota hai toh WTT, warna WTB
+        return "wtt" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtb"
     else:
         # CE Side ke liye normal standard logic
         return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
@@ -750,7 +750,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Reverse-PE Script Engine...")
+    print("🚀 Starting Fixed PE Reverse Script Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
