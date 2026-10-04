@@ -270,6 +270,7 @@ def execute_python_scenario_tracker():
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
 
         def detect_live_state_advanced(top_obj, is_put_side):
+            # 75% ka standard rule bilkul waisa hi rakha hai
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
                 return "STRONG"
             if is_put_side:
@@ -290,8 +291,9 @@ def execute_python_scenario_tracker():
 
             if raw_state == "STRONG":
                 if current_weak_hist in ["wtt", "wtb"]:
+                    # Yahan percentage 82% se upar hone par hi 'to strong' maanege taaki flickering ruke
                     if top_obj['pct'] < 82.0:
-                        return current_weak_hist + " to strong"
+                        return current_weak_hist
                     
                     transition_val = current_weak_hist + " to strong"
                     remove_memory("WEAK_HIST_" + cache_key)
@@ -524,7 +526,6 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
