@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Reverse PE Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -98,7 +98,7 @@ def safe_update_cell(sheet, cell_name, new_value):
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
+# COLOR FORMATTING FOR K3
 # ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
@@ -112,7 +112,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
-        
         body = {
             "requests": [
                 {
@@ -182,13 +181,18 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (SAME LOGIC FOR BOTH CE & PE)
+# MASTER SCENARIO ENGINE (PE SIDE ULTA CALCULATED)
 # ==========================================
 def detect_live_state_advanced(top_obj, is_put_side):
     if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
         return "STRONG"
-    # CE aur PE dono ke liye bilkul same exact logic
-    return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
+    
+    if is_put_side:
+        # PE Side ke liye bilkul ulta logic (ulta calculate kiya gaya hai)
+        return "wtb" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtt"
+    else:
+        # CE Side ke liye normal standard logic
+        return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
 
 def execute_python_scenario_tracker():
     global global_run_date
@@ -277,8 +281,8 @@ def execute_python_scenario_tracker():
 
         ceVolRawState = detect_live_state_advanced(ceVolTop, False)
         ceOiRawState = detect_live_state_advanced(ceOiTop, False)
-        peVolRawState = detect_live_state_advanced(peVolTop, True)
-        peOiRawState = detect_live_state_advanced(peOiTop, True)
+        peVolRawState = detect_live_state_advanced(peVolTop, True)  # PE Side Ulta Flag True
+        peOiRawState = detect_live_state_advanced(peOiTop, True)  # PE Side Ulta Flag True
 
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj['highest']['strike']: return "stable strong"
@@ -350,7 +354,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] > peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] < peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] > peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] < peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] > peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -508,8 +512,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": 
-            k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         finalD5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         finalH5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
@@ -557,11 +560,9 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
             script_memory.clear()
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -709,7 +710,6 @@ def fetch_and_update_option_chain(smart_api):
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
-        print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
@@ -739,8 +739,6 @@ def initialize_scrip_master(smart_api):
             if "TMCV" in options_cache:
                 options_cache["TATAMOTORS"] = options_cache["TMCV"]
                 options_cache["TATA"] = options_cache["TMCV"]
-
-            print(f"✅ Scrip Master Cached! Total Records: {len(full_scrip_df)}")
     except Exception as e:
         print(f"⚠ Scrip Master Error: {e}")
 
@@ -752,7 +750,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot...")
+    print("🚀 Starting Reverse-PE Script Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -761,7 +759,6 @@ def run_bot_lock_loop():
         
     while True:
         try:
-            print("🔄 Attempting to generate Angel One session...")
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
@@ -769,10 +766,8 @@ def run_bot_lock_loop():
                 initialize_scrip_master(smart_api)
                 break
             else:
-                print(f"⚠ Session Failed: {data}")
                 time.sleep(5)
-        except Exception as e:
-            print(f"❌ Session Exception: {e}")
+        except Exception:
             time.sleep(5)
 
     while True:
