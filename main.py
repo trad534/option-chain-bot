@@ -182,7 +182,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (FIXED STATE PRIORITY)
+# MASTER SCENARIO ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -228,6 +228,7 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
+        # PE side extraction matching exact range scan patterns
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -269,8 +270,7 @@ def execute_python_scenario_tracker():
 
         if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike']: return
 
-        def detect_live_state_advanced(top_obj, is_put_side):
-            # 75% ka standard rule bilkul waisa hi rakha hai
+        def detect_live_state(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
                 return "STRONG"
             if is_put_side:
@@ -278,10 +278,10 @@ def execute_python_scenario_tracker():
             else:
                 return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
 
-        ceVolRawState = detect_live_state_advanced(ceVolTop, False)
-        ceOiRawState = detect_live_state_advanced(ceOiTop, False)
-        peVolRawState = detect_live_state_advanced(peVolTop, True)
-        peOiRawState = detect_live_state_advanced(peOiTop, True)
+        ceVolRawState = detect_live_state(ceVolTop, False)
+        ceOiRawState = detect_live_state(ceOiTop, False)
+        peVolRawState = detect_live_state(peVolTop, True)
+        peOiRawState = detect_live_state(peOiTop, True)
 
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj['highest']['strike']: return "stable strong"
@@ -291,10 +291,6 @@ def execute_python_scenario_tracker():
 
             if raw_state == "STRONG":
                 if current_weak_hist in ["wtt", "wtb"]:
-                    # Yahan percentage 82% se upar hone par hi 'to strong' maanege taaki flickering ruke
-                    if top_obj['pct'] < 82.0:
-                        return current_weak_hist
-                    
                     transition_val = current_weak_hist + " to strong"
                     remove_memory("WEAK_HIST_" + cache_key)
                     return transition_val
@@ -478,7 +474,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -562,11 +557,9 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
             script_memory.clear()
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -714,7 +707,6 @@ def fetch_and_update_option_chain(smart_api):
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
-        print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
@@ -744,8 +736,6 @@ def initialize_scrip_master(smart_api):
             if "TMCV" in options_cache:
                 options_cache["TATAMOTORS"] = options_cache["TMCV"]
                 options_cache["TATA"] = options_cache["TMCV"]
-
-            print(f"✅ Scrip Master Cached! Total Records: {len(full_scrip_df)}")
     except Exception as e:
         print(f"⚠ Scrip Master Error: {e}")
 
@@ -766,25 +756,21 @@ def run_bot_lock_loop():
         
     while True:
         try:
-            print("🔄 Attempting to generate Angel One session...")
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
-                print("✅ Session Generated Successfully!")
                 initialize_scrip_master(smart_api)
                 break
             else:
-                print(f"⚠ Session Failed: {data}")
                 time.sleep(5)
         except Exception as e:
-            print(f"❌ Session Exception: {e}")
             time.sleep(5)
 
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
-            print(f"❌ Loop Error: {_e}")
+            pass
         time.sleep(1)
 
 if __name__ == "__main__":
