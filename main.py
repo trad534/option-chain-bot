@@ -201,6 +201,11 @@ def execute_strict_independent_matrix():
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj['highest'] or not top_obj['highest']['strike'] or top_obj['highest']['strike'] == 0:
                 return "stable strong"
+            
+            # Agar percentage 75% ya usse zyada hai, toh yeh WTT/WTB hai, "to strong" nahi banana hai
+            if top_obj['pct'] >= 75.0:
+                return raw_state
+
             strike = top_obj['highest']['strike']
             prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
