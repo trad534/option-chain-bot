@@ -290,8 +290,9 @@ def execute_python_scenario_tracker():
 
             if raw_state == "STRONG":
                 if current_weak_hist in ["wtt", "wtb"]:
+                    # Fixed: Only trigger 'to strong' if percentage crossed back safely above threshold, otherwise retain weak state to prevent flickering
                     if top_obj['pct'] < 82.0:
-                        return current_weak_hist + " to strong"
+                        return current_weak_hist
                     
                     transition_val = current_weak_hist + " to strong"
                     remove_memory("WEAK_HIST_" + cache_key)
@@ -524,7 +525,6 @@ def execute_python_scenario_tracker():
         safe_update_cell(dashboard_sheet, "H5", finalH5)
         safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
-        # Updated K3 with color-only field mask (Preserves your manual font size and bold style)
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
