@@ -30,7 +30,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Multi-Symbol Memory Engine is active!"
+    return "Angel One Option Chain Bot & Original Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -70,22 +70,16 @@ except Exception as e:
     exit()
 
 # ==========================================
-# MULTI-SYMBOL PERMANENT RAM MEMORY STORE
+# ORIGINAL PYTHON MEMORY STORE
 # ==========================================
-all_symbols_memory = {}
+script_memory = {}
 global_run_date = ""
 
-def get_symbol_memory(symbol, key, default=""):
-    SYM_KEY = symbol.upper()
-    if SYM_KEY not in all_symbols_memory:
-        all_symbols_memory[SYM_KEY] = {}
-    return all_symbols_memory[SYM_KEY].get(key, default)
+def get_memory(key, default=""):
+    return script_memory.get(key, default)
 
-def set_symbol_memory(symbol, key, value):
-    SYM_KEY = symbol.upper()
-    if SYM_KEY not in all_symbols_memory:
-        all_symbols_memory[SYM_KEY] = {}
-    all_symbols_memory[SYM_KEY][key] = str(value)
+def set_memory(key, value):
+    script_memory[key] = str(value)
 
 # ==========================================
 # COLOR FORMATTING FOR K3
@@ -171,9 +165,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (PER-SYMBOL MEMORY)
+# ORIGINAL MASTER SCENARIO ENGINE
 # ==========================================
-def execute_python_scenario_tracker(active_symbol_name):
+def execute_python_scenario_tracker():
     global global_run_date
     try:
         now_dt = datetime.now()
@@ -181,11 +175,11 @@ def execute_python_scenario_tracker(active_symbol_name):
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
-            all_symbols_memory.clear()
+            script_memory.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
-            all_symbols_memory.clear()
+            script_memory.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -277,9 +271,9 @@ def execute_python_scenario_tracker(active_symbol_name):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
-            prev_strike_str = get_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key)
+            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_symbol_memory(active_symbol_name, "WEAK_HIST_" + cache_key, "")
+            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
                 if current_weak_hist == "wtt": return "wtt to strong"
@@ -298,7 +292,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE
+        # 🏆 ORIGINAL CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -309,7 +303,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE
+        # 🏆 ORIGINAL PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -320,10 +314,10 @@ def execute_python_scenario_tracker(active_symbol_name):
         else:
             peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(active_symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(active_symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState in ["wtt", "wtb"]: set_symbol_memory(active_symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState in ["wtt", "wtb"]: set_symbol_memory(active_symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
+        if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
@@ -333,11 +327,11 @@ def execute_python_scenario_tracker(active_symbol_name):
 
             strike = top_obj['highest']['strike']
             second_strike = top_obj['second']['strike'] if top_obj.get('second') and top_obj['second'].get('val', 0) > 0 else strike
-            prev_strike_str = get_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key)
+            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
 
             if not prev_strike_str:
-                set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                set_memory("PREV_STRK_" + cache_key, str(strike))
                 prev_strike = strike
 
             display_status = final_status_text
@@ -348,20 +342,20 @@ def execute_python_scenario_tracker(active_symbol_name):
             if strike != prev_strike and prev_strike > 0 and (final_status_text in ["wtb", "wtt"]):
                 shift_type = "top to bottom" if strike < prev_strike else "bottom to top"
                 scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
-                set_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key, "true")
-                set_symbol_memory(active_symbol_name, "SHIFT_TYPE_" + cache_key, shift_type)
+                set_memory("IS_SHIFTED_" + cache_key, "true")
+                set_memory("SHIFT_TYPE_" + cache_key, shift_type)
                 is_shifting = True
             else:
-                set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                set_memory("PREV_STRK_" + cache_key, str(strike))
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
                 scenario_status = "stable strong"
 
-            display_time = get_symbol_memory(active_symbol_name, "TIME_" + cache_key)
+            display_time = get_memory("TIME_" + cache_key)
             if not display_time:
                 display_time = current_time_str
-                set_symbol_memory(active_symbol_name, "TIME_" + cache_key, display_time)
+                set_memory("TIME_" + cache_key, display_time)
 
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
@@ -387,6 +381,14 @@ def execute_python_scenario_tracker(active_symbol_name):
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
+        active_symbol_name = "Nifty"
+        try:
+            j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
+            if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
+                active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+        except Exception:
+            pass
+
         k3Text = f"{active_symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
@@ -410,7 +412,7 @@ def execute_python_scenario_tracker(active_symbol_name):
             dashboard_sheet.update(range_name='Q5', values=[[finalQ5]], value_input_option='USER_ENTERED')
             
             update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
-            print(f"✅ SUCCESS -> Scenarios Updated for {active_symbol_name}: '{k3Text}'")
+            print(f"✅ SUCCESS -> Scenarios Updated: '{k3Text}'")
         except Exception as e:
             print(f"⚠ Scenario Cells Update Error: {e}")
 
@@ -446,7 +448,8 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Preserving Multi-Symbol Memory!")
+            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
+            script_memory.clear()
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
@@ -492,14 +495,13 @@ def fetch_and_update_option_chain(smart_api):
         lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         if spot_price <= 0:
-            spot_price = float(get_symbol_memory(clean_symbol, "LAST_VALID_SPOT", 100.0))
+            spot_price = float(script_memory.get("LAST_VALID_SPOT", 100.0))
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if spot_price == 100.0 and all_strikes_list:
                 spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
         else:
-            set_symbol_memory(clean_symbol, "LAST_VALID_SPOT", str(spot_price))
+            set_memory("LAST_VALID_SPOT", str(spot_price))
 
-        # ⚡ SYNCHRONIZED METADATA UPDATE (K9, L9, A7, EXPIRIES)
         try:
             cells_to_update = [
                 {'range': 'K9', 'values': [[spot_price]]},
@@ -529,7 +531,6 @@ def fetch_and_update_option_chain(smart_api):
             if exch not in exchange_tokens_map: exchange_tokens_map[exch] = []
             if tok not in exchange_tokens_map[exch]: exchange_tokens_map[exch].append(tok)
 
-        # ⚡ PARALLEL BATCH FETCHING (max_workers=10)
         all_fetched_quotes = []
         
         def fetch_batch(exch, batch_tokens):
@@ -604,7 +605,6 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        # ⚡ SAFE GOOGLE SHEET OPTION CHAIN UPDATE
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             try:
@@ -612,8 +612,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
-        # ⚡ SCENARIO TRACKER EXECUTION WITH PER-SYMBOL MEMORY
-        execute_python_scenario_tracker(clean_symbol)
+        execute_python_scenario_tracker()
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -621,7 +620,7 @@ def fetch_and_update_option_chain(smart_api):
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
-        print("📥 Downloading & Pre-loading All 265+ Symbols & Tokens into RAM...")
+        print("📥 Downloading & Pre-loading All Symbols & Tokens into RAM...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
@@ -664,7 +663,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Multi-Symbol Memory Python Bot...")
+    print("🚀 Starting Original Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
