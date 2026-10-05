@@ -181,7 +181,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (INSTANT EXECUTION)
+# MASTER SCENARIO ENGINE (FAST EXECUTION)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -348,13 +348,13 @@ def execute_python_scenario_tracker():
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "OI" if False else "OI" # fixed ref
+            ceWinner = "OI" if False else "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "OI"
+            ceWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -550,7 +550,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (ZERO-DELAY INSTANT)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -652,7 +652,7 @@ def fetch_and_update_option_chain(smart_api):
             if exch not in exchange_tokens_map: exchange_tokens_map[exch] = []
             if tok not in exchange_tokens_map[exch]: exchange_tokens_map[exch].append(tok)
 
-        # ⚡ BLAZING FAST PARALLEL BATCH FETCHING (max_workers=10)
+        # ⚡ PARALLEL BATCH FETCHING (max_workers=10)
         all_fetched_quotes = []
         
         def fetch_batch(exch, batch_tokens):
@@ -727,7 +727,7 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        # ⚡ INSTANT FAST GOOGLE SHEET UPDATE
+        # ⚡ FAST GOOGLE SHEET UPDATE
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             try:
@@ -736,7 +736,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
-        # ⚡ INSTANT SCENARIO TRACKER EXECUTION
+        # ⚡ SCENARIO TRACKER EXECUTION
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -788,7 +788,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Zero-Delay Instant Python Bot...")
+    print("🚀 Starting Optimized Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -811,13 +811,13 @@ def run_bot_lock_loop():
             print(f"❌ Session Exception: {e}")
             time.sleep(2)
 
-    # ⚡ ZERO-DELAY CONTINUOUS LOOP FOR INSTANT TOUCH UPDATE
+    # ⚡ SAFE & FAST CONTINUOUS LOOP (0.3 SEC DELAY TO PREVENT TIMEOUTS)
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        # No sleep time here for absolute instant real-time response!
+        time.sleep(0.3)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
