@@ -14,6 +14,7 @@ from SmartApi import SmartConnect
 from flask import Flask
 import threading
 import builtins
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==========================================
 # FORCE FLUSH LOGS IN RENDER
@@ -182,7 +183,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS GAS MATCH)
+# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS MATCH)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -312,7 +313,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -340,7 +341,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -354,7 +355,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if False else peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -375,7 +376,6 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        # EXACT MATCHED calculateIndependentCell FUNCTION FROM GOOGLE APPS SCRIPT
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -400,14 +400,12 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            # 🎯 1. REVERSAL CHECK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
                     set_memory("IS_SHIFTED_" + cache_key, "false")
                     set_memory("PREV_STRK_" + cache_key, str(strike))
                     remove_memory("SHIFT_TARGET_" + cache_key)
 
-            # 🎯 2. NEW SHIFT TRIGGER CHECK
             if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
                 if strike < prev_strike:
                     shift_type = "top to bottom"
@@ -420,7 +418,6 @@ def execute_python_scenario_tracker():
                 set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
                 set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
 
-            # 🎯 3. EVALUATE PERSISTENT SHIFT LOCK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
                     set_memory("IS_SHIFTED_" + cache_key, "false")
@@ -490,7 +487,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -500,7 +496,7 @@ def execute_python_scenario_tracker():
             pass
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # EXACT 27 SCENARIOS MAPPING
         # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -556,7 +552,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP (BLAZING FAST PARALLEL)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -658,17 +654,30 @@ def fetch_and_update_option_chain(smart_api):
             if exch not in exchange_tokens_map: exchange_tokens_map[exch] = []
             if tok not in exchange_tokens_map[exch]: exchange_tokens_map[exch].append(tok)
 
+        # ⚡ BLAZING FAST PARALLEL BATCH FETCHING
         all_fetched_quotes = []
-        for exch, tokens_list in exchange_tokens_map.items():
-            for i in range(0, len(tokens_list), 40):
-                batch_tokens = tokens_list[i:i+40]
-                if not batch_tokens: continue
-                try:
-                    res = smart_api.getMarketData("FULL", {exch: batch_tokens})
-                    if res and res.get('status') and res.get('data'):
-                        all_fetched_quotes.extend(res['data'].get('fetched', []))
-                except Exception:
-                    pass
+        
+        def fetch_batch(exch, batch_tokens):
+            try:
+                res = smart_api.getMarketData("FULL", {exch: batch_tokens})
+                if res and res.get('status') and res.get('data'):
+                    return res['data'].get('fetched', [])
+            except Exception:
+                pass
+            return []
+
+        tasks = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for exch, tokens_list in exchange_tokens_map.items():
+                for i in range(0, len(tokens_list), 40):
+                    batch_tokens = tokens_list[i:i+40]
+                    if batch_tokens:
+                        tasks.append(executor.submit(fetch_batch, exch, batch_tokens))
+            
+            for future in as_completed(tasks):
+                res_list = future.result()
+                if res_list:
+                    all_fetched_quotes.extend(res_list)
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
