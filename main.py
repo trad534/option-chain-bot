@@ -30,7 +30,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Synchronized Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Instant Pre-Loaded Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -170,7 +170,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (RESTORED DASHBOARD READ)
+# MASTER SCENARIO ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -313,9 +313,9 @@ def execute_python_scenario_tracker():
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100:
-            peWinner = "OI"
+            ceWinner = "OI" if False else "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100:
-            ceWinner = "OI" if False else "VOL"
+            ceWinner = "VOL"
         else:
             peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -425,7 +425,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP WITH PRE-LOADED RAM CACHE
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -476,6 +476,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
+        # ⚡ INSTANT LOOKUP FROM PRE-LOADED RAM CACHE
         sym_options = options_cache.get(clean_symbol, pd.DataFrame())
         if sym_options.empty:
             for key in options_cache:
@@ -621,7 +622,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
-        # ⚡ SCENARIO TRACKER EXECUTION (READS DASHBOARD SHEET NATIVELY)
+        # ⚡ SCENARIO TRACKER EXECUTION
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -630,7 +631,7 @@ def fetch_and_update_option_chain(smart_api):
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
-        print("📥 Downloading Angel One Scrip Master JSON...")
+        print("📥 Downloading & Pre-loading All Symbols & Tokens into RAM...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
@@ -661,9 +662,9 @@ def initialize_scrip_master(smart_api):
                 options_cache["TATAMOTORS"] = options_cache["TMCV"]
                 options_cache["TATA"] = options_cache["TMCV"]
 
-            print(f"✅ Scrip Master Cached! Total Records: {len(full_scrip_df)}")
+            print(f"✅ All Symbols Pre-loaded in Memory Successfully! Total Records: {len(full_scrip_df)}")
     except Exception as e:
-        print(f"⚠ Scrip Master Error: {e}")
+        print(f"⚠ Scrip Master Pre-load Error: {e}")
 
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
@@ -673,7 +674,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Restored Scenario Python Bot...")
+    print("🚀 Starting Pre-loaded Memory Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
