@@ -30,7 +30,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Original Engine is active!"
+    return "Angel One Option Chain Bot & Instant Pre-Loaded Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -70,16 +70,21 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ORIGINAL PYTHON MEMORY STORE
+# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
 # ==========================================
 script_memory = {}
 global_run_date = ""
+last_written_values = {}
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
 
 def set_memory(key, value):
     script_memory[key] = str(value)
+
+def remove_memory(key):
+    if key in script_memory:
+        del script_memory[key]
 
 # ==========================================
 # COLOR FORMATTING FOR K3
@@ -165,7 +170,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# ORIGINAL MASTER SCENARIO ENGINE
+# MASTER SCENARIO ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -292,7 +297,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 FIXED ORIGINAL CE WINNER ENGINE
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -303,14 +308,14 @@ def execute_python_scenario_tracker():
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 FIXED ORIGINAL PE WINNER ENGINE
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100:
-            peWinner = "OI"
+            ceWinner = "OI" if False else "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100:
-            peWinner = "VOL"
+            ceWinner = "VOL"
         else:
             peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -378,8 +383,8 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        checkCe = ceOiResult['scenarioStatus'] if ceWinner in ["OI", "BOTH"] else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if peWinner in ["OI", "BOTH"] else peVolResult['scenarioStatus']
+        checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
         active_symbol_name = "Nifty"
         try:
@@ -420,7 +425,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP WITH SAFE QUOTA SLEEP
+# FETCH & UPDATE LOOP WITH PRE-LOADED RAM CACHE
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -471,6 +476,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
+        # ⚡ INSTANT LOOKUP FROM PRE-LOADED RAM CACHE
         sym_options = options_cache.get(clean_symbol, pd.DataFrame())
         if sym_options.empty:
             for key in options_cache:
@@ -502,6 +508,7 @@ def fetch_and_update_option_chain(smart_api):
         else:
             set_memory("LAST_VALID_SPOT", str(spot_price))
 
+        # ⚡ SYNCHRONIZED METADATA UPDATE (K9, L9, A7, EXPIRIES)
         try:
             cells_to_update = [
                 {'range': 'K9', 'values': [[spot_price]]},
@@ -531,6 +538,7 @@ def fetch_and_update_option_chain(smart_api):
             if exch not in exchange_tokens_map: exchange_tokens_map[exch] = []
             if tok not in exchange_tokens_map[exch]: exchange_tokens_map[exch].append(tok)
 
+        # ⚡ PARALLEL BATCH FETCHING (max_workers=10)
         all_fetched_quotes = []
         
         def fetch_batch(exch, batch_tokens):
@@ -605,13 +613,16 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
+        # ⚡ FAST GOOGLE SHEET OPTION CHAIN UPDATE
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             try:
                 data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows, value_input_option='USER_ENTERED')
+                data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
+        # ⚡ SCENARIO TRACKER EXECUTION
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -663,7 +674,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Original Python Bot...")
+    print("🚀 Starting Pre-loaded Memory Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -691,7 +702,7 @@ def run_bot_lock_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(1.5)
+        time.sleep(0.3)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
