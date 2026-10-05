@@ -298,7 +298,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (CORRECTED)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -309,7 +309,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (CORRECTED)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -418,7 +418,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP WITH PRE-LOADED RAM CACHE
+# FETCH & UPDATE LOOP WITH SAFE QUOTA SLEEP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -604,12 +604,11 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        # ⚡ FAST GOOGLE SHEET OPTION CHAIN UPDATE
+        # ⚡ SAFE GOOGLE SHEET OPTION CHAIN UPDATE
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
             try:
                 data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows, value_input_option='USER_ENTERED')
-                data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
@@ -693,7 +692,8 @@ def run_bot_lock_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(0.3)
+        # Safe sleep interval to prevent Google Sheets 429 Quota Exceeded error
+        time.sleep(1.5)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
