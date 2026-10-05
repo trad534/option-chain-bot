@@ -366,7 +366,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -799,27 +799,33 @@ def run_bot_lock_loop():
         print(f"❌ SmartConnect Init Error: {e}")
         return
         
-    while True:
-        try:
-            print("🔄 Attempting to generate Angel One session...")
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-            data = smart_api.generateSession(CLIENT_ID, PIN, totp)
-            if data and data.get('status'):
-                print("✅ Session Generated Successfully!")
-                initialize_scrip_master(smart_api)
-                break
-            else:
-                print(f"⚠ Session Failed: {data}")
-                time.sleep(5)
-        except Exception as e:
-            print(f"❌ Session Exception: {e}")
-            time.sleep(5)
+    session_date = None
 
     while True:
         try:
+            current_date = datetime.now().date()
+            # 🛡️ Auto-Refresh: Har naye din ya session expire hone par fresh token generate karega
+            if session_date != current_date:
+                print("🔄 Generating / Refreshing Angel One session...")
+                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                if data and data.get('status'):
+                    session_date = current_date
+                    print("✅ Session Generated Successfully!")
+                    initialize_scrip_master(smart_api)
+                else:
+                    print(f"⚠ Session Failed: {data}")
+                    time.sleep(5)
+                    continue
+
             fetch_and_update_option_chain(smart_api)
-        except Exception as _e:
-            print(f"❌ Loop Error: {_e}")
+
+        except Exception as e:
+            print(f"❌ Loop & Token Error: {e}")
+            # Agar API se token invalid error aaye toh session_date reset kar denge taaki agli iteration me turant naya session ban jaye
+            session_date = None
+            time.sleep(5)
+        
         time.sleep(1)
 
 if __name__ == "__main__":
