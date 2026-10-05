@@ -94,7 +94,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.3)
+            time.sleep(0.1)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -355,7 +355,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if False else peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -479,7 +479,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -654,7 +654,7 @@ def fetch_and_update_option_chain(smart_api):
             if exch not in exchange_tokens_map: exchange_tokens_map[exch] = []
             if tok not in exchange_tokens_map[exch]: exchange_tokens_map[exch].append(tok)
 
-        # ⚡ BLAZING FAST PARALLEL BATCH FETCHING
+        # ⚡ BLAZING FAST PARALLEL BATCH FETCHING (max_workers=10)
         all_fetched_quotes = []
         
         def fetch_batch(exch, batch_tokens):
@@ -667,7 +667,7 @@ def fetch_and_update_option_chain(smart_api):
             return []
 
         tasks = []
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             for exch, tokens_list in exchange_tokens_map.items():
                 for i in range(0, len(tokens_list), 40):
                     batch_tokens = tokens_list[i:i+40]
@@ -729,13 +729,14 @@ def fetch_and_update_option_chain(smart_api):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
+        # ⚡ INSTANT FAST GOOGLE SHEET UPDATE
         if len(output_rows) > 1:
             last_row_num = 10 + len(output_rows) - 1
-            data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             try:
+                data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows, value_input_option='USER_ENTERED')
                 data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠ Fast Sheet Update Error: {e}")
 
         execute_python_scenario_tracker()
 
