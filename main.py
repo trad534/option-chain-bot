@@ -170,9 +170,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (DIRECT MEMORY SYNC)
+# MASTER SCENARIO ENGINE (RESTORED DASHBOARD READ)
 # ==========================================
-def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
+def execute_python_scenario_tracker():
     global global_run_date
     try:
         now_dt = datetime.now()
@@ -186,44 +186,59 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        if not live_grid_rows or len(live_grid_rows) <= 1: return
+        range_values = dashboard_sheet.get("A8:T28")
+        if not range_values: return
 
-        # Map live_grid_rows to standard lookup structure (Strikes from A8:T28 equivalent)
-        # live_grid_rows[0] is header: ["CE Vega", ..., "Strike Price", ...] -> Strike index is 10
+        MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        for idx, row_data in enumerate(live_grid_rows[1:], start=10):
-            if len(row_data) <= 10: continue
-            try:
-                strike = float(row_data[10]) if row_data[10] not in [None, "", "NAN"] else 0
-                if not strike: continue
+        for r in range(15, 29):
+            if r == MARKET_ROW: continue
+            array_index = r - 8
+            if array_index < 0 or array_index >= len(range_values): continue
+            
+            row_data = range_values[array_index]
+            if len(row_data) <= 13: continue
 
-                ce_oi_val = row_data[6] if len(row_data) > 6 else "0"
-                ce_vol_val = row_data[7] if len(row_data) > 7 else "0"
-                pe_vol_val = row_data[13] if len(row_data) > 13 else "0"
-                pe_oi_val = row_data[14] if len(row_data) > 14 else "0"
+            strike_val = row_data[13]
+            strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
+            if not strike: continue
 
-                ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
-                ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
-                pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
-                pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
+            ce_oi_val = row_data[7] if len(row_data) > 7 else "0"
+            ce_vol_val = row_data[8] if len(row_data) > 8 else "0"
+            
+            ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
+            ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
-                if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
-                if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
-                if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
-                if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
+            if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
+            if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
 
-                val_ce_oi = float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0
-                val_ce_vol = float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0
-                val_pe_vol = float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0
-                val_pe_oi = float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0
+            ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
-                ceOiArray.append({'strike': strike, 'val': val_ce_oi, 'row': idx})
-                ceVolArray.append({'strike': strike, 'val': val_ce_vol, 'row': idx})
-                peVolArray.append({'strike': strike, 'val': val_pe_vol, 'row': idx})
-                peOiArray.append({'strike': strike, 'val': val_pe_oi, 'row': idx})
-            except Exception:
-                continue
+        for r in range(8, 22):
+            if r == MARKET_ROW: continue
+            array_index = r - 8
+            if array_index < 0 or array_index >= len(range_values): continue
+            
+            row_data = range_values[array_index]
+            if len(row_data) <= 19: continue
+
+            strike_val = row_data[13]
+            strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
+            if not strike: continue
+
+            pe_vol_val = row_data[18] if len(row_data) > 18 else "0"
+            pe_oi_val = row_data[19] if len(row_data) > 19 else "0"
+            
+            pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
+            pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
+
+            if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
+            if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
+
+            peVolArray.append({'strike': strike, 'val': float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
         def extract_top_two(data_array):
             if not data_array:
@@ -300,7 +315,7 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100:
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100:
-            peWinner = "VOL"
+            ceWinner = "OI" if False else "VOL"
         else:
             peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -313,7 +328,7 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
 
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
-                return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong"}
+                return {'text': "(-----)", 'scenarioStatus': "stable strong"}
 
             strike = top_obj['highest']['strike']
             second_strike = top_obj['second']['strike'] if top_obj.get('second') and top_obj['second'].get('val', 0) > 0 else strike
@@ -327,7 +342,7 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
             display_status = final_status_text
             scenario_status = final_status_text
             is_shifting = False
-            shift_type = get_memory("SHIFT_TYPE_" + cache_key, "")
+            shift_type = ""
 
             if strike != prev_strike and prev_strike > 0 and (final_status_text in ["wtb", "wtt"]):
                 shift_type = "top to bottom" if strike < prev_strike else "bottom to top"
@@ -371,6 +386,14 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
+        active_symbol_name = "Nifty"
+        try:
+            j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
+            if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
+                active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+        except Exception:
+            pass
+
         k3Text = f"{active_symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
@@ -387,21 +410,16 @@ def execute_python_scenario_tracker(live_grid_rows, active_symbol_name):
         finalU5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
         finalQ5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
 
-        # ⚡ SYNCHRONIZED BATCH UPDATE FOR SCENARIO CELLS (D5, H5, U5, Q5, K3)
         try:
-            scenario_cells_update = [
-                {'range': 'D5', 'values': [[finalD5]]},
-                {'range': 'H5', 'values': [[finalH5]]},
-                {'range': 'U5', 'values': [[finalU5]]},
-                {'range': 'Q5', 'values': [[finalQ5]]}
-            ]
-            for sc in scenario_cells_update:
-                dashboard_sheet.update(range_name=sc['range'], values=sc['values'], value_input_option='USER_ENTERED')
+            dashboard_sheet.update(range_name='D5', values=[[finalD5]], value_input_option='USER_ENTERED')
+            dashboard_sheet.update(range_name='H5', values=[[finalH5]], value_input_option='USER_ENTERED')
+            dashboard_sheet.update(range_name='U5', values=[[finalU5]], value_input_option='USER_ENTERED')
+            dashboard_sheet.update(range_name='Q5', values=[[finalQ5]], value_input_option='USER_ENTERED')
             
             update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
-            print(f"✅ SUCCESS -> Synchronized Scenarios Updated: '{k3Text}'")
+            print(f"✅ SUCCESS -> Scenarios Updated: '{k3Text}'")
         except Exception as e:
-            print(f"⚠ Scenario Cells Batch Update Error: {e}")
+            print(f"⚠ Scenario Cells Update Error: {e}")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
@@ -603,8 +621,8 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
-        # ⚡ DIRECT MEMORY SYNC FOR SCENARIO TRACKER (NO DELAY, NO EXTRA READ)
-        execute_python_scenario_tracker(output_rows, clean_symbol)
+        # ⚡ SCENARIO TRACKER EXECUTION (READS DASHBOARD SHEET NATIVELY)
+        execute_python_scenario_tracker()
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -655,7 +673,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Synchronized Python Bot...")
+    print("🚀 Starting Restored Scenario Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -678,7 +696,6 @@ def run_bot_lock_loop():
             print(f"❌ Session Exception: {e}")
             time.sleep(2)
 
-    # ⚡ SYNCHRONIZED LOOP WITH SAFE 0.3S DELAY
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
