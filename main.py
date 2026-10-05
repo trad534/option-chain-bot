@@ -367,7 +367,6 @@ def execute_python_scenario_tracker():
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
-            ceWinner = "VOL" # Fallback safety
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -400,7 +399,7 @@ def execute_python_scenario_tracker():
 
             prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             
-            # 🛡️ Safeguard: Agar memory me pehle se kuch nahi hai (fresh start / market closed start), toh pehli baar shift trigger nahi hone dena hai
+            # 🛡️ Safeguard: Agar memory me pehle se kuch nahi hai (fresh start / symbol switch), toh pehli baar shift trigger nahi hone dena hai
             if not prev_strike_str:
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 set_memory("IS_SHIFTED_" + cache_key, "false")
@@ -597,10 +596,13 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
+        # ⚡ Symbol Switch Detection & Fresh Memory Reset Guard
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Clearing Old Memory for Fresh Start!")
             cached_selected_symbol = clean_symbol
             active_symbol_name_global = clean_symbol
+            script_memory.clear()
+            last_written_values.clear()
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
