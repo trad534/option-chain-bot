@@ -353,7 +353,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -625,26 +625,16 @@ def fetch_and_update_option_chain(smart_api):
         lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         if spot_price <= 0:
-            spot_price = float(script_memory.get("LAST_VALID_SPOT", 100.0))
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
-            if spot_price == 100.0 and all_strikes_list:
-                spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
-        else:
-            set_memory("LAST_VALID_SPOT", str(spot_price))
+            spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-        # ⚡ SYNCHRONIZED METADATA UPDATE (K9, L9, A7, EXPIRIES)
         try:
-            cells_to_update = [
-                {'range': 'K9', 'values': [[spot_price]]},
-                {'range': 'L9', 'values': [[str(current_expiry)]]},
-                {'range': 'A7', 'values': [[lot_size]]},
-                {'range': 'A3', 'values': [[active_expiries[0]]]},
-                {'range': 'A4', 'values': [[active_expiries[1]]]},
-                {'range': 'A5', 'values': [[active_expiries[2]]]},
-                {'range': 'A6', 'values': [[active_expiries[3]]]}
-            ]
-            for item in cells_to_update:
-                data_sheet.update(range_name=item['range'], values=item['values'], value_input_option='USER_ENTERED')
+            safe_update_cell(data_sheet, "K9", spot_price)
+            safe_update_cell(data_sheet, "L9", str(current_expiry))
+            safe_update_cell(data_sheet, "A7", lot_size)
+            expiry_cells = [['A3', active_expiries[0]], ['A4', active_expiries[1]], ['A5', active_expiries[2]], ['A6', active_expiries[3]]]
+            for cell, val in expiry_cells:
+                safe_update_cell(data_sheet, cell, val)
         except Exception:
             pass
 
