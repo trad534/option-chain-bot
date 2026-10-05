@@ -298,7 +298,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE
+        # 🏆 CE WINNER ENGINE (CORRECTED)
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -309,12 +309,12 @@ def execute_python_scenario_tracker(active_symbol_name):
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE
+        # 🏆 PE WINNER ENGINE (CORRECTED)
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100:
-            ceWinner = "OI" if False else "OI"
+            peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100:
             peWinner = "VOL"
         else:
