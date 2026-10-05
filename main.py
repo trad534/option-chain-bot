@@ -30,7 +30,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Instant Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -94,12 +94,11 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.1)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
+# COLOR FORMATTING FOR K3
 # ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
@@ -113,7 +112,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
-        
         body = {
             "requests": [
                 {
@@ -161,7 +159,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         return price - ltp
 
     try:
-        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=50)
     except Exception:
         sigma = 0.20
 
@@ -183,7 +181,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS MATCH)
+# MASTER SCENARIO ENGINE (INSTANT EXECUTION)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -341,7 +339,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (FIXED)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -350,12 +348,12 @@ def execute_python_scenario_tracker():
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "OI"
+            ceWinner = "OI" if False else "OI" # fixed ref
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -552,7 +550,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP (BLAZING FAST PARALLEL)
+# FETCH & UPDATE LOOP (ZERO-DELAY INSTANT)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -738,6 +736,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception as e:
                 print(f"⚠ Fast Sheet Update Error: {e}")
 
+        # ⚡ INSTANT SCENARIO TRACKER EXECUTION
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -789,7 +788,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot...")
+    print("🚀 Starting Zero-Delay Instant Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -807,17 +806,18 @@ def run_bot_lock_loop():
                 break
             else:
                 print(f"⚠ Session Failed: {data}")
-                time.sleep(5)
+                time.sleep(2)
         except Exception as e:
             print(f"❌ Session Exception: {e}")
-            time.sleep(5)
+            time.sleep(2)
 
+    # ⚡ ZERO-DELAY CONTINUOUS LOOP FOR INSTANT TOUCH UPDATE
     while True:
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        time.sleep(1)
+        # No sleep time here for absolute instant real-time response!
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
