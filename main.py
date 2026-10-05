@@ -366,7 +366,8 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+            ceWinner = "VOL" # Fallback safety
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -387,7 +388,7 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        # EXACT MATCHED calculateIndependentCell FUNCTION FROM GOOGLE APPS SCRIPT
+        # EXACT MATCHED calculateIndependentCell FUNCTION WITH FRESH START SAFEGUARD
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -398,12 +399,22 @@ def execute_python_scenario_tracker():
                 second_strike = top_obj['second']['strike']
 
             prev_strike_str = get_memory("PREV_STRK_" + cache_key)
-            prev_strike = float(prev_strike_str) if prev_strike_str else strike
-
+            
+            # 🛡️ Safeguard: Agar memory me pehle se kuch nahi hai (fresh start / market closed start), toh pehli baar shift trigger nahi hone dena hai
             if not prev_strike_str:
                 set_memory("PREV_STRK_" + cache_key, str(strike))
-                prev_strike = strike
+                set_memory("IS_SHIFTED_" + cache_key, "false")
+                display_time = get_memory("TIME_" + cache_key)
+                if not display_time:
+                    display_time = current_time_str
+                    set_memory("TIME_" + cache_key, display_time)
+                set_memory("LAST_STATUS_" + cache_key, "stable strong")
+                
+                s_val = int(strike) if strike.is_integer() else strike
+                output_text = f"({display_time} - {side_label} - {s_val})\n    (stable strong)"
+                return {'text': output_text, 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
+            prev_strike = float(prev_strike_str) if prev_strike_str else strike
             display_status = final_status_text
             scenario_status = final_status_text
 
