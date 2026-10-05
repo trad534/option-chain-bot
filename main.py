@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Multi-Symbol Memory Engine is active!"
+    return "Angel One Option Chain Bot & Clean Multi-Symbol Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -69,28 +69,28 @@ except Exception as e:
     exit()
 
 # ==========================================
-# MULTI-SYMBOL PERMANENT RAM MEMORY STORE
+# ROBUST MULTI-SYMBOL RAM MEMORY STORE
 # ==========================================
-all_symbols_memory = {}
+symbol_memory_store = {}
 global_run_date = ""
 last_written_values = {}
 
-def get_symbol_memory(symbol, key, default=""):
-    SYM_KEY = symbol.upper()
-    if SYM_KEY not in all_symbols_memory:
-        all_symbols_memory[SYM_KEY] = {}
-    return all_symbols_memory[SYM_KEY].get(key, default)
+def get_sym_mem(symbol, key, default=""):
+    sym_key = symbol.upper()
+    if sym_key not in symbol_memory_store:
+        symbol_memory_store[sym_key] = {}
+    return symbol_memory_store[sym_key].get(key, default)
 
-def set_symbol_memory(symbol, key, value):
-    SYM_KEY = symbol.upper()
-    if SYM_KEY not in all_symbols_memory:
-        all_symbols_memory[SYM_KEY] = {}
-    all_symbols_memory[SYM_KEY][key] = str(value)
+def set_sym_mem(symbol, key, value):
+    sym_key = symbol.upper()
+    if sym_key not in symbol_memory_store:
+        symbol_memory_store[sym_key] = {}
+    symbol_memory_store[sym_key][key] = str(value)
 
-def remove_symbol_memory(symbol, key):
-    SYM_KEY = symbol.upper()
-    if SYM_KEY in all_symbols_memory and key in all_symbols_memory[SYM_KEY]:
-        del all_symbols_memory[SYM_KEY][key]
+def remove_sym_mem(symbol, key):
+    sym_key = symbol.upper()
+    if sym_key in symbol_memory_store and key in symbol_memory_store[sym_key]:
+        del symbol_memory_store[sym_key][key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -105,7 +105,7 @@ def safe_update_cell(sheet, cell_name, new_value):
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
+# COLOR FORMATTING FOR K3
 # ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
@@ -119,7 +119,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
-        
         body = {
             "requests": [
                 {
@@ -189,7 +188,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS GAS MATCH WITH MULTI-SYMBOL MEMORY)
+# MASTER SCENARIO ENGINE (PER-SYMBOL RAM MEMORY)
 # ==========================================
 def execute_python_scenario_tracker(active_symbol_name):
     global global_run_date
@@ -199,11 +198,11 @@ def execute_python_scenario_tracker(active_symbol_name):
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
-            all_symbols_memory.clear()
+            symbol_memory_store.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
-            all_symbols_memory.clear()
+            symbol_memory_store.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -295,9 +294,9 @@ def execute_python_scenario_tracker(active_symbol_name):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
-            prev_strike_str = get_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key)
+            prev_strike_str = get_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_symbol_memory(active_symbol_name, "WEAK_HIST_" + cache_key, "")
+            current_weak_hist = get_sym_mem(active_symbol_name, "WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
                 if current_weak_hist == "wtt":
@@ -319,7 +318,7 @@ def execute_python_scenario_tracker(active_symbol_name):
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -347,7 +346,7 @@ def execute_python_scenario_tracker(active_symbol_name):
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -375,14 +374,13 @@ def execute_python_scenario_tracker(active_symbol_name):
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_symbol_memory(active_symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_symbol_memory(active_symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState == "wtt" or peOiRawState == "wtb": set_symbol_memory(active_symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState == "wtt" or peVolRawState == "wtb": set_symbol_memory(active_symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
+        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_sym_mem(active_symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_sym_mem(active_symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState == "wtt" or peOiRawState == "wtb": set_sym_mem(active_symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState == "wtt" or peVolRawState == "wtb": set_sym_mem(active_symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        # EXACT MATCHED calculateIndependentCell FUNCTION WITH MULTI-SYMBOL MEMORY
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -392,27 +390,27 @@ def execute_python_scenario_tracker(active_symbol_name):
             if top_obj.get('second') and top_obj['second'].get('val', 0) > 0:
                 second_strike = top_obj['second']['strike']
 
-            prev_strike_str = get_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key)
+            prev_strike_str = get_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
 
             if not prev_strike_str:
-                set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                set_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
                 prev_strike = strike
 
             display_status = final_status_text
             scenario_status = final_status_text
 
             is_shifting = False
-            shift_type = get_symbol_memory(active_symbol_name, "SHIFT_TYPE_" + cache_key, "")
-            shift_from_strike = float(get_symbol_memory(active_symbol_name, "SHIFT_FROM_" + cache_key, 0)) if get_symbol_memory(active_symbol_name, "SHIFT_FROM_" + cache_key) else 0.0
-            last_target_strike = float(get_symbol_memory(active_symbol_name, "SHIFT_TARGET_" + cache_key, 0)) if get_symbol_memory(active_symbol_name, "SHIFT_TARGET_" + cache_key) else 0.0
+            shift_type = get_sym_mem(active_symbol_name, "SHIFT_TYPE_" + cache_key, "")
+            shift_from_strike = float(get_sym_mem(active_symbol_name, "SHIFT_FROM_" + cache_key, 0)) if get_sym_mem(active_symbol_name, "SHIFT_FROM_" + cache_key) else 0.0
+            last_target_strike = float(get_sym_mem(active_symbol_name, "SHIFT_TARGET_" + cache_key, 0)) if get_sym_mem(active_symbol_name, "SHIFT_TARGET_" + cache_key) else 0.0
 
             # 🎯 1. REVERSAL CHECK
-            if get_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key) == "true":
+            if get_sym_mem(active_symbol_name, "IS_SHIFTED_" + cache_key) == "true":
                 if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
-                    set_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key, "false")
-                    set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
-                    remove_symbol_memory(active_symbol_name, "SHIFT_TARGET_" + cache_key)
+                    set_sym_mem(active_symbol_name, "IS_SHIFTED_" + cache_key, "false")
+                    set_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                    remove_sym_mem(active_symbol_name, "SHIFT_TARGET_" + cache_key)
 
             # 🎯 2. NEW SHIFT TRIGGER CHECK
             if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
@@ -422,32 +420,32 @@ def execute_python_scenario_tracker(active_symbol_name):
                 else:
                     shift_type = "bottom to top"
                     scenario_status = "wtt"
-                set_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key, "true")
-                set_symbol_memory(active_symbol_name, "SHIFT_TYPE_" + cache_key, shift_type)
-                set_symbol_memory(active_symbol_name, "SHIFT_FROM_" + cache_key, str(prev_strike))
-                set_symbol_memory(active_symbol_name, "SHIFT_TARGET_" + cache_key, str(second_strike))
+                set_sym_mem(active_symbol_name, "IS_SHIFTED_" + cache_key, "true")
+                set_sym_mem(active_symbol_name, "SHIFT_TYPE_" + cache_key, shift_type)
+                set_sym_mem(active_symbol_name, "SHIFT_FROM_" + cache_key, str(prev_strike))
+                set_sym_mem(active_symbol_name, "SHIFT_TARGET_" + cache_key, str(second_strike))
 
             # 🎯 3. EVALUATE PERSISTENT SHIFT LOCK
-            if get_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key) == "true":
+            if get_sym_mem(active_symbol_name, "IS_SHIFTED_" + cache_key) == "true":
                 if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
-                    set_symbol_memory(active_symbol_name, "IS_SHIFTED_" + cache_key, "false")
-                    set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                    set_sym_mem(active_symbol_name, "IS_SHIFTED_" + cache_key, "false")
+                    set_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
                     is_shifting = False
                     scenario_status = final_status_text
                 else:
                     is_shifting = True
-                    shift_type = get_symbol_memory(active_symbol_name, "SHIFT_TYPE_" + cache_key)
+                    shift_type = get_sym_mem(active_symbol_name, "SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
             else:
-                set_symbol_memory(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                set_sym_mem(active_symbol_name, "PREV_STRK_" + cache_key, str(strike))
                 scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
                 scenario_status = "stable strong"
 
-            display_time = get_symbol_memory(active_symbol_name, "TIME_" + cache_key)
-            last_recorded_status = get_symbol_memory(active_symbol_name, "LAST_STATUS_" + cache_key, "")
+            display_time = get_sym_mem(active_symbol_name, "TIME_" + cache_key)
+            last_recorded_status = get_sym_mem(active_symbol_name, "LAST_STATUS_" + cache_key, "")
 
             is_trigger_status = (
                 display_status == "wtb" or
@@ -459,12 +457,12 @@ def execute_python_scenario_tracker(active_symbol_name):
 
             if is_trigger_status and display_status != last_recorded_status:
                 display_time = current_time_str
-                set_symbol_memory(active_symbol_name, "TIME_" + cache_key, display_time)
-                set_symbol_memory(active_symbol_name, "LAST_STATUS_" + cache_key, display_status)
+                set_sym_mem(active_symbol_name, "TIME_" + cache_key, display_time)
+                set_sym_mem(active_symbol_name, "LAST_STATUS_" + cache_key, display_status)
             elif not display_time:
                 display_time = current_time_str
-                set_symbol_memory(active_symbol_name, "TIME_" + cache_key, display_time)
-                set_symbol_memory(active_symbol_name, "LAST_STATUS_" + cache_key, display_status)
+                set_sym_mem(active_symbol_name, "TIME_" + cache_key, display_time)
+                set_sym_mem(active_symbol_name, "LAST_STATUS_" + cache_key, display_status)
 
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
@@ -625,12 +623,12 @@ def fetch_and_update_option_chain(smart_api):
         lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         if spot_price <= 0:
-            spot_price = float(get_symbol_memory(clean_symbol, "LAST_VALID_SPOT", 100.0))
+            spot_price = float(get_sym_mem(clean_symbol, "LAST_VALID_SPOT", 100.0))
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             if spot_price == 100.0 and all_strikes_list:
                 spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
         else:
-            set_symbol_memory(clean_symbol, "LAST_VALID_SPOT", str(spot_price))
+            set_sym_mem(clean_symbol, "LAST_VALID_SPOT", str(spot_price))
 
         try:
             safe_update_cell(data_sheet, "K9", spot_price)
@@ -777,7 +775,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with Multi-Symbol Memory...")
+    print("🚀 Starting Clean Multi-Symbol Memory Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
