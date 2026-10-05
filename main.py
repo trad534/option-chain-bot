@@ -292,7 +292,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 ORIGINAL CE WINNER ENGINE
+        # 🏆 FIXED ORIGINAL CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -303,7 +303,7 @@ def execute_python_scenario_tracker():
         else:
             ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 ORIGINAL PE WINNER ENGINE
+        # 🏆 FIXED ORIGINAL PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -378,8 +378,8 @@ def execute_python_scenario_tracker():
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
-        checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        checkCe = ceOiResult['scenarioStatus'] if ceWinner in ["OI", "BOTH"] else ceVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if peWinner in ["OI", "BOTH"] else peVolResult['scenarioStatus']
 
         active_symbol_name = "Nifty"
         try:
@@ -691,7 +691,6 @@ def run_bot_lock_loop():
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             print(f"❌ Loop Error: {_e}")
-        # Safe sleep interval to prevent Google Sheets 429 Quota Exceeded error
         time.sleep(1.5)
 
 if __name__ == "__main__":
