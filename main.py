@@ -596,12 +596,12 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
-        # ⚡ Symbol Switch Detection & Fresh Memory Reset Guard
+        # ⚡ Symbol Switch Detection (Memory Preserved for 265 Symbols)
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Clearing Old Memory for Fresh Start!")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Old Memory Preserved Safely!")
             cached_selected_symbol = clean_symbol
             active_symbol_name_global = clean_symbol
-            script_memory.clear()
+            # script_memory.clear()  <--- Yeh line hata di gayi hai taaki 265 symbols ka data RAM se na ude!
             last_written_values.clear()
 
         spot_token, spot_exchange = "", "NSE"
@@ -804,7 +804,6 @@ def run_bot_lock_loop():
     while True:
         try:
             current_date = datetime.now().date()
-            # 🛡️ Auto-Refresh: Har naye din ya session expire hone par fresh token generate karega
             if session_date != current_date:
                 print("🔄 Generating / Refreshing Angel One session...")
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
@@ -822,7 +821,6 @@ def run_bot_lock_loop():
 
         except Exception as e:
             print(f"❌ Loop & Token Error: {e}")
-            # Agar API se token invalid error aaye toh session_date reset kar denge taaki agli iteration me turant naya session ban jaye
             session_date = None
             time.sleep(5)
         
