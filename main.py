@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Multi-Symbol Memory Engine is active!"
+    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -69,35 +69,25 @@ except Exception as e:
     exit()
 
 # ==========================================
-# MULTI-SYMBOL MEMORY STORE (265 SYMBOLS ISOLATED CACHE)
+# PYTHON MEMORY STORE (SYMBOL-WISE ISOLATED)
 # ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
 active_symbol_name_global = "Nifty"
 
-def get_memory_for_symbol(symbol_name, key, default=""):
-    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
+def get_memory(key, default=""):
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
     return script_memory.get(symbol_prefixed_key, default)
 
-def set_memory_for_symbol(symbol_name, key, value):
-    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
+def set_memory(key, value):
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
     script_memory[symbol_prefixed_key] = str(value)
 
-def remove_memory_for_symbol(symbol_name, key):
-    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
+def remove_memory(key):
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
     if symbol_prefixed_key in script_memory:
         del script_memory[symbol_prefixed_key]
-
-# Backward compatibility helpers using active symbol
-def get_memory(key, default=""):
-    return get_memory_for_symbol(active_symbol_name_global, key, default)
-
-def set_memory(key, value):
-    set_memory_for_symbol(active_symbol_name_global, key, value)
-
-def remove_memory(key):
-    remove_memory_for_symbol(active_symbol_name_global, key)
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -386,7 +376,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVoTop['highest']['strike'] if 'peVoTop' in locals() else True):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -584,7 +574,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP WITH BACKGROUND CACHING
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, active_symbol_name_global
@@ -593,7 +583,7 @@ def fetch_and_update_option_chain(smart_api):
         current_date_str = now_dt.strftime('%Y-%m-%d')
 
         if baseline_date != current_date_str:
-            morning_oi_dict.clear()
+            morning_oi_dict = {}
             baseline_date = current_date_str
 
         if not options_cache:
@@ -612,10 +602,11 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Old Memory Preserved Safely!")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Resetting Old Memory!")
             cached_selected_symbol = clean_symbol
             active_symbol_name_global = clean_symbol
             last_written_values.clear()
+            script_memory.clear()  # <-- YEAH LINE ADD KI GAYI HAI PURANI MEMORY RESET KARNE KE LIYE
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
@@ -805,7 +796,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Multi-Symbol Memory Python Bot...")
+    print("🚀 Starting Exact Logic Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
