@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Debug Scenario Engine is active!"
+    return "Angel One Option Chain Bot & Multi-Symbol Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -69,25 +69,35 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE (265 SYMBOLS ISOLATED)
+# MULTI-SYMBOL MEMORY STORE (265 SYMBOLS ISOLATED CACHE)
 # ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
 active_symbol_name_global = "Nifty"
 
-def get_memory(key, default=""):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+def get_memory_for_symbol(symbol_name, key, default=""):
+    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
     return script_memory.get(symbol_prefixed_key, default)
 
-def set_memory(key, value):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+def set_memory_for_symbol(symbol_name, key, value):
+    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
     script_memory[symbol_prefixed_key] = str(value)
 
-def remove_memory(key):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+def remove_memory_for_symbol(symbol_name, key):
+    symbol_prefixed_key = f"{symbol_name.upper()}_{key}"
     if symbol_prefixed_key in script_memory:
         del script_memory[symbol_prefixed_key]
+
+# Backward compatibility helpers using active symbol
+def get_memory(key, default=""):
+    return get_memory_for_symbol(active_symbol_name_global, key, default)
+
+def set_memory(key, value):
+    set_memory_for_symbol(active_symbol_name_global, key, value)
+
+def remove_memory(key):
+    remove_memory_for_symbol(active_symbol_name_global, key)
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -97,7 +107,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.2)
+            time.sleep(0.3)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -114,7 +124,7 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
 
         sheet.update_acell(cell_name, text_value)
         last_k3_written_text = text_value
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         text_lower = text_value.lower()
         if "bull" in text_lower:
@@ -150,7 +160,7 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             ]
         }
         spreadsheet_obj.batch_update(body)
-        time.sleep(0.3)
+        time.sleep(0.5)
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
@@ -196,7 +206,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE WITH DEBUG PRINTS
+# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS GAS MATCH)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date, active_symbol_name_global
@@ -212,7 +222,7 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        # Read active symbol dynamically from J4 cell
+        # Read active symbol dynamically
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
@@ -220,12 +230,8 @@ def execute_python_scenario_tracker():
         except Exception:
             pass
 
-        print(f"🔍 [DEBUG] Active Symbol in Memory: {active_symbol_name_global}")
-
         range_values = dashboard_sheet.get("A8:T28")
-        if not range_values:
-            print("⚠ [DEBUG] Warning: dashboard_sheet range A8:T28 returned empty values!")
-            return
+        if not range_values: return
 
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
@@ -251,11 +257,8 @@ def execute_python_scenario_tracker():
             if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
             if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
 
-            val_ce_oi = float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0
-            val_ce_vol = float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0
-
-            ceOiArray.append({'strike': strike, 'val': val_ce_oi, 'row': r})
-            ceVolArray.append({'strike': strike, 'val': val_ce_vol, 'row': r})
+            ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
         for r in range(8, 22):
             if r == MARKET_ROW: continue
@@ -278,18 +281,8 @@ def execute_python_scenario_tracker():
             if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
             if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
 
-            val_pe_vol = float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0
-            val_pe_oi = float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0
-
-            peVolArray.append({'strike': strike, 'val': val_pe_vol, 'row': r})
-            peOiArray.append({'strike': strike, 'val': val_pe_oi, 'row': r})
-
-        # 🔍 DEBUG PRINT FOR READ VALUES
-        print(f"📊 [DEBUG] Read from Dashboard -> CE OI Items count: {len(ceOiArray)}, PE OI Items count: {len(peOiArray)}")
-        if ceOiArray:
-            print(f"📊 [DEBUG] Sample CE OI (First item): {ceOiArray[0]}")
-        if peOiArray:
-            print(f"📊 [DEBUG] Sample PE OI (First item): {peOiArray[0]}")
+            peVolArray.append({'strike': strike, 'val': float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
         def extract_top_two(data_array):
             if not data_array:
@@ -308,9 +301,7 @@ def execute_python_scenario_tracker():
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
-        if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']:
-            print("⚠ [DEBUG] Warning: Top strikes extraction got 0 value! Check if sheet cells are empty or formulas are loading.")
-            return
+        if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']: return
 
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
@@ -353,7 +344,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -381,7 +372,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -537,7 +528,7 @@ def execute_python_scenario_tracker():
         checkPe = finalPeState
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # EXACT 27 SCENARIOS MAPPING
         # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
@@ -593,7 +584,7 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP WITH BACKGROUND CACHING
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, active_symbol_name_global
@@ -602,7 +593,7 @@ def fetch_and_update_option_chain(smart_api):
         current_date_str = now_dt.strftime('%Y-%m-%d')
 
         if baseline_date != current_date_str:
-            morning_oi_dict = {}
+            morning_oi_dict.clear()
             baseline_date = current_date_str
 
         if not options_cache:
@@ -763,7 +754,6 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # Immediately execute scenario tracker after data update
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -815,7 +805,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Debug-Enabled Python Bot...")
+    print("🚀 Starting Multi-Symbol Memory Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -847,7 +837,7 @@ def run_bot_lock_loop():
             session_date = None
             time.sleep(5)
         
-        time.sleep(0.5)
+        time.sleep(1)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
