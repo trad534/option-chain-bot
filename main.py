@@ -354,7 +354,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -396,40 +396,37 @@ def execute_python_scenario_tracker():
 
             is_shifting = False
             shift_type = get_memory("SHIFT_TYPE_" + cache_key, "")
-            shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
-            last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            if get_memory("IS_SHIFTED_" + cache_key) == "true":
-                if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
-                    set_memory("IS_SHIFTED_" + cache_key, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
-                    remove_memory("SHIFT_TARGET_" + cache_key)
+            # 🛠️ FIXED SHIFT RESET LOGIC: Agar market "STRONG" ho jaye, ya "to strong" ban jaye, ya status stable ho jaye, toh shift cut/reset ho jayega!
+            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong":
+                set_memory("IS_SHIFTED_" + cache_key, "false")
+                set_memory("PREV_STRK_" + cache_key, str(strike))
+                remove_memory("SHIFT_TYPE_" + cache_key)
+                remove_memory("SHIFT_FROM_" + cache_key)
+                remove_memory("SHIFT_TARGET_" + cache_key)
+                is_shifting = False
+                scenario_status = final_status_text
+            else:
+                # Check for new shift occurrence
+                if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
+                    if strike < prev_strike:
+                        shift_type = "top to bottom"
+                        scenario_status = "wtb"
+                    else:
+                        shift_type = "bottom to top"
+                        scenario_status = "wtt"
+                    set_memory("IS_SHIFTED_" + cache_key, "true")
+                    set_memory("SHIFT_TYPE_" + cache_key, shift_type)
+                    set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
+                    set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
 
-            if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
-                if strike < prev_strike:
-                    shift_type = "top to bottom"
-                    scenario_status = "wtb"
-                else:
-                    shift_type = "bottom to top"
-                    scenario_status = "wtt"
-                set_memory("IS_SHIFTED_" + cache_key, "true")
-                set_memory("SHIFT_TYPE_" + cache_key, shift_type)
-                set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
-                set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
-
-            if get_memory("IS_SHIFTED_" + cache_key) == "true":
-                if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
-                    set_memory("IS_SHIFTED_" + cache_key, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
-                    is_shifting = False
-                    scenario_status = final_status_text
-                else:
+                if get_memory("IS_SHIFTED_" + cache_key) == "true":
                     is_shifting = True
                     shift_type = get_memory("SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
-            else:
-                set_memory("PREV_STRK_" + cache_key, str(strike))
-                scenario_status = final_status_text
+                else:
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
@@ -519,7 +516,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish" # 👈 Fixed duplicate checkCe bug here
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
