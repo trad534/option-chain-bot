@@ -15,6 +15,22 @@ from flask import Flask
 import threading
 import builtins
 
+RENDER_URL = "https://option-chain-bot.onrender.com"
+
+def self_ping():
+    while True:
+        try:
+            if RENDER_URL:
+                response = requests.get(RENDER_URL)
+                print(f"Self-ping sent successfully: Status {response.status_code}")
+        except Exception as e:
+            print(f"Self-ping error: {e}")
+        time.sleep(180)
+
+ping_thread = threading.Thread(target=self_ping, daemon=True)
+ping_thread.start()
+
+
 # ==========================================
 # FORCE FLUSH LOGS IN RENDER
 # ==========================================
