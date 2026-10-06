@@ -326,7 +326,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -354,7 +354,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -396,17 +396,21 @@ def execute_python_scenario_tracker():
 
             is_shifting = False
             shift_type = get_memory("SHIFT_TYPE_" + cache_key, "")
+            last_highest_strike = float(get_memory("LAST_HIGHEST_" + cache_key, strike)) if get_memory("LAST_HIGHEST_" + cache_key) else strike
 
-            # 🛠️ FIXED SHIFT RESET LOGIC: Agar market "STRONG" ho jaye, ya "to strong" ban jaye, ya status stable ho jaye, toh shift cut/reset ho jayega!
-            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong":
+            # 🛠️ NEW FIX: Agar highest strike change ho jaye (yani kisi aur strike par naya weakness aa jaye), ya market strong ho jaye, toh shifted logic turant tut/reset ho jana chahiye!
+            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or strike != last_highest_strike:
                 set_memory("IS_SHIFTED_" + cache_key, "false")
                 set_memory("PREV_STRK_" + cache_key, str(strike))
+                set_memory("LAST_HIGHEST_" + cache_key, str(strike))
                 remove_memory("SHIFT_TYPE_" + cache_key)
                 remove_memory("SHIFT_FROM_" + cache_key)
                 remove_memory("SHIFT_TARGET_" + cache_key)
                 is_shifting = False
                 scenario_status = final_status_text
             else:
+                set_memory("LAST_HIGHEST_" + cache_key, str(strike))
+                
                 # Check for new shift occurrence
                 if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
                     if strike < prev_strike:
@@ -446,7 +450,7 @@ def execute_python_scenario_tracker():
             if is_trigger_status and display_status != last_recorded_status:
                 display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
+                set_memory("LAST_STATUS_", display_status)
             elif not display_time:
                 display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
