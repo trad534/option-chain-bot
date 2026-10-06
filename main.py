@@ -11,7 +11,7 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 from datetime import datetime, timedelta
 from SmartApi import SmartConnect
-from flask import Flask
+from flask import Flask, request
 import threading
 import builtins
 
@@ -23,7 +23,7 @@ def print(*args, **kwargs):
     builtins.print(*args, **kwargs)
 
 # ==========================================
-# FLASK WEB SERVER FOR RENDER PORT
+# FLASK WEB SERVER FOR RENDER PORT & SELF-PING
 # ==========================================
 app = Flask(__name__)
 
@@ -34,6 +34,22 @@ def home():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+def self_ping_worker():
+    """Render free tier ko sleep hone se bachane ke liye khud ko ping karne wala loop"""
+    time.sleep(15)  # Server start hone ka wait karein
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    if not render_url:
+        # Agar environment variable set nahi hai toh fallback URL construct karein ya skip karein
+        render_url = "http://localhost:10000/"
+    
+    print(f"🔄 Self-Ping Worker Started for URL: {render_url}")
+    while True:
+        try:
+            requests.get(render_url, timeout=10)
+        except Exception:
+            pass
+        time.sleep(240)  # Har 4 minute (240 seconds) mein ping karein
 
 # ==========================================
 # CONFIGURATION & GOOGLE SHEETS
@@ -109,7 +125,6 @@ last_k3_written_text = ""
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     global last_k3_written_text
     try:
-        # Sirf tabhi update karein jab text change hua ho, taaki 429 Quota Exceeded error na aaye
         if last_k3_written_text == text_value:
             return
 
@@ -834,5 +849,9 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
+
+    ping_thread = threading.Thread(target=self_ping_worker)
+    ping_thread.daemon = True
+    ping_thread.start()
 
     run_bot_lock_loop()
