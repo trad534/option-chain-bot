@@ -310,7 +310,7 @@ def execute_python_scenario_tracker():
         ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
         ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peOiStatusText
+        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
@@ -326,7 +326,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -399,8 +399,8 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            # 🛠️ CORRECTED RESET LOGIC: Shift tabhi tutega jab market STRONG ho jaye, ya to strong ho jaye, ya wapas shift_from_strike par aa jaye!
-            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (shift_from_strike > 0 and strike == shift_from_strike):
+            # 🛠️ EXACT FIX: Agar market STRONG ho jaye, ya to strong ho jaye, ya target/second strike (weakness point) change ho jaye, toh shift turant tut/reset ho jayega!
+            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
                 set_memory("IS_SHIFTED_" + cache_key, "false")
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 remove_memory("SHIFT_TYPE_" + cache_key)
