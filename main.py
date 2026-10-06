@@ -240,7 +240,6 @@ def execute_python_scenario_tracker():
                     active_symbol_name_global = detected_symbol
                     last_written_values.clear()
                     
-                    # Clear stale tracking memory for the newly switched symbol so it starts clean
                     remove_memory("PREV_STRK_CE_OI")
                     remove_memory("PREV_STRK_CE_VOL")
                     remove_memory("PREV_STRK_PE_OI")
@@ -388,7 +387,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -558,7 +557,7 @@ def execute_python_scenario_tracker():
         checkPe = finalPeState
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # EXACT 27 SCENARIOS MAPPING (DYNAMIC ACTIVE SYMBOL)
         # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
@@ -663,12 +662,12 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        sym_options = options_cache.get(clean_symbol, pd.DataFrame())
-        if sym_options.empty:
-            for key in options_cache:
-                if clean_symbol in key:
-                    sym_options = options_cache[key]
-                    break
+        # Case-insensitive robust option cache lookup for any of the 265 symbols
+        sym_options = pd.DataFrame()
+        for k, v in options_cache.items():
+            if k.upper() == clean_symbol.upper() or clean_symbol.upper() in k.upper():
+                sym_options = v
+                break
         if sym_options.empty: return
 
         today_date = pd.Timestamp(now_dt.date())
