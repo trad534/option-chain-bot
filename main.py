@@ -36,9 +36,11 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 def self_ping_worker():
-    time.sleep(15)
+    """Render free tier ko sleep hone se bachane ke liye khud ko ping karne wala loop"""
+    time.sleep(15)  # Server start hone ka wait karein
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
     if not render_url:
+        # Agar environment variable set nahi hai toh fallback URL construct karein ya skip karein
         render_url = "http://localhost:10000/"
     
     print(f"🔄 Self-Ping Worker Started for URL: {render_url}")
@@ -47,7 +49,7 @@ def self_ping_worker():
             requests.get(render_url, timeout=10)
         except Exception:
             pass
-        time.sleep(240)
+        time.sleep(240)  # Har 4 minute (240 seconds) mein ping karein
 
 # ==========================================
 # CONFIGURATION & GOOGLE SHEETS
@@ -132,11 +134,11 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
 
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         
@@ -226,34 +228,11 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
+        # Read active symbol dynamically
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                detected_symbol = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-                if detected_symbol in ["TATAMOTORS", "TATA"]: 
-                    detected_symbol = "TMCV"
-                
-                if active_symbol_name_global != detected_symbol:
-                    print(f"\n⚡ Active Symbol Switched To: {detected_symbol} -> Performing Hard Reset for Fresh Tracking!")
-                    active_symbol_name_global = detected_symbol
-                    last_written_values.clear()
-                    
-                    remove_memory("PREV_STRK_CE_OI")
-                    remove_memory("PREV_STRK_CE_VOL")
-                    remove_memory("PREV_STRK_PE_OI")
-                    remove_memory("PREV_STRK_PE_VOL")
-                    remove_memory("IS_SHIFTED_CE_OI")
-                    remove_memory("IS_SHIFTED_CE_VOL")
-                    remove_memory("IS_SHIFTED_PE_OI")
-                    remove_memory("IS_SHIFTED_PE_VOL")
-                    remove_memory("TIME_CE_OI")
-                    remove_memory("TIME_CE_VOL")
-                    remove_memory("TIME_PE_OI")
-                    remove_memory("TIME_PE_VOL")
-                    remove_memory("LAST_STATUS_CE_OI")
-                    remove_memory("LAST_STATUS_CE_VOL")
-                    remove_memory("LAST_STATUS_PE_OI")
-                    remove_memory("LAST_STATUS_PE_VOL")
+                active_symbol_name_global = j4_val.replace("-EQ", "").replace(".NS", "").strip()
         except Exception:
             pass
 
@@ -371,6 +350,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
+        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -384,7 +364,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -398,6 +378,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
+        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -552,6 +533,9 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
+        # ==========================================
+        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name_global} is 8th scenario both side Risky"
@@ -655,11 +639,12 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        sym_options = pd.DataFrame()
-        for k, v in options_cache.items():
-            if k.upper() == clean_symbol.upper() or clean_symbol.upper() in k.upper():
-                sym_options = v
-                break
+        sym_options = options_cache.get(clean_symbol, pd.DataFrame())
+        if sym_options.empty:
+            for key in options_cache:
+                if clean_symbol in key:
+                    sym_options = options_cache[key]
+                    break
         if sym_options.empty: return
 
         today_date = pd.Timestamp(now_dt.date())
@@ -805,12 +790,8 @@ def initialize_scrip_master(smart_api):
 
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
+            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
             
-            # 🛠️ EXPLICIT EXPIRY FORMAT PARSING FIX (SUPPRESSES USERWARNING & FIXES ALL SYMBOLS)
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce')
-            if fno_opts['parsed_expiry'].isna().all():
-                fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], errors='coerce')
-
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 options_cache[name.strip()] = group
 
