@@ -69,7 +69,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE (NESTED SYMBOL-WISE ISOLATED)
+# PYTHON MEMORY STORE (SYMBOL-WISE ISOLATED)
 # ==========================================
 script_memory = {}
 global_run_date = ""
@@ -77,24 +77,17 @@ last_written_values = {}
 active_symbol_name_global = "Nifty"
 
 def get_memory(key, default=""):
-    global script_memory, active_symbol_name_global
-    symbol_key = active_symbol_name_global.upper()
-    if symbol_key not in script_memory:
-        script_memory[symbol_key] = {}
-    return script_memory[symbol_key].get(key, default)
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+    return script_memory.get(symbol_prefixed_key, default)
 
 def set_memory(key, value):
-    global script_memory, active_symbol_name_global
-    symbol_key = active_symbol_name_global.upper()
-    if symbol_key not in script_memory:
-        script_memory[symbol_key] = {}
-    script_memory[symbol_key][key] = str(value)
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+    script_memory[symbol_prefixed_key] = str(value)
 
 def remove_memory(key):
-    global script_memory, active_symbol_name_global
-    symbol_key = active_symbol_name_global.upper()
-    if symbol_key in script_memory and key in script_memory[symbol_key]:
-        del script_memory[symbol_key][key]
+    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
+    if symbol_prefixed_key in script_memory:
+        del script_memory[symbol_prefixed_key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -109,20 +102,11 @@ def safe_update_cell(sheet, cell_name, new_value):
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING WITH QUOTA PROTECTION FOR K3
+# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
 # ==========================================
-last_k3_written_text = ""
-
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
-    global last_k3_written_text
     try:
-        if last_k3_written_text == text_value:
-            return
-
         sheet.update_acell(cell_name, text_value)
-        last_k3_written_text = text_value
-        time.sleep(0.5)
-
         text_lower = text_value.lower()
         if "bull" in text_lower:
             color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
@@ -157,7 +141,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             ]
         }
         spreadsheet_obj.batch_update(body)
-        time.sleep(0.5)
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
@@ -383,7 +366,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVoTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -404,6 +387,7 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
+        # EXACT MATCHED calculateIndependentCell FUNCTION WITH FRESH START SAFEGUARD
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -415,6 +399,7 @@ def execute_python_scenario_tracker():
 
             prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             
+            # 🛡️ Safeguard: Agar memory me pehle se kuch nahi hai (fresh start / symbol switch), toh pehli baar shift trigger nahi hone dena hai
             if not prev_strike_str:
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 set_memory("IS_SHIFTED_" + cache_key, "false")
@@ -437,12 +422,14 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
+            # 🎯 1. REVERSAL CHECK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
                     set_memory("IS_SHIFTED_" + cache_key, "false")
                     set_memory("PREV_STRK_" + cache_key, str(strike))
                     remove_memory("SHIFT_TARGET_" + cache_key)
 
+            # 🎯 2. NEW SHIFT TRIGGER CHECK
             if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
                 if strike < prev_strike:
                     shift_type = "top to bottom"
@@ -455,6 +442,7 @@ def execute_python_scenario_tracker():
                 set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
                 set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
 
+            # 🎯 3. EVALUATE PERSISTENT SHIFT LOCK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
                     set_memory("IS_SHIFTED_" + cache_key, "false")
@@ -516,7 +504,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -608,10 +596,12 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
+        # ⚡ Symbol Switch Detection (Memory Preserved for 265 Symbols)
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Isolated Memory Initialized Safely!")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Old Memory Preserved Safely!")
             cached_selected_symbol = clean_symbol
             active_symbol_name_global = clean_symbol
+            # script_memory.clear()  <--- Yeh line hata di gayi hai taaki 265 symbols ka data RAM se na ude!
             last_written_values.clear()
 
         spot_token, spot_exchange = "", "NSE"
