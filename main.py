@@ -816,12 +816,22 @@ def run_bot_lock_loop():
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
+            err_msg = str(_e).lower()
             print(f"❌ Loop Error: {_e}")
+            if "session" in err_msg or "token" in err_msg or "unauthorized" in err_msg or "invalid" in err_msg:
+                print("🔄 Session expired detected! Attempting auto-reconnect...")
+                reconnected = False
+                while not reconnected:
+                    try:
+                        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                        if data and data.get('status'):
+                            print("✅ Session Re-Generated Automatically!")
+                            reconnected = True
+                        else:
+                            print(f"⚠ Auto-Reconnect Failed: {data}. Retrying in 10 seconds...")
+                            time.sleep(10)
+                    except Exception as recon_err:
+                        print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
+                        time.sleep(10)
         time.sleep(1)
-
-if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    run_bot_lock_loop()
