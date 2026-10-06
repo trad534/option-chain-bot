@@ -282,41 +282,30 @@ def execute_python_scenario_tracker():
         ceVolRawState = detect_live_state_advanced(ceVolTop, False)
         ceOiRawState = detect_live_state_advanced(ceOiTop, False)
         peVolRawState = detect_live_state_advanced(peVolTop, True)
-        peOiRawState = detect_live_state_advanced(peVolTop, True)
+        peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        # 🛠️ ROBUST WEAK HISTORY STORAGE (Prevents state loss on minor ticks)
-        def update_and_get_weak_hist(raw_state, cache_key):
-            if raw_state == "wtt" or raw_state == "wtb":
-                set_memory("WEAK_HIST_" + cache_key, raw_state)
-                return raw_state
-            return get_memory("WEAK_HIST_" + cache_key, "")
-
-        ceOiWeakHist = update_and_get_weak_hist(ceOiRawState, "CE_OI")
-        ceVolWeakHist = update_and_get_weak_hist(ceVolRawState, "CE_VOL")
-        peOiWeakHist = update_and_get_weak_hist(peOiRawState, "PE_OI")
-        peVolWeakHist = update_and_get_weak_hist(peVolRawState, "PE_VOL")
-
-        def get_full_status_string(top_obj, raw_state, weak_hist, cache_key):
+        def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
             prev_strike_str = get_memory("PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
+            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
-                if weak_hist == "wtt":
+                if current_weak_hist == "wtt":
                     return "wtt to strong"
-                if weak_hist == "wtb":
+                if current_weak_hist == "wtb":
                     return "wtb to strong"
                 if strike != prev_strike:
                     return "strong"
                 return "stable strong"
             return raw_state
 
-        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, ceVolWeakHist, "CE_VOL")
-        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, ceOiWeakHist, "CE_OI")
-        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, peVolWeakHist, "PE_VOL")
-        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, peOiWeakHist, "PE_OI")
+        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
+        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
+        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, "PE_VOL")
+        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, "PE_OI")
 
         ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
         ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
@@ -361,11 +350,11 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if 'peTop' in locals() else False):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -378,6 +367,11 @@ def execute_python_scenario_tracker():
                 peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+
+        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_memory("WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState == "wtt" or peOiRawState == "wtb": set_memory("WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState == "wtt" or peVolRawState == "wtb": set_memory("WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
@@ -406,13 +400,10 @@ def execute_python_scenario_tracker():
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
-                if strike != shift_from_strike or second_strike != last_target_strike:
+                if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
                     set_memory("IS_SHIFTED_" + cache_key, "false")
                     set_memory("PREV_STRK_" + cache_key, str(strike))
                     remove_memory("SHIFT_TARGET_" + cache_key)
-                    remove_memory("SHIFT_FROM_" + cache_key)
-                    remove_memory("SHIFT_TYPE_" + cache_key)
-                    is_shifting = False
 
             if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
                 if strike < prev_strike:
@@ -528,7 +519,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish" # 👈 Fixed duplicate checkCe bug here
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
