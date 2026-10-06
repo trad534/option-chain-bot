@@ -69,7 +69,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE (SYMBOL-WISE ISOLATED)
+# PYTHON MEMORY STORE (NESTED SYMBOL-WISE ISOLATED)
 # ==========================================
 script_memory = {}
 global_run_date = ""
@@ -77,17 +77,24 @@ last_written_values = {}
 active_symbol_name_global = "Nifty"
 
 def get_memory(key, default=""):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
-    return script_memory.get(symbol_prefixed_key, default)
+    global script_memory, active_symbol_name_global
+    symbol_key = active_symbol_name_global.upper()
+    if symbol_key not in script_memory:
+        script_memory[symbol_key] = {}
+    return script_memory[symbol_key].get(key, default)
 
 def set_memory(key, value):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
-    script_memory[symbol_prefixed_key] = str(value)
+    global script_memory, active_symbol_name_global
+    symbol_key = active_symbol_name_global.upper()
+    if symbol_key not in script_memory:
+        script_memory[symbol_key] = {}
+    script_memory[symbol_key][key] = str(value)
 
 def remove_memory(key):
-    symbol_prefixed_key = f"{active_symbol_name_global}_{key}"
-    if symbol_prefixed_key in script_memory:
-        del script_memory[symbol_prefixed_key]
+    global script_memory, active_symbol_name_global
+    symbol_key = active_symbol_name_global.upper()
+    if symbol_key in script_memory and key in script_memory[symbol_key]:
+        del script_memory[symbol_key][key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -334,7 +341,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE
+        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -362,7 +369,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE
+        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -376,7 +383,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVoTop['highest']['strike'] if 'peVoTop' in locals() else True):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVoTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -509,7 +516,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -518,7 +525,7 @@ def execute_python_scenario_tracker():
         checkPe = finalPeState
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING
+        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
         # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
@@ -602,11 +609,10 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Resetting Old Memory!")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Isolated Memory Initialized Safely!")
             cached_selected_symbol = clean_symbol
             active_symbol_name_global = clean_symbol
             last_written_values.clear()
-            script_memory.clear()  # <-- YEAH LINE ADD KI GAYI HAI PURANI MEMORY RESET KARNE KE LIYE
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
