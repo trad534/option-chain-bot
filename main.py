@@ -37,7 +37,7 @@ def run_flask():
 
 def self_ping_worker():
     """Render free tier ko sleep hone se bachane ke liye khud ko ping karne wala loop"""
-    time.sleep(15)  # Server start hone ka wait karein
+    time.sleep(15)
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
     if not render_url:
         render_url = "http://localhost:10000/"
@@ -48,7 +48,7 @@ def self_ping_worker():
             requests.get(render_url, timeout=10)
         except Exception:
             pass
-        time.sleep(240)  # Har 4 minute (240 seconds) mein ping karein
+        time.sleep(240)
 
 # ==========================================
 # CONFIGURATION & GOOGLE SHEETS
@@ -133,11 +133,11 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
 
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         
@@ -227,7 +227,7 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        # Read active symbol dynamically from J4
+        # Read active symbol dynamically from J4 and perform hard reset if symbol changed
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
@@ -236,9 +236,27 @@ def execute_python_scenario_tracker():
                     detected_symbol = "TMCV"
                 
                 if active_symbol_name_global != detected_symbol:
-                    print(f"\n⚡ Active Symbol Switched To: {detected_symbol} -> Isolating Memory Safely!")
+                    print(f"\n⚡ Active Symbol Switched To: {detected_symbol} -> Performing Hard Reset for Fresh Tracking!")
                     active_symbol_name_global = detected_symbol
                     last_written_values.clear()
+                    
+                    # Clear stale tracking memory for the newly switched symbol so it starts clean
+                    remove_memory("PREV_STRK_CE_OI")
+                    remove_memory("PREV_STRK_CE_VOL")
+                    remove_memory("PREV_STRK_PE_OI")
+                    remove_memory("PREV_STRK_PE_VOL")
+                    remove_memory("IS_SHIFTED_CE_OI")
+                    remove_memory("IS_SHIFTED_CE_VOL")
+                    remove_memory("IS_SHIFTED_PE_OI")
+                    remove_memory("IS_SHIFTED_PE_VOL")
+                    remove_memory("TIME_CE_OI")
+                    remove_memory("TIME_CE_VOL")
+                    remove_memory("TIME_PE_OI")
+                    remove_memory("TIME_PE_VOL")
+                    remove_memory("LAST_STATUS_CE_OI")
+                    remove_memory("LAST_STATUS_CE_VOL")
+                    remove_memory("LAST_STATUS_PE_OI")
+                    remove_memory("LAST_STATUS_PE_VOL")
         except Exception:
             pass
 
@@ -370,7 +388,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
