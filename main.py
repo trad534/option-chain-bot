@@ -36,7 +36,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 def self_ping_worker():
-    """Render free tier ko sleep hone se bachane ke liye khud ko ping karne wala loop"""
     time.sleep(15)
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
     if not render_url:
@@ -227,7 +226,6 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        # Read active symbol dynamically from J4 and perform hard reset if symbol changed
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
@@ -373,7 +371,6 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -387,7 +384,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -401,7 +398,6 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -556,9 +552,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (DYNAMIC ACTIVE SYMBOL)
-        # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name_global} is 8th scenario both side Risky"
@@ -662,7 +655,6 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # Case-insensitive robust option cache lookup for any of the 265 symbols
         sym_options = pd.DataFrame()
         for k, v in options_cache.items():
             if k.upper() == clean_symbol.upper() or clean_symbol.upper() in k.upper():
@@ -813,8 +805,12 @@ def initialize_scrip_master(smart_api):
 
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
             
+            # 🛠️ EXPLICIT EXPIRY FORMAT PARSING FIX (SUPPRESSES USERWARNING & FIXES ALL SYMBOLS)
+            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce')
+            if fno_opts['parsed_expiry'].isna().all():
+                fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], errors='coerce')
+
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 options_cache[name.strip()] = group
 
