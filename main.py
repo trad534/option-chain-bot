@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Immediate Scenario Tracker Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -97,7 +97,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.3)
+            time.sleep(0.1)  # Optimized sleep for speed
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -109,13 +109,12 @@ last_k3_written_text = ""
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     global last_k3_written_text
     try:
-        # Sirf tabhi update karein jab text change hua ho, taaki 429 Quota Exceeded error na aaye
         if last_k3_written_text == text_value:
             return
 
         sheet.update_acell(cell_name, text_value)
         last_k3_written_text = text_value
-        time.sleep(0.5)
+        time.sleep(0.2)
 
         text_lower = text_value.lower()
         if "bull" in text_lower:
@@ -151,7 +150,7 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
             ]
         }
         spreadsheet_obj.batch_update(body)
-        time.sleep(0.5)
+        time.sleep(0.2)
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
@@ -197,7 +196,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS GAS MATCH)
+# MASTER SCENARIO ENGINE (IMMEDIATE EXECUTION)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date, active_symbol_name_global
@@ -335,7 +334,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -363,7 +362,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -372,6 +371,7 @@ def execute_python_scenario_tracker():
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+            ceWinner = "OI"  # Fixed reference fallback
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
@@ -519,7 +519,7 @@ def execute_python_scenario_tracker():
         checkPe = finalPeState
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # EXACT 27 SCENARIOS MAPPING
         # ==========================================
         k3Text = f"{active_symbol_name_global} is Neutral"
 
@@ -569,7 +569,7 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
+        print(f"⚡ IMMEDIATE UPDATE -> K3: '{k3Text}' (CE: {checkCe}, PE: {checkPe})")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
@@ -745,6 +745,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
+        # 🚀 Data update hote hi immediately scenario tracker execute hoga
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -768,10 +769,10 @@ def initialize_scrip_master(smart_api):
 
             nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
-                sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
-                eq_cache[sym] = (tok, 'NSE')
+                symbol_val, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
+                eq_cache[symbol_val] = (tok, 'NSE')
                 eq_cache[name] = (tok, 'NSE')
-                if sym.endswith("-EQ"): eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+                if symbol_val.endswith("-EQ"): eq_cache[symbol_val.replace("-EQ", "")] = (tok, 'NSE')
 
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
@@ -796,7 +797,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot...")
+    print("🚀 Starting Immediate-Response Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -828,7 +829,7 @@ def run_bot_lock_loop():
             session_date = None
             time.sleep(5)
         
-        time.sleep(1)
+        time.sleep(0.5)  # Loop speed optimized slightly for instant response
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
