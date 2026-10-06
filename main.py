@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Immediate Scenario Tracker Engine is active!"
+    return "Angel One Option Chain Bot & Debug Scenario Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -69,7 +69,7 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE (SYMBOL-WISE ISOLATED)
+# PYTHON MEMORY STORE (265 SYMBOLS ISOLATED)
 # ==========================================
 script_memory = {}
 global_run_date = ""
@@ -196,7 +196,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (IMMEDIATE EXECUTION)
+# MASTER SCENARIO ENGINE WITH DEBUG PRINTS
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date, active_symbol_name_global
@@ -212,7 +212,7 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        # Read active symbol dynamically
+        # Read active symbol dynamically from J4 cell
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
@@ -220,8 +220,12 @@ def execute_python_scenario_tracker():
         except Exception:
             pass
 
+        print(f"🔍 [DEBUG] Active Symbol in Memory: {active_symbol_name_global}")
+
         range_values = dashboard_sheet.get("A8:T28")
-        if not range_values: return
+        if not range_values:
+            print("⚠ [DEBUG] Warning: dashboard_sheet range A8:T28 returned empty values!")
+            return
 
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
@@ -247,8 +251,11 @@ def execute_python_scenario_tracker():
             if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
             if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
 
-            ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
-            ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            val_ce_oi = float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0
+            val_ce_vol = float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0
+
+            ceOiArray.append({'strike': strike, 'val': val_ce_oi, 'row': r})
+            ceVolArray.append({'strike': strike, 'val': val_ce_vol, 'row': r})
 
         for r in range(8, 22):
             if r == MARKET_ROW: continue
@@ -271,8 +278,18 @@ def execute_python_scenario_tracker():
             if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
             if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
 
-            peVolArray.append({'strike': strike, 'val': float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
-            peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
+            val_pe_vol = float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0
+            val_pe_oi = float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0
+
+            peVolArray.append({'strike': strike, 'val': val_pe_vol, 'row': r})
+            peOiArray.append({'strike': strike, 'val': val_pe_oi, 'row': r})
+
+        # 🔍 DEBUG PRINT FOR READ VALUES
+        print(f"📊 [DEBUG] Read from Dashboard -> CE OI Items count: {len(ceOiArray)}, PE OI Items count: {len(peOiArray)}")
+        if ceOiArray:
+            print(f"📊 [DEBUG] Sample CE OI (First item): {ceOiArray[0]}")
+        if peOiArray:
+            print(f"📊 [DEBUG] Sample PE OI (First item): {peOiArray[0]}")
 
         def extract_top_two(data_array):
             if not data_array:
@@ -291,7 +308,9 @@ def execute_python_scenario_tracker():
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
-        if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']: return
+        if not ceVolTop['highest']['strike'] or not ceOiTop['highest']['strike'] or not peVolTop['highest']['strike'] or not peOiTop['highest']['strike']:
+            print("⚠ [DEBUG] Warning: Top strikes extraction got 0 value! Check if sheet cells are empty or formulas are loading.")
+            return
 
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
@@ -568,7 +587,7 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        print(f"✅ IMMEDIATE SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
+        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
@@ -744,7 +763,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # 🚀 Data update hote hi immediately scenario tracker execute hoga
+        # Immediately execute scenario tracker after data update
         execute_python_scenario_tracker()
 
     except Exception as ex:
@@ -796,7 +815,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Immediate-Response Python Bot...")
+    print("🚀 Starting Debug-Enabled Python Bot...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
