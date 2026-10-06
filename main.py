@@ -680,7 +680,7 @@ def fetch_and_update_option_chain(smart_api):
                 except Exception:
                     pass
 
-        market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
+        market_open_time = datetime.strptime("09:12:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
 
         quotes_dict = {}
