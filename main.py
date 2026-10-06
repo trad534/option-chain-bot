@@ -40,7 +40,6 @@ def self_ping_worker():
     time.sleep(15)  # Server start hone ka wait karein
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
     if not render_url:
-        # Agar environment variable set nahi hai toh fallback URL construct karein ya skip karein
         render_url = "http://localhost:10000/"
     
     print(f"🔄 Self-Ping Worker Started for URL: {render_url}")
@@ -228,11 +227,18 @@ def execute_python_scenario_tracker():
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        # Read active symbol dynamically
+        # Read active symbol dynamically from J4
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                active_symbol_name_global = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+                detected_symbol = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+                if detected_symbol in ["TATAMOTORS", "TATA"]: 
+                    detected_symbol = "TMCV"
+                
+                if active_symbol_name_global != detected_symbol:
+                    print(f"\n⚡ Active Symbol Switched To: {detected_symbol} -> Isolating Memory Safely!")
+                    active_symbol_name_global = detected_symbol
+                    last_written_values.clear()
         except Exception:
             pass
 
