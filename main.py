@@ -835,3 +835,11 @@ def run_bot_lock_loop():
                         print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
                         time.sleep(10)
         time.sleep(1)
+
+if __name__ == "__main__":
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Run the bot loop
+    run_bot_lock_loop()
+    
