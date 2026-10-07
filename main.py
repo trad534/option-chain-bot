@@ -553,7 +553,7 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
-        # Log scenario into history
+        # Log scenario into history with timeline
         current_time_str_log = time.strftime("%H:%M")
         log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str_log)
 
@@ -678,20 +678,22 @@ def fetch_and_update_option_chain(smart_api):
                 batch_tokens = tokens_list[i:i+20]
                 if not batch_tokens: continue
                 
+                # Robust Retry Mechanism
                 max_retries = 3
-                batch_res = None
+                fetched_data = None
+
                 for attempt in range(max_retries):
                     try:
-                        res = smart_api.getMarketData("FULL", {exch: batch_tokens})
-                        if res and res.get('status') and res.get('data'):
-                            batch_res = res
-                            break
-                    except Exception:
+                        fetched_data = smart_api.getMarketData(mode="full", exchangeTokens={exch: batch_tokens})
+                        if fetched_data and fetched_data.get('data'):
+                            break 
+                    except Exception as e:
                         pass
-                    time.sleep(0.3)
-
-                if batch_res and batch_res.get('data'):
-                    all_fetched_quotes.extend(batch_res['data'].get('fetched', []))
+                    
+                    time.sleep(0.5)
+                
+                if fetched_data and fetched_data.get('data'):
+                    all_fetched_quotes.extend(fetched_data['data'].get('fetched', []))
                 
                 time.sleep(0.2)
 
