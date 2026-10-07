@@ -431,6 +431,7 @@ def execute_python_scenario_tracker():
                 remove_memory("SHIFT_TYPE_" + cache_key)
                 remove_memory("SHIFT_FROM_" + cache_key)
                 remove_memory("SHIFT_TARGET_" + cache_key)
+                remove_memory("WEAK_HIST_" + cache_key)  # 👈 Cleaned up stale weak history on shift/strong reset
                 is_shifting = False
                 scenario_status = final_status_text
             else:
@@ -470,9 +471,8 @@ def execute_python_scenario_tracker():
             )
 
             # 🛠 FIXED BACKGROUND REPLAY TIMESTAMP LOGIC:
-            # Agar purana timestamp pehle se background memory mein stored hai, toh naye symbol par switch hone par woh RESET NAHI HOGA.
             if is_trigger_status and display_status != last_recorded_status:
-                if not display_time: # Only set if no background time exists for this state trigger
+                if not display_time:
                     display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
@@ -615,7 +615,6 @@ def fetch_and_update_option_chain(smart_api):
             current_active_namespace = clean_symbol
 
             # 🚀 BACKGROUND REPLAY MEMORY RETRIEVAL:
-            # Agar is symbol ka state pehle se background memory mein stored hai, toh turant wahi purana exact data aur timestamp restore kar do!
             if clean_symbol in background_symbol_states:
                 saved_state = background_symbol_states[clean_symbol]
                 print(f"📂 Restoring exact background replay state for {clean_symbol} from memory...")
@@ -881,7 +880,7 @@ def run_bot_lock_loop():
                 while not reconnected:
                     try:
                         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                        data = smart_api.generateSession(CLIENT_ID, PIN, tokp if 'totp' in locals() else totp)
+                        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
                         if data and data.get('status'):
                             print("✅ Session Re-Generated Automatically!")
                             reconnected = True
