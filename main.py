@@ -370,7 +370,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -491,7 +491,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -552,22 +552,22 @@ def execute_python_scenario_tracker():
         if peWinner == "BOTH": finalU5 = peOiResult['text']; finalQ5 = peVolResult['text']
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
-        try:
-    current_time_str = time.strftime("%H:%M")
-    log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
 
-    safe_update_cell(dashboard_sheet, "D5", finalD5)
-    safe_update_cell(dashboard_sheet, "U5", finalU5)
-    safe_update_cell(dashboard_sheet, "H5", finalH5)
-    safe_update_cell(dashboard_sheet, "Q5", finalQ5)
+        # Log scenario into history
+        current_time_str_log = time.strftime("%H:%M")
+        log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str_log)
 
-    update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
-    print(f"✅ SUCCESS -> K3 Updated With: {k3Text}; (CE State: {checkCe}, PE State: {checkPe})")
-
-except Exception as err:
-    print(f"❌ Critical Scenario Engine Error: {err}")
-
+        safe_update_cell(dashboard_sheet, "D5", finalD5)
+        safe_update_cell(dashboard_sheet, "U5", finalU5)
+        safe_update_cell(dashboard_sheet, "H5", finalH5)
+        safe_update_cell(dashboard_sheet, "Q5", finalQ5)
         
+        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
+
+        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
+
+    except Exception as err:
+        print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -674,15 +674,26 @@ def fetch_and_update_option_chain(smart_api):
 
         all_fetched_quotes = []
         for exch, tokens_list in exchange_tokens_map.items():
-            for i in range(0, len(tokens_list), 40):
-                batch_tokens = tokens_list[i:i+40]
+            for i in range(0, len(tokens_list), 20):
+                batch_tokens = tokens_list[i:i+20]
                 if not batch_tokens: continue
-                try:
-                    res = smart_api.getMarketData("FULL", {exch: batch_tokens})
-                    if res and res.get('status') and res.get('data'):
-                        all_fetched_quotes.extend(res['data'].get('fetched', []))
-                except Exception:
-                    pass
+                
+                max_retries = 3
+                batch_res = None
+                for attempt in range(max_retries):
+                    try:
+                        res = smart_api.getMarketData("FULL", {exch: batch_tokens})
+                        if res and res.get('status') and res.get('data'):
+                            batch_res = res
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(0.3)
+
+                if batch_res and batch_res.get('data'):
+                    all_fetched_quotes.extend(batch_res['data'].get('fetched', []))
+                
+                time.sleep(0.2)
 
         market_open_time = datetime.strptime("09:12:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
@@ -792,6 +803,34 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
+# ==========================================
+# Extra Module: Symbol Background Replay (Safe Setup)
+# ==========================================
+scenario_history = {}
+
+def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
+    """Log scenario state for each symbol with timestamp"""
+    if symbol not in scenario_history:
+        scenario_history[symbol] = []
+    scenario_history[symbol].append({
+        "time": current_time_str,
+        "ce_state": ce_state,
+        "pe_state": pe_state,
+        "scenario": scenario_text
+    })
+
+def replay_symbol_scenario(symbol):
+    """Replay full timeline for a symbol"""
+    timeline = scenario_history.get(symbol, [])
+    if not timeline:
+        return f"No history found for {symbol}"
+    output = [f"{symbol} Scenario Timeline:"]
+    for entry in timeline:
+        output.append(
+            f"{entry['time']} → CE={entry['ce_state']}, PE={entry['pe_state']} → {entry['scenario']}"
+        )
+    return "\n".join(output)
+
 def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
     try:
@@ -846,33 +885,3 @@ if __name__ == "__main__":
     
     # Run the bot loop
     run_bot_lock_loop()
-
-# -----------------------------
-# Extra Module: 265 Symbol Background Replay
-# -----------------------------
-
-
-# Initialize dictionary for all 265 symbols
-scenario_history = {symbol: [] for symbol in all_symbols_list}  
-# all_symbols_list = list of 265 symbols you already fetch from Angel One
-
-def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
-    """Log scenario state for each symbol with timestamp"""
-    scenario_history[symbol].append({
-        "time": current_time_str,
-        "ce_state": ce_state,
-        "pe_state": pe_state,
-        "scenario": scenario_text
-    })
-
-def replay_symbol_scenario(symbol):
-    """Replay full timeline for a symbol"""
-    timeline = scenario_history.get(symbol, [])
-    if not timeline:
-        return f"No history found for {symbol}"
-    output = [f"{symbol} Scenario Timeline:"]
-    for entry in timeline:
-        output.append(
-            f"{entry['time']} → CE={entry['ce_state']}, PE={entry['pe_state']} → {entry['scenario']}"
-        )
-    return "\n".join(output)
