@@ -319,7 +319,6 @@ def execute_python_scenario_tracker():
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
-                # Agar pehle wtt ya wtb tha aur ab strong hua hai, toh usko "to strong" state mein sustain karo
                 if current_weak_hist == "wtt":
                     return "wtt to strong"
                 if current_weak_hist == "wtb":
