@@ -310,7 +310,7 @@ def execute_python_scenario_tracker():
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-                def get_full_status_string(top_obj, raw_state, cache_key):
+        def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
@@ -319,6 +319,7 @@ def execute_python_scenario_tracker():
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
+                # Agar pehle wtt ya wtb tha aur ab strong hua hai, toh usko "to strong" state mein sustain karo
                 if current_weak_hist == "wtt":
                     return "wtt to strong"
                 if current_weak_hist == "wtb":
@@ -327,7 +328,6 @@ def execute_python_scenario_tracker():
                     return "strong"
                 return "stable strong"
             return raw_state
-
 
         ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
         ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
