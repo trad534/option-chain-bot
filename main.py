@@ -491,7 +491,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -678,22 +678,21 @@ def fetch_and_update_option_chain(smart_api):
                 batch_tokens = tokens_list[i:i+20]
                 if not batch_tokens: continue
                 
-                # Robust Retry Mechanism
+                # Robust Safe Retry Mechanism with Working API Format
                 max_retries = 3
-                fetched_data = None
-
+                batch_res = None
                 for attempt in range(max_retries):
                     try:
-                        fetched_data = smart_api.getMarketData(mode="full", exchangeTokens={exch: batch_tokens})
-                        if fetched_data and fetched_data.get('data'):
-                            break 
-                    except Exception as e:
+                        res = smart_api.getMarketData("FULL", {exch: batch_tokens})
+                        if res and res.get('status') and res.get('data'):
+                            batch_res = res
+                            break
+                    except Exception:
                         pass
-                    
-                    time.sleep(0.5)
-                
-                if fetched_data and fetched_data.get('data'):
-                    all_fetched_quotes.extend(fetched_data['data'].get('fetched', []))
+                    time.sleep(0.3)
+
+                if batch_res and batch_res.get('data'):
+                    all_fetched_quotes.extend(batch_res['data'].get('fetched', []))
                 
                 time.sleep(0.2)
 
