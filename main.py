@@ -552,23 +552,22 @@ def execute_python_scenario_tracker():
         if peWinner == "BOTH": finalU5 = peOiResult['text']; finalQ5 = peVolResult['text']
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
-        
         try:
-            current_time_str = time.strftime("%H:%M")
-            log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
+    current_time_str = time.strftime("%H:%M")
+    log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
+
+    safe_update_cell(dashboard_sheet, "D5", finalD5)
+    safe_update_cell(dashboard_sheet, "U5", finalU5)
+    safe_update_cell(dashboard_sheet, "H5", finalH5)
+    safe_update_cell(dashboard_sheet, "Q5", finalQ5)
+
+    update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
+    print(f"✅ SUCCESS -> K3 Updated With: {k3Text}; (CE State: {checkCe}, PE State: {checkPe})")
+
+except Exception as err:
+    print(f"❌ Critical Scenario Engine Error: {err}")
 
         
-        safe_update_cell(dashboard_sheet, "D5", finalD5)
-        safe_update_cell(dashboard_sheet, "U5", finalU5)
-        safe_update_cell(dashboard_sheet, "H5", finalH5)
-        safe_update_cell(dashboard_sheet, "Q5", finalQ5)
-        
-        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
-
-        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
-
-    except Exception as err:
-        print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
