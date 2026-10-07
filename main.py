@@ -554,7 +554,7 @@ def execute_python_scenario_tracker():
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
        
         current_time_str = time.strftime("%H:%M")
-log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
+        log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
 
         
         safe_update_cell(dashboard_sheet, "D5", finalD5)
