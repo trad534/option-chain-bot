@@ -90,6 +90,7 @@ except Exception as e:
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
+last_switch_time = 0
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -573,7 +574,7 @@ def execute_python_scenario_tracker():
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -598,11 +599,24 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol}")
-            # Memory clear hata diya gaya hai taaki history aur state secure rahe!
+            print(f"\n⚡ Symbol Switched From {cached_selected_symbol} To {clean_symbol}")
+            cached_selected_symbol = clean_symbol
+            last_switch_time = time.time()
+            
+            # Turant cells ko blank/loading kar do taaki purana blink na kare
+            try:
+                safe_update_cell(dashboard_sheet, "D5", "(-----)")
+                safe_update_cell(dashboard_sheet, "H5", "(-----)")
+                safe_update_cell(dashboard_sheet, "U5", "(-----)")
+                safe_update_cell(dashboard_sheet, "Q5", "(-----)")
+                update_k3_with_color(spreadsheet, dashboard_sheet, "K3", f"{clean_symbol} is Loading...")
+            except Exception:
+                pass
+            
+            print("⏳ Waiting 5 seconds for Google Sheets formulas to stabilize...")
+            time.sleep(5.0)
 
-        if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+        if not cached_selected_symbol:
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -753,7 +767,11 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        execute_python_scenario_tracker()
+        # Extra safety check: agar switch ko 5 second se kam hue hain toh scenario run mat karo
+        if time.time() - last_switch_time > 5.0:
+            execute_python_scenario_tracker()
+        else:
+            print("⏳ Skipping scenario tracking during stabilization window...")
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
