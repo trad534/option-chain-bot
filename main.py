@@ -881,7 +881,7 @@ def run_bot_lock_loop():
                 while not reconnected:
                     try:
                         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                        data = smart_api.generateSession(CLIENT_ID, PIN, tokp if 'tokp' in locals() else totp)
+                        data = smart_api.generateSession(CLIENT_ID, PIN, tokp if 'totp' in locals() else totp)
                         if data and data.get('status'):
                             print("✅ Session Re-Generated Automatically!")
                             reconnected = True
