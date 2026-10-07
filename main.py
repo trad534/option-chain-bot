@@ -85,22 +85,26 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
+# PYTHON MEMORY STORE & SYMBOL ISOLATION
 # ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
 last_switch_time = 0
+current_active_namespace = "DEFAULT"
 
 def get_memory(key, default=""):
-    return script_memory.get(key, default)
+    namespaced_key = f"{current_active_namespace}_{key}"
+    return script_memory.get(namespaced_key, default)
 
 def set_memory(key, value):
-    script_memory[key] = str(value)
+    namespaced_key = f"{current_active_namespace}_{key}"
+    script_memory[namespaced_key] = str(value)
 
 def remove_memory(key):
-    if key in script_memory:
-        del script_memory[key]
+    namespaced_key = f"{current_active_namespace}_{key}"
+    if namespaced_key in script_memory:
+        del script_memory[namespaced_key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -554,10 +558,6 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
-        # Log scenario into history with timeline
-        current_time_str_log = time.strftime("%H:%M")
-        log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str_log)
-
         safe_update_cell(dashboard_sheet, "D5", finalD5)
         safe_update_cell(dashboard_sheet, "U5", finalU5)
         safe_update_cell(dashboard_sheet, "H5", finalH5)
@@ -574,7 +574,7 @@ def execute_python_scenario_tracker():
 # FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time, current_active_namespace
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -603,6 +603,9 @@ def fetch_and_update_option_chain(smart_api):
             cached_selected_symbol = clean_symbol
             last_switch_time = time.time()
             
+            # Namespace ko update karo taaki naye symbol ki memory bilkul fresh aur isolated rahe
+            current_active_namespace = clean_symbol
+
             # Turant cells ko blank/loading kar do taaki purana blink na kare
             try:
                 safe_update_cell(dashboard_sheet, "D5", "(-----)")
@@ -618,6 +621,7 @@ def fetch_and_update_option_chain(smart_api):
 
         if not cached_selected_symbol:
             cached_selected_symbol = clean_symbol
+            current_active_namespace = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
@@ -820,22 +824,6 @@ options_cache = {}
 morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
-
-# ==========================================
-# Extra Module: Symbol Background Replay (Safe Setup)
-# ==========================================
-scenario_history = {}
-
-def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
-    """Log scenario state for each symbol with timestamp without wiping out history on switch"""
-    if symbol not in scenario_history:
-        scenario_history[symbol] = []
-    scenario_history[symbol].append({
-        "time": current_time_str,
-        "ce_state": ce_state,
-        "pe_state": pe_state,
-        "scenario": scenario_text
-    })
 
 def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
