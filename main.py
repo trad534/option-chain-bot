@@ -310,7 +310,7 @@ def execute_python_scenario_tracker():
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        def get_full_status_string(top_obj, raw_state, cache_key):
+                def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
@@ -327,6 +327,7 @@ def execute_python_scenario_tracker():
                     return "strong"
                 return "stable strong"
             return raw_state
+
 
         ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
         ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
@@ -425,26 +426,16 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            # 🛠 FIXED SHIFT RESET & CLEANUP LOGIC:
-            # Agar market poori tarah strong ho jaye ya shift target cross ho jaye, tabhi shift memory clear hogi, 
-            # lekin WEAK_HIST ko tabhi clear karna hai jab naya fresh weak state banna shuru ho, taaki "wtt to strong" flicker na ho.
             if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
                 set_memory("IS_SHIFTED_" + cache_key, "false")
                 set_memory("PREV_STRK_" + cache_key, str(strike))
                 remove_memory("SHIFT_TYPE_" + cache_key)
                 remove_memory("SHIFT_FROM_" + cache_key)
                 remove_memory("SHIFT_TARGET_" + cache_key)
-                
-                # Agar strike wapas stable strong ban gayi hai aur koi weak history nahi hai, tabhi history clear karein
-                if raw_state == "STRONG" and final_status_text == "stable strong":
-                    remove_memory("WEAK_HIST_" + cache_key)
-
                 is_shifting = False
                 scenario_status = final_status_text
             else:
                 if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
-                    # Strike shift hone par purani weak history ko reset karke naya shift capture karein
-                    remove_memory("WEAK_HIST_" + cache_key)
                     if strike < prev_strike:
                         shift_type = "top to bottom"
                         scenario_status = "wtb"
@@ -479,8 +470,10 @@ def execute_python_scenario_tracker():
                 is_shifting
             )
 
+            # 🛠 FIXED BACKGROUND REPLAY TIMESTAMP LOGIC:
+            # Agar purana timestamp pehle se background memory mein stored hai, toh naye symbol par switch hone par woh RESET NAHI HOGA.
             if is_trigger_status and display_status != last_recorded_status:
-                if not display_time:
+                if not display_time: # Only set if no background time exists for this state trigger
                     display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
@@ -568,6 +561,7 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
+        # Save current evaluated state into background persistent dict for this namespace
         background_symbol_states[current_active_namespace] = {
             "D5": finalD5, "H5": finalH5, "U5": finalU5, "Q5": finalQ5, "K3": k3Text
         }
@@ -617,8 +611,12 @@ def fetch_and_update_option_chain(smart_api):
             print(f"\n⚡ Symbol Switched From {cached_selected_symbol} To {clean_symbol}")
             cached_selected_symbol = clean_symbol
             last_switch_time = time.time()
+            
+            # Namespace update
             current_active_namespace = clean_symbol
 
+            # 🚀 BACKGROUND REPLAY MEMORY RETRIEVAL:
+            # Agar is symbol ka state pehle se background memory mein stored hai, toh turant wahi purana exact data aur timestamp restore kar do!
             if clean_symbol in background_symbol_states:
                 saved_state = background_symbol_states[clean_symbol]
                 print(f"📂 Restoring exact background replay state for {clean_symbol} from memory...")
@@ -884,7 +882,7 @@ def run_bot_lock_loop():
                 while not reconnected:
                     try:
                         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                        data = smart_api.generateSession(CLIENT_ID, PIN, tokp if 'totp' in locals() else totp)
                         if data and data.get('status'):
                             print("✅ Session Re-Generated Automatically!")
                             reconnected = True
