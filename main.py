@@ -613,8 +613,8 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
             
-            print("⏳ Waiting 5 seconds for Google Sheets formulas to stabilize...")
-            time.sleep(5.0)
+            print("⏳ Symbol switched! Waiting 8 seconds for Google Sheets formulas & values to fully settle...")
+            time.sleep(8.0)
 
         if not cached_selected_symbol:
             cached_selected_symbol = clean_symbol
@@ -767,8 +767,8 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # Extra safety check: agar switch ko 5 second se kam hue hain toh scenario run mat karo
-        if time.time() - last_switch_time > 5.0:
+        # 8 second stabilization window check
+        if time.time() - last_switch_time > 8.0:
             execute_python_scenario_tracker()
         else:
             print("⏳ Skipping scenario tracking during stabilization window...")
@@ -836,18 +836,6 @@ def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_
         "pe_state": pe_state,
         "scenario": scenario_text
     })
-
-def replay_symbol_scenario(symbol):
-    """Replay full timeline for a symbol"""
-    timeline = scenario_history.get(symbol, [])
-    if not timeline:
-        return f"No history found for {symbol}"
-    output = [f"{symbol} Scenario Timeline:"]
-    for entry in timeline:
-        output.append(
-            f"{entry['time']} → CE={entry['ce_state']}, PE={entry['pe_state']} → {entry['scenario']}"
-        )
-    return "\n".join(output)
 
 def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
