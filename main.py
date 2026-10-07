@@ -431,7 +431,8 @@ def execute_python_scenario_tracker():
                 remove_memory("SHIFT_TYPE_" + cache_key)
                 remove_memory("SHIFT_FROM_" + cache_key)
                 remove_memory("SHIFT_TARGET_" + cache_key)
-                remove_memory("WEAK_HIST_" + cache_key)  # 👈 Cleaned up stale weak history on shift/strong reset
+                # NOTE: WEAK_HIST memory is intentionally NOT deleted here immediately upon reaching "to strong" 
+                # so that "wtt to strong" / "wtb to strong" status is properly sustained and doesn't flicker back to stable strong.
                 is_shifting = False
                 scenario_status = final_status_text
             else:
