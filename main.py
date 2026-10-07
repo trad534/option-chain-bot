@@ -842,4 +842,46 @@ if __name__ == "__main__":
     
     # Run the bot loop
     run_bot_lock_loop()
-    
+
+# -----------------------------
+# Extra Module: 265 Symbol Background Replay
+# -----------------------------
+
+# Initialize dictionary for all 265 symbols
+scenario_history = {symbol: [] for symbol in all_symbols_list}  
+# all_symbols_list = list of 265 symbols you already fetch from Angel One
+
+def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
+    """Log scenario state for each symbol with timestamp"""
+    scenario_history[symbol].append({
+        "time": current_time_str,
+        "ce_state": ce_state,
+        "pe_state": pe_state,
+        "scenario": scenario_text
+    })
+
+def replay_symbol_scenario(symbol):
+    """Replay full timeline for a symbol"""
+    timeline = scenario_history.get(symbol, [])
+    if not timeline:
+        return f"No history found for {symbol}"
+    output = [f"{symbol} Scenario Timeline:"]
+    for entry in timeline:
+        output.append(
+            f"{entry['time']} → CE={entry['ce_state']}, PE={entry['pe_state']} → {entry['scenario']}"
+        )
+    return "\n".join(output)
+
+# -----------------------------
+# Integration Point
+# -----------------------------
+# Inside your scenario tracker loop (Part 2/Part 3), after CE/PE states and scenario_text are calculated:
+current_time_str = time.strftime("%H:%M")
+log_symbol_scenario(active_symbol, ce_state, pe_state, scenario_text, current_time_str)
+
+# -----------------------------
+# Usage Example
+# -----------------------------
+# At 12pm, when you select BankNIFTY:
+print(replay_symbol_scenario("BANKNIFTY"))
+
