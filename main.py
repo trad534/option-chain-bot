@@ -553,7 +553,7 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
-        # Log scenario into history with timeline
+        # Log scenario into history with timeline (Safe Dynamic Memory)
         current_time_str_log = time.strftime("%H:%M")
         log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str_log)
 
@@ -598,7 +598,7 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
+            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Live Calculator Memory only!")
             script_memory.clear()
 
         if cached_selected_symbol != clean_symbol:
@@ -678,7 +678,6 @@ def fetch_and_update_option_chain(smart_api):
                 batch_tokens = tokens_list[i:i+20]
                 if not batch_tokens: continue
                 
-                # Robust Safe Retry Mechanism with Working API Format
                 max_retries = 3
                 batch_res = None
                 for attempt in range(max_retries):
@@ -810,7 +809,7 @@ cached_selected_symbol = None
 scenario_history = {}
 
 def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
-    """Log scenario state for each symbol with timestamp"""
+    """Log scenario state for each symbol with timestamp without wiping out history on switch"""
     if symbol not in scenario_history:
         scenario_history[symbol] = []
     scenario_history[symbol].append({
