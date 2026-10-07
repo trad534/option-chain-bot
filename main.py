@@ -45,7 +45,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & 265 Symbol Background Replay Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -85,13 +85,16 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PYTHON MEMORY STORE & SYMBOL ISOLATION
+# PYTHON MEMORY STORE & 265 SYMBOL ISOLATION
 # ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
 last_switch_time = 0
 current_active_namespace = "DEFAULT"
+
+# Extra Module: 265 Symbol Background Replay Persistent Memory Store
+background_symbol_states = {}
 
 def get_memory(key, default=""):
     namespaced_key = f"{current_active_namespace}_{key}"
@@ -206,7 +209,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
 # ==========================================
 def execute_python_scenario_tracker():
-    global global_run_date
+    global global_run_date, background_symbol_states, current_active_namespace
     try:
         now_dt = datetime.now()
         current_kolkata_time = now_dt.strftime("%H:%M:%S")
@@ -214,10 +217,12 @@ def execute_python_scenario_tracker():
 
         if global_run_date != today_str:
             script_memory.clear()
+            background_symbol_states.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
+            background_symbol_states.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -464,8 +469,11 @@ def execute_python_scenario_tracker():
                 is_shifting
             )
 
+            # 🛠 FIXED BACKGROUND REPLAY TIMESTAMP LOGIC:
+            # Agar purana timestamp pehle se background memory mein stored hai, toh naye symbol par switch hone par woh RESET NAHI HOGA.
             if is_trigger_status and display_status != last_recorded_status:
-                display_time = current_time_str
+                if not display_time: # Only set if no background time exists for this state trigger
+                    display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
             elif not display_time:
@@ -504,13 +512,7 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        active_symbol_name = "Nifty"
-        try:
-            j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-            if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-        except Exception:
-            pass
+        active_symbol_name = current_active_namespace
 
         # ==========================================
         # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST)
@@ -558,6 +560,11 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
+        # Save current evaluated state into background persistent dict for this namespace
+        background_symbol_states[current_active_namespace] = {
+            "D5": finalD5, "H5": finalH5, "U5": finalU5, "Q5": finalQ5, "K3": k3Text
+        }
+
         safe_update_cell(dashboard_sheet, "D5", finalD5)
         safe_update_cell(dashboard_sheet, "U5", finalU5)
         safe_update_cell(dashboard_sheet, "H5", finalH5)
@@ -565,22 +572,23 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
+        print(f"✅ SUCCESS -> [{current_active_namespace}] K3 Updated with: '{k3Text}'")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP WITH BACKGROUND REPLAY
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time, current_active_namespace
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time, current_active_namespace, background_symbol_states
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
 
         if baseline_date != current_date_str:
             morning_oi_dict = {}
+            background_symbol_states.clear()
             baseline_date = current_date_str
 
         if not options_cache:
@@ -603,21 +611,34 @@ def fetch_and_update_option_chain(smart_api):
             cached_selected_symbol = clean_symbol
             last_switch_time = time.time()
             
-            # Namespace ko update karo taaki naye symbol ki memory bilkul fresh aur isolated rahe
+            # Namespace update
             current_active_namespace = clean_symbol
 
-            # Turant cells ko blank/loading kar do taaki purana blink na kare
-            try:
-                safe_update_cell(dashboard_sheet, "D5", "(-----)")
-                safe_update_cell(dashboard_sheet, "H5", "(-----)")
-                safe_update_cell(dashboard_sheet, "U5", "(-----)")
-                safe_update_cell(dashboard_sheet, "Q5", "(-----)")
-                update_k3_with_color(spreadsheet, dashboard_sheet, "K3", f"{clean_symbol} is Loading...")
-            except Exception:
-                pass
+            # 🚀 BACKGROUND REPLAY MEMORY RETRIEVAL:
+            # Agar is symbol ka state pehle se background memory mein stored hai, toh turant wahi purana exact data aur timestamp restore kar do!
+            if clean_symbol in background_symbol_states:
+                saved_state = background_symbol_states[clean_symbol]
+                print(f"📂 Restoring exact background replay state for {clean_symbol} from memory...")
+                try:
+                    safe_update_cell(dashboard_sheet, "D5", saved_state.get("D5", "(-----)"))
+                    safe_update_cell(dashboard_sheet, "H5", saved_state.get("H5", "(-----)"))
+                    safe_update_cell(dashboard_sheet, "U5", saved_state.get("U5", "(-----)"))
+                    safe_update_cell(dashboard_sheet, "Q5", saved_state.get("Q5", "(-----)"))
+                    update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3", f"{clean_symbol} is Active"))
+                except Exception:
+                    pass
+            else:
+                try:
+                    safe_update_cell(dashboard_sheet, "D5", "(-----)")
+                    safe_update_cell(dashboard_sheet, "H5", "(-----)")
+                    safe_update_cell(dashboard_sheet, "U5", "(-----)")
+                    safe_update_cell(dashboard_sheet, "Q5", "(-----)")
+                    update_k3_with_color(spreadsheet, dashboard_sheet, "K3", f"{clean_symbol} is Loading...")
+                except Exception:
+                    pass
             
-            print("⏳ Symbol switched! Waiting 8 seconds for Google Sheets formulas & values to fully settle...")
-            time.sleep(8.0)
+            print("⏳ Symbol switched! Settling values...")
+            time.sleep(2.0)
 
         if not cached_selected_symbol:
             cached_selected_symbol = clean_symbol
@@ -771,8 +792,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        # 8 second stabilization window check
-        if time.time() - last_switch_time > 8.0:
+        if time.time() - last_switch_time > 2.0:
             execute_python_scenario_tracker()
         else:
             print("⏳ Skipping scenario tracking during stabilization window...")
@@ -826,7 +846,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot...")
+    print("🚀 Starting Exact Logic Python Bot with Background Replay Store...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -861,7 +881,7 @@ def run_bot_lock_loop():
                 while not reconnected:
                     try:
                         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                        data = smart_api.generateSession(CLIENT_ID, PIN, tokp if 'tokp' in locals() else totp)
                         if data and data.get('status'):
                             print("✅ Session Re-Generated Automatically!")
                             reconnected = True
