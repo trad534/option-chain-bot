@@ -47,7 +47,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Persistent Multi-Symbol Memory Engine is active!"
+    return "Angel One Option Chain Bot & Detailed Logging Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -87,10 +87,10 @@ except Exception as e:
     exit()
 
 # ==========================================
-# PERMANENT MULTI-SYMBOL ISOLATED MEMORY STORE
+# MULTI-SYMBOL MEMORY & LOGGING ARCHITECTURE
 # ==========================================
-symbol_memories = {}
 all_symbols_global_history = {}
+symbol_memories = {}
 global_run_date = ""
 last_written_values = {}
 active_current_symbol = "RELIANCE"
@@ -129,6 +129,9 @@ def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_
         "pe_state": pe_state,
         "scenario": scenario_text
     })
+    
+    # Ye raha log jo batayega ki kis symbol ka history save ho raha hai
+    print(f"📝 [LOG TRACKER] Saved scenario for {clean_sym} | Total tracked symbols: {len(all_symbols_global_history)} | Latest Scenario: {scenario_text}")
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -617,7 +620,7 @@ def fetch_and_update_option_chain(smart_api):
         active_current_symbol = clean_symbol
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Persistent Memory Retained)")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Memory Retained)")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -815,7 +818,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with Persistent Multi-Symbol Memory...")
+    print("🚀 Starting Bot with Logging & Memory Architecture...")
     reset_daily_memory()
     try:
         smart_api = SmartConnect(api_key=API_KEY)
