@@ -333,7 +333,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -548,7 +548,7 @@ def execute_python_scenario_tracker():
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         # -----------------------------
-        # INTEGRATED 2ND SCRIPT LOGGING (Non-intrusive)
+        # ACCURATE TIMELINE LOGGING (Integrated inside Tracker)
         # -----------------------------
         current_time_str = now_dt.strftime("%H:%M")
         log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str)
@@ -589,16 +589,17 @@ def fetch_and_update_option_chain(smart_api):
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol}")
-            # NOTE: scenario_history ko clear nahi kar rahe hain taaki pichli history bani rahe!
             script_memory.clear() 
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
-            # Agar us symbol ki pehle ki history hai, toh terminal par print kar do
+            # Replay past history immediately upon symbol switch
             if clean_symbol in scenario_history:
                 print(f"📜 Replaying past history for {clean_symbol}:")
                 print(replay_symbol_scenario(clean_symbol))
+            else:
+                print(f"📜 No past history found yet for {clean_symbol}.")
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
@@ -790,6 +791,9 @@ scenario_history = {}
 def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
     if symbol not in scenario_history:
         scenario_history[symbol] = []
+    # Avoid duplicate consecutive identical logs for the same minute to keep logs clean
+    if scenario_history[symbol] and scenario_history[symbol][-1]['scenario'] == scenario_text:
+        return
     scenario_history[symbol].append({
         "time": current_time_str,
         "ce_state": ce_state,
@@ -801,10 +805,10 @@ def replay_symbol_scenario(symbol):
     timeline = scenario_history.get(symbol, [])
     if not timeline:
         return f"No history found for {symbol}"
-    output = [f"{symbol} Scenario Timeline:"]
+    output = [f"📊 {symbol} Detailed Scenario Timeline (9:15 AM Onwards):"]
     for entry in timeline:
         output.append(
-            f"{entry['time']} → CE={entry['ce_state']}, PE={entry['pe_state']} → {entry['scenario']}"
+            f"[{entry['time']}] → CE State: {entry['ce_state']} | PE State: {entry['pe_state']} | Scenario: {entry['scenario']}"
         )
     return "\n".join(output)
 
