@@ -352,7 +352,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -469,21 +469,14 @@ def execute_python_scenario_tracker():
                 is_shifting
             )
 
-            # 🛠 CORRECTED TIMESTAMP RETENTION LOGIC:
-            existing_saved_time = get_memory("TIME_" + cache_key)
-            
-            if is_trigger_status:
-                if display_status != last_recorded_status:
-                    if not existing_saved_time:
-                        display_time = current_time_str
-                        set_memory("TIME_" + cache_key, display_time)
-                    else:
-                        display_time = existing_saved_time
-                    set_memory("LAST_STATUS_" + cache_key, display_status)
-                else:
-                    display_time = existing_saved_time if existing_saved_time else current_time_str
-            else:
-                display_time = existing_saved_time if existing_saved_time else current_time_str
+            # 🛠 RESTORED 1000% PERFECT 1ST SCRIPT TIMESTAMP LOGIC:
+            if is_trigger_status and display_status != last_recorded_status:
+                display_time = current_time_str
+                set_memory("TIME_" + cache_key, display_time)
+                set_memory("LAST_STATUS_" + cache_key, display_status)
+            elif not display_time:
+                display_time = current_time_str
+                set_memory("TIME_" + cache_key, display_time)
                 set_memory("LAST_STATUS_" + cache_key, display_status)
 
             s_val = int(strike) if strike.is_integer() else strike
@@ -620,7 +613,6 @@ def fetch_and_update_option_chain(smart_api):
             current_active_namespace = clean_symbol
 
             # 🚀 BACKGROUND REPLAY MEMORY RETRIEVAL:
-            # Agar is symbol ka state pehle se background memory mein stored hai, toh turant wahi purana exact data aur timestamp restore kar do!
             if clean_symbol in background_symbol_states:
                 saved_state = background_symbol_states[clean_symbol]
                 print(f"📂 Restoring exact background replay state for {clean_symbol} from memory...")
