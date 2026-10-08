@@ -558,11 +558,12 @@ def execute_python_scenario_tracker():
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
+
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP (Updated Memory Handling)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, scenario_history
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -587,12 +588,17 @@ def fetch_and_update_option_chain(smart_api):
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
-            script_memory.clear()
+            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol}")
+            # NOTE: scenario_history ko clear nahi kar rahe hain taaki pichli history bani rahe!
+            script_memory.clear() 
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
+            # Agar us symbol ki pehle ki history hai, toh terminal par print kar do
+            if clean_symbol in scenario_history:
+                print(f"📜 Replaying past history for {clean_symbol}:")
+                print(replay_symbol_scenario(clean_symbol))
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
@@ -650,7 +656,8 @@ def fetch_and_update_option_chain(smart_api):
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         if all_master_strikes:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-            strikes = all_master_strikes[max(0, closest_idx - 20):min(len(all_master_strikes), closest_idx + 21)]
+            # 10 strikes up and 10 strikes down (-10 to +11)
+            strikes = all_master_strikes[max(0, closest_idx - 10):min(len(all_master_strikes), closest_idx + 11)]
         else:
             strikes = []
 
@@ -735,6 +742,7 @@ def fetch_and_update_option_chain(smart_api):
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
+            
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
