@@ -239,7 +239,7 @@ def execute_python_scenario_tracker():
             symbol_memories.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
-        if not range_values: return
+        if not range_values: return "stable strong", "stable strong", f"{active_current_symbol} is Neutral"
 
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
@@ -537,11 +537,11 @@ def execute_python_scenario_tracker():
 
         return checkCe, checkPe, k3Text
     except Exception as e:
-        return "stable strong", "stable strong", f"Neutral"
+        return "stable strong", "stable strong", f"{active_current_symbol} is Neutral"
 
 
 # ==========================================
-# BACKGROUND 265-SYMBOL TRACKER ENGINE (USING ORIGINAL ENGINE)
+# BACKGROUND 265-SYMBOL TRACKER ENGINE
 # ==========================================
 def background_all_symbols_tracker_loop(smart_api):
     global options_cache, active_current_symbol
@@ -563,10 +563,10 @@ def background_all_symbols_tracker_loop(smart_api):
                 if clean_sym in ["TMCV", "TATA", "TATAMOTORS"]:
                     clean_sym = "TATAMOTORS"
 
-                # Set namespace for this symbol
+                # Set isolated namespace for each symbol
                 active_current_symbol = clean_sym
 
-                # Call the 100% original untouched scenario tracker
+                # Call the untouched master scenario engine
                 ce_state, pe_state, scenario_text = execute_python_scenario_tracker()
                 
                 log_symbol_scenario(clean_sym, ce_state, pe_state, scenario_text, current_time_str)
@@ -750,7 +750,8 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        execute_python_scenario_tracker()
+        ce_st, pe_st, sc_text = execute_python_scenario_tracker()
+        safe_update_cell(dashboard_sheet, "K3", sc_text)
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
