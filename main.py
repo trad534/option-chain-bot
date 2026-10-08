@@ -15,6 +15,22 @@ from flask import Flask
 import threading
 import builtins
 
+RENDER_URL = "https://option-chain-bot.onrender.com"
+
+def self_ping():
+    while True:
+        try:
+            if RENDER_URL:
+                response = requests.get(RENDER_URL)
+                print(f"Self-ping sent successfully: Status {response.status_code}")
+        except Exception as e:
+            print(f"Self-ping error: {e}")
+        time.sleep(180)
+
+ping_thread = threading.Thread(target=self_ping, daemon=True)
+ping_thread.start()
+
+
 # ==========================================
 # FORCE FLUSH LOGS IN RENDER
 # ==========================================
@@ -182,7 +198,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS GAS MATCH)
+# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -312,7 +328,7 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -326,7 +342,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -340,7 +356,7 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE (EXACT GAS MATCH)
+        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -350,11 +366,11 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -375,7 +391,6 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
-        # EXACT MATCHED calculateIndependentCell FUNCTION FROM GOOGLE APPS SCRIPT
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -400,40 +415,34 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            # 🎯 1. REVERSAL CHECK
-            if get_memory("IS_SHIFTED_" + cache_key) == "true":
-                if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
-                    set_memory("IS_SHIFTED_" + cache_key, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
-                    remove_memory("SHIFT_TARGET_" + cache_key)
+            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
+                set_memory("IS_SHIFTED_" + cache_key, "false")
+                set_memory("PREV_STRK_" + cache_key, str(strike))
+                remove_memory("SHIFT_TYPE_" + cache_key)
+                remove_memory("SHIFT_FROM_" + cache_key)
+                remove_memory("SHIFT_TARGET_" + cache_key)
+                is_shifting = False
+                scenario_status = final_status_text
+            else:
+                if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
+                    if strike < prev_strike:
+                        shift_type = "top to bottom"
+                        scenario_status = "wtb"
+                    else:
+                        shift_type = "bottom to top"
+                        scenario_status = "wtt"
+                    set_memory("IS_SHIFTED_" + cache_key, "true")
+                    set_memory("SHIFT_TYPE_" + cache_key, shift_type)
+                    set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
+                    set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
 
-            # 🎯 2. NEW SHIFT TRIGGER CHECK
-            if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
-                if strike < prev_strike:
-                    shift_type = "top to bottom"
-                    scenario_status = "wtb"
-                else:
-                    shift_type = "bottom to top"
-                    scenario_status = "wtt"
-                set_memory("IS_SHIFTED_" + cache_key, "true")
-                set_memory("SHIFT_TYPE_" + cache_key, shift_type)
-                set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
-                set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
-
-            # 🎯 3. EVALUATE PERSISTENT SHIFT LOCK
-            if get_memory("IS_SHIFTED_" + cache_key) == "true":
-                if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
-                    set_memory("IS_SHIFTED_" + cache_key, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
-                    is_shifting = False
-                    scenario_status = final_status_text
-                else:
+                if get_memory("IS_SHIFTED_" + cache_key) == "true":
                     is_shifting = True
                     shift_type = get_memory("SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
-            else:
-                set_memory("PREV_STRK_" + cache_key, str(strike))
-                scenario_status = final_status_text
+                else:
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
@@ -490,7 +499,6 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # Dynamically read active symbol from J4 (Column J, Row 4)
         active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
@@ -500,7 +508,7 @@ def execute_python_scenario_tracker():
             pass
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (GAS MATCH)
+        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST)
         # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -511,6 +519,8 @@ def execute_python_scenario_tracker():
         elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
@@ -524,11 +534,11 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         finalD5 = ""
         finalH5 = ""
@@ -806,12 +816,29 @@ def run_bot_lock_loop():
         try:
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
+            err_msg = str(_e).lower()
             print(f"❌ Loop Error: {_e}")
+            if "session" in err_msg or "token" in err_msg or "unauthorized" in err_msg or "invalid" in err_msg:
+                print("🔄 Session expired detected! Attempting auto-reconnect...")
+                reconnected = False
+                while not reconnected:
+                    try:
+                        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                        data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                        if data and data.get('status'):
+                            print("✅ Session Re-Generated Automatically!")
+                            reconnected = True
+                        else:
+                            print(f"⚠ Auto-Reconnect Failed: {data}. Retrying in 10 seconds...")
+                            time.sleep(10)
+                    except Exception as recon_err:
+                        print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
+                        time.sleep(10)
         time.sleep(1)
 
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-
+    
+    # Run the bot loop
     run_bot_lock_loop()
