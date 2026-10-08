@@ -469,16 +469,21 @@ def execute_python_scenario_tracker():
                 is_shifting
             )
 
-            # 🛠 FIXED BACKGROUND REPLAY TIMESTAMP LOGIC:
-            # Agar purana timestamp pehle se background memory mein stored hai, toh naye symbol par switch hone par woh RESET NAHI HOGA.
-            if is_trigger_status and display_status != last_recorded_status:
-                if not display_time: # Only set if no background time exists for this state trigger
-                    display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
-            elif not display_time:
-                display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
+            # 🛠 CORRECTED TIMESTAMP RETENTION LOGIC:
+            existing_saved_time = get_memory("TIME_" + cache_key)
+            
+            if is_trigger_status:
+                if display_status != last_recorded_status:
+                    if not existing_saved_time:
+                        display_time = current_time_str
+                        set_memory("TIME_" + cache_key, display_time)
+                    else:
+                        display_time = existing_saved_time
+                    set_memory("LAST_STATUS_" + cache_key, display_status)
+                else:
+                    display_time = existing_saved_time if existing_saved_time else current_time_str
+            else:
+                display_time = existing_saved_time if existing_saved_time else current_time_str
                 set_memory("LAST_STATUS_" + cache_key, display_status)
 
             s_val = int(strike) if strike.is_integer() else strike
