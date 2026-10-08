@@ -86,19 +86,30 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
-script_memory = {}
+# ==========================================
+# ISOLATED SYMBOL-WISE MEMORY ARCHITECTURE
+# ==========================================
+symbol_memories = {}
 global_run_date = ""
 last_written_values = {}
+active_current_symbol = "RELIANCE"
 
 def get_memory(key, default=""):
-    return script_memory.get(key, default)
+    global active_current_symbol
+    if active_current_symbol not in symbol_memories:
+        symbol_memories[active_current_symbol] = {}
+    return symbol_memories[active_current_symbol].get(key, default)
 
 def set_memory(key, value):
-    script_memory[key] = str(value)
+    global active_current_symbol
+    if active_current_symbol not in symbol_memories:
+        symbol_memories[active_current_symbol] = {}
+    symbol_memories[active_current_symbol][key] = str(value)
 
 def remove_memory(key):
-    if key in script_memory:
-        del script_memory[key]
+    global active_current_symbol
+    if active_current_symbol in symbol_memories and key in symbol_memories[active_current_symbol]:
+        del symbol_memories[active_current_symbol][key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -200,11 +211,11 @@ def execute_python_scenario_tracker():
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
-            script_memory.clear()
+            symbol_memories.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
-            script_memory.clear()
+            symbol_memories.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -333,7 +344,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -547,9 +558,6 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        # -----------------------------
-        # ACCURATE TIMELINE LOGGING (Integrated inside Tracker)
-        # -----------------------------
         current_time_str = now_dt.strftime("%H:%M")
         log_symbol_scenario(active_symbol_name, checkCe, checkPe, k3Text, current_time_str)
 
@@ -560,10 +568,10 @@ def execute_python_scenario_tracker():
 
 
 # ==========================================
-# FETCH & UPDATE LOOP (Updated Memory Handling)
+# FETCH & UPDATE LOOP (Symbol Independent Memory)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, scenario_history
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, scenario_history, active_current_symbol
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -587,14 +595,12 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
-        if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol}")
-            script_memory.clear() 
+        # Update active current symbol context so memory stays isolated per symbol
+        active_current_symbol = clean_symbol
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Isolated Memory Retained)")
             cached_selected_symbol = clean_symbol
-            # Replay past history immediately upon symbol switch
             if clean_symbol in scenario_history:
                 print(f"📜 Replaying past history for {clean_symbol}:")
                 print(replay_symbol_scenario(clean_symbol))
@@ -657,7 +663,6 @@ def fetch_and_update_option_chain(smart_api):
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         if all_master_strikes:
             closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-            # 10 strikes up and 10 strikes down (-10 to +11)
             strikes = all_master_strikes[max(0, closest_idx - 10):min(len(all_master_strikes), closest_idx + 11)]
         else:
             strikes = []
@@ -791,7 +796,6 @@ scenario_history = {}
 def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
     if symbol not in scenario_history:
         scenario_history[symbol] = []
-    # Avoid duplicate consecutive identical logs for the same minute to keep logs clean
     if scenario_history[symbol] and scenario_history[symbol][-1]['scenario'] == scenario_text:
         return
     scenario_history[symbol].append({
@@ -813,9 +817,10 @@ def replay_symbol_scenario(symbol):
     return "\n".join(output)
 
 def reset_daily_memory():
-    global scenario_history
+    global scenario_history, symbol_memories
     scenario_history = {}
-    print("🔄 Daily reset complete: Scenario history cleared at market open (9:15).")
+    symbol_memories = {}
+    print("🔄 Daily reset complete: All symbol calculation memories cleared at market open (9:15).")
 
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
@@ -825,7 +830,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with 265-Symbol Support...")
+    print("🚀 Starting Exact Logic Python Bot with Isolated 265-Symbol Memory...")
     reset_daily_memory()
     try:
         smart_api = SmartConnect(api_key=API_KEY)
@@ -877,5 +882,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Run the bot loop
     run_bot_lock_loop()
