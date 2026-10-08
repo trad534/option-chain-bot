@@ -93,8 +93,9 @@ last_written_values = {}
 last_switch_time = 0
 current_active_namespace = "DEFAULT"
 
-# Extra Module: 265 Symbol Background Replay Persistent Memory Store
+# Extra Module: 265 Symbol Background Replay & Full Memory Store
 background_symbol_states = {}
+background_memory_stores = {}
 
 def get_memory(key, default=""):
     namespaced_key = f"{current_active_namespace}_{key}"
@@ -209,7 +210,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
 # ==========================================
 def execute_python_scenario_tracker():
-    global global_run_date, background_symbol_states, current_active_namespace
+    global global_run_date, background_symbol_states, background_memory_stores, current_active_namespace
     try:
         now_dt = datetime.now()
         current_kolkata_time = now_dt.strftime("%H:%M:%S")
@@ -218,11 +219,13 @@ def execute_python_scenario_tracker():
         if global_run_date != today_str:
             script_memory.clear()
             background_symbol_states.clear()
+            background_memory_stores.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
             background_symbol_states.clear()
+            background_memory_stores.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -352,7 +355,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -376,11 +379,11 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -469,7 +472,7 @@ def execute_python_scenario_tracker():
                 is_shifting
             )
 
-            # 🛠 RESTORED 1000% PERFECT 1ST SCRIPT TIMESTAMP LOGIC:
+            # 🛠 1000% PERFECT 1ST SCRIPT TIMESTAMP LOGIC:
             if is_trigger_status and display_status != last_recorded_status:
                 display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
@@ -558,10 +561,11 @@ def execute_python_scenario_tracker():
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
-        # Save current evaluated state into background persistent dict for this namespace
+        # Save current evaluated state and full script memory into background persistent stores for this namespace
         background_symbol_states[current_active_namespace] = {
             "D5": finalD5, "H5": finalH5, "U5": finalU5, "Q5": finalQ5, "K3": k3Text
         }
+        background_memory_stores[current_active_namespace] = script_memory.copy()
 
         safe_update_cell(dashboard_sheet, "D5", finalD5)
         safe_update_cell(dashboard_sheet, "U5", finalU5)
@@ -579,7 +583,7 @@ def execute_python_scenario_tracker():
 # FETCH & UPDATE LOOP WITH BACKGROUND REPLAY
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time, current_active_namespace, background_symbol_states
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, last_switch_time, current_active_namespace, background_symbol_states, background_memory_stores, script_memory
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -587,6 +591,8 @@ def fetch_and_update_option_chain(smart_api):
         if baseline_date != current_date_str:
             morning_oi_dict = {}
             background_symbol_states.clear()
+            background_memory_stores.clear()
+            script_memory.clear()
             baseline_date = current_date_str
 
         if not options_cache:
@@ -606,11 +612,23 @@ def fetch_and_update_option_chain(smart_api):
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Symbol Switched From {cached_selected_symbol} To {clean_symbol}")
+            
+            # Save current symbol's complete internal memory before switching
+            if cached_selected_symbol:
+                background_memory_stores[cached_selected_symbol] = script_memory.copy()
+
             cached_selected_symbol = clean_symbol
             last_switch_time = time.time()
             
             # Namespace update
             current_active_namespace = clean_symbol
+
+            # Restore target symbol's complete internal memory if it exists
+            if clean_symbol in background_memory_stores:
+                script_memory = background_memory_stores[clean_symbol].copy()
+                print(f"📂 Restored full internal scenario memory for {clean_symbol}")
+            else:
+                script_memory.clear()
 
             # 🚀 BACKGROUND REPLAY MEMORY RETRIEVAL:
             if clean_symbol in background_symbol_states:
@@ -843,7 +861,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with Background Replay Store...")
+    print("🚀 Starting Exact Logic Python Bot with Full Memory Background Replay...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
