@@ -47,7 +47,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Multi-Symbol Background Memory Engine is active!"
+    return "Angel One Option Chain Bot & Persistent Multi-Symbol Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -87,10 +87,10 @@ except Exception as e:
     exit()
 
 # ==========================================
-# MULTI-SYMBOL BACKGROUND HISTORY & ISOLATED MEMORY
+# PERMANENT MULTI-SYMBOL ISOLATED MEMORY STORE
 # ==========================================
-all_symbols_global_history = {}
 symbol_memories = {}
+all_symbols_global_history = {}
 global_run_date = ""
 last_written_values = {}
 active_current_symbol = "RELIANCE"
@@ -220,7 +220,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (UNTOUCHED AS REQUESTED)
+# MASTER SCENARIO ENGINE (UNTOUCHED)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -617,7 +617,7 @@ def fetch_and_update_option_chain(smart_api):
         active_current_symbol = clean_symbol
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Isolated Memory Retained)")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Persistent Memory Retained)")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -805,7 +805,7 @@ def reset_daily_memory():
     global all_symbols_global_history, symbol_memories
     all_symbols_global_history = {}
     symbol_memories = {}
-    print("🔄 Daily reset complete: All calculation memories cleared at market open (9:15).")
+    print("🔄 Daily reset complete: All symbol calculation memories cleared at market open (9:15).")
 
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
@@ -815,7 +815,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with Multi-Symbol Isolated Memory...")
+    print("🚀 Starting Exact Logic Python Bot with Persistent Multi-Symbol Memory...")
     reset_daily_memory()
     try:
         smart_api = SmartConnect(api_key=API_KEY)
