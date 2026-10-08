@@ -365,7 +365,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -535,7 +535,80 @@ def execute_python_scenario_tracker():
 
         return checkCe, checkPe, k3Text
     except Exception as e:
-        return "stable strong", "stable strong", f"{symbol} is Neutral"
+        return "stable strong", "stable strong", f"{clean_sym} is Neutral"
+
+
+# ==========================================
+# BACKGROUND SYMBOL SCENARIO COMPUTATION HELPER
+# ==========================================
+def compute_symbol_scenario_in_memory(clean_sym, current_expiry_options, strikes, quotes_dict, spot_price, now_dt):
+    try:
+        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
+        if filtered_opts.empty:
+            return "stable strong", "stable strong", f"{clean_sym} is Neutral"
+
+        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+
+        for st in strikes:
+            ce_sub = filtered_opts[(filtered_opts['strike'] == st) & (filtered_opts['symbol'].astype(str).str.upper().str.endswith('CE'))]
+            pe_sub = filtered_opts[(filtered_opts['strike'] == st) & (filtered_opts['symbol'].astype(str).str.upper().str.endswith('PE'))]
+
+            ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+
+            ce_q = quotes_dict.get(ce_token, {'volume': 0, 'oi': 0})
+            pe_q = quotes_dict.get(pe_token, {'volume': 0, 'oi': 0})
+
+            ceOiArray.append({'strike': st, 'val': float(ce_q['oi'])})
+            ceVolArray.append({'strike': st, 'val': float(ce_q['volume'])})
+            peVolArray.append({'strike': st, 'val': float(pe_q['volume'])})
+            peOiArray.append({'strike': st, 'val': float(pe_q['oi'])})
+
+        def extract_top(data_arr):
+            if not data_arr:
+                return {'highest': {'strike': 0, 'val': 0}, 'second': {'strike': 0, 'val': 0}, 'pct': 0}
+            filtered = [item for item in data_arr if item['val'] > 0]
+            if not filtered:
+                return {'highest': {'strike': 0, 'val': 0}, 'second': {'strike': 0, 'val': 0}, 'pct': 0}
+            filtered.sort(key=lambda x: x['val'], reverse=True)
+            highest = filtered[0]
+            second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0}
+            pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
+            return {'highest': highest, 'second': second, 'pct': pct}
+
+        ceOiTop = extract_top(ceOiArray)
+        peOiTop = extract_top(peOiArray)
+
+        ce_state = "stable strong"
+        pe_state = "stable strong"
+
+        if ceOiTop['pct'] >= 75.0 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']:
+            ce_state = "wtt"
+        elif ceOiTop['pct'] >= 75.0 and ceOiTop['second']['strike'] < ceOiTop['highest']['strike']:
+            ce_state = "wtb"
+
+        if peOiTop['pct'] >= 75.0 and peOiTop['second']['strike'] < peOiTop['highest']['strike']:
+            pe_state = "wtt"
+        elif peOiTop['pct'] >= 75.0 and peOiTop['second']['strike'] > peOiTop['highest']['strike']:
+            pe_state = "wtb"
+
+        scenario_text = f"{clean_sym} is Neutral"
+        if ce_state == "wtt" and pe_state == "wtt":
+            scenario_text = f"{clean_sym} is Bullrun"
+        elif ce_state == "wtb" and pe_state == "wtb":
+            scenario_text = f"{clean_sym} is bloodbath"
+        elif ce_state == "wtt" and pe_state == "stable strong":
+            scenario_text = f"{clean_sym} is slightly bullish"
+        elif ce_state == "stable strong" and pe_state == "wtt":
+            scenario_text = f"{clean_sym} is slightly bullish"
+        elif ce_state == "wtb" and pe_state == "stable strong":
+            scenario_text = f"{clean_sym} is slightly Bearish"
+        elif ce_state == "stable strong" and pe_state == "wtb":
+            scenario_text = f"{clean_sym} is slightly Bearish"
+
+        return ce_state, pe_state, scenario_text
+    except Exception:
+        return "stable strong", "stable strong", f"{clean_sym} is stable strong"
 
 
 # ==========================================
@@ -619,7 +692,6 @@ def background_all_symbols_tracker_loop(smart_api):
                         except Exception:
                             pass
 
-                # Build temporary rows to simulate dashboard grid evaluation for this symbol
                 quotes_dict = {}
                 for item in all_fetched_quotes:
                     tok = str(item.get('symbolToken', item.get('symboltoken', item.get('token', '')))).strip()
@@ -628,10 +700,8 @@ def background_all_symbols_tracker_loop(smart_api):
                     oi = float(item.get('opnInterest', item.get('oi', 0)))
                     quotes_dict[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi}
 
-                # Run robust background scenario analysis with exact timestamp memory preservation
                 ce_state, pe_state, scenario_text = compute_symbol_scenario_in_memory(clean_sym, current_expiry_options, strikes, quotes_dict, spot_price, now_dt)
                 
-                # Log the actual evaluated states with exact timestamps
                 log_symbol_scenario(clean_sym, ce_state, pe_state, scenario_text, current_time_str)
                 
                 time.sleep(0.3)
@@ -924,7 +994,7 @@ def run_bot_lock_loop():
         time.sleep(1)
 
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread =threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
     run_bot_lock_loop()
