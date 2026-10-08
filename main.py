@@ -1,5 +1,5 @@
 # -----------------------------
-# Part 1: Imports & Setup (Your 1st Script)
+# Part 1: Imports & Setup
 # -----------------------------
 import time
 import os
@@ -47,7 +47,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & Multi-Symbol Background Memory Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -87,8 +87,9 @@ except Exception as e:
     exit()
 
 # ==========================================
-# ISOLATED SYMBOL-WISE MEMORY ARCHITECTURE
+# MULTI-SYMBOL BACKGROUND HISTORY & ISOLATED MEMORY
 # ==========================================
+all_symbols_global_history = {}
 symbol_memories = {}
 global_run_date = ""
 last_written_values = {}
@@ -110,6 +111,24 @@ def remove_memory(key):
     global active_current_symbol
     if active_current_symbol in symbol_memories and key in symbol_memories[active_current_symbol]:
         del symbol_memories[active_current_symbol][key]
+
+def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
+    if not symbol:
+        return
+    clean_sym = symbol.replace("-EQ", "").replace(".NS", "").strip()
+    if clean_sym not in all_symbols_global_history:
+        all_symbols_global_history[clean_sym] = []
+    
+    history_list = all_symbols_global_history[clean_sym]
+    if history_list and history_list[-1]['scenario'] == scenario_text:
+        return
+
+    history_list.append({
+        "time": current_time_str,
+        "ce_state": ce_state,
+        "pe_state": pe_state,
+        "scenario": scenario_text
+    })
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -201,7 +220,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (YOUR 1ST SCRIPT - UNTOUCHED)
+# MASTER SCENARIO ENGINE (UNTOUCHED AS REQUESTED)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -568,10 +587,10 @@ def execute_python_scenario_tracker():
 
 
 # ==========================================
-# FETCH & UPDATE LOOP (Symbol Independent Memory)
+# FETCH & UPDATE LOOP
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, scenario_history, active_current_symbol
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, active_current_symbol
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -595,17 +614,11 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
-        # Update active current symbol context so memory stays isolated per symbol
         active_current_symbol = clean_symbol
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol} (Isolated Memory Retained)")
             cached_selected_symbol = clean_symbol
-            if clean_symbol in scenario_history:
-                print(f"📜 Replaying past history for {clean_symbol}:")
-                print(replay_symbol_scenario(clean_symbol))
-            else:
-                print(f"📜 No past history found yet for {clean_symbol}.")
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
@@ -788,39 +801,11 @@ def initialize_scrip_master(smart_api):
     except Exception as e:
         print(f"⚠ Scrip Master Error: {e}")
 
-# ==========================================
-# 2ND SCRIPT MODULES (265-Symbol History & Memory)
-# ==========================================
-scenario_history = {}
-
-def log_symbol_scenario(symbol, ce_state, pe_state, scenario_text, current_time_str):
-    if symbol not in scenario_history:
-        scenario_history[symbol] = []
-    if scenario_history[symbol] and scenario_history[symbol][-1]['scenario'] == scenario_text:
-        return
-    scenario_history[symbol].append({
-        "time": current_time_str,
-        "ce_state": ce_state,
-        "pe_state": pe_state,
-        "scenario": scenario_text
-    })
-
-def replay_symbol_scenario(symbol):
-    timeline = scenario_history.get(symbol, [])
-    if not timeline:
-        return f"No history found for {symbol}"
-    output = [f"📊 {symbol} Detailed Scenario Timeline (9:15 AM Onwards):"]
-    for entry in timeline:
-        output.append(
-            f"[{entry['time']}] → CE State: {entry['ce_state']} | PE State: {entry['pe_state']} | Scenario: {entry['scenario']}"
-        )
-    return "\n".join(output)
-
 def reset_daily_memory():
-    global scenario_history, symbol_memories
-    scenario_history = {}
+    global all_symbols_global_history, symbol_memories
+    all_symbols_global_history = {}
     symbol_memories = {}
-    print("🔄 Daily reset complete: All symbol calculation memories cleared at market open (9:15).")
+    print("🔄 Daily reset complete: All calculation memories cleared at market open (9:15).")
 
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
@@ -830,7 +815,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot with Isolated 265-Symbol Memory...")
+    print("🚀 Starting Exact Logic Python Bot with Multi-Symbol Isolated Memory...")
     reset_daily_memory()
     try:
         smart_api = SmartConnect(api_key=API_KEY)
