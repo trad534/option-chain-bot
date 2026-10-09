@@ -370,7 +370,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -796,14 +796,23 @@ def run_bot_lock_loop():
         print(f"❌ SmartConnect Init Error: {e}")
         return
         
+    last_session_date = None
+
     while True:
         try:
-            print("🔄 Attempting to generate Angel One session...")
+            current_dt = datetime.now()
+            current_date_str = current_dt.strftime('%Y-%m-%d')
+            
+            # Auto reconnect / fresh session at 9:00 AM or new day
+            if last_session_date != current_date_str or current_dt.strftime('%H:%M') == "09:00":
+                print("🔄 Generating Scheduled / Fresh Angel One session...")
+            
             totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
             data = smart_api.generateSession(CLIENT_ID, PIN, totp)
             if data and data.get('status'):
                 print("✅ Session Generated Successfully!")
                 initialize_scrip_master(smart_api)
+                last_session_date = current_date_str
                 break
             else:
                 print(f"⚠ Session Failed: {data}")
@@ -814,6 +823,16 @@ def run_bot_lock_loop():
 
     while True:
         try:
+            # Daily 9:00 AM forced session renewal check
+            now_check = datetime.now()
+            if now_check.strftime('%H:%M') == "09:00":
+                print("⏰ 9:00 AM Reconnect Triggered...")
+                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                data = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                if data and data.get('status'):
+                    print("✅ 9:00 AM Session Refreshed Successfully!")
+                time.sleep(60) # Wait a minute to avoid loop spam
+
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
             err_msg = str(_e).lower()
