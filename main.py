@@ -91,31 +91,6 @@ script_memory = {}
 global_run_date = ""
 last_written_values = {}
 
-# ==========================================
-# 📊 HYBRID TIMELINE & 9:15 AM HISTORY STORAGE
-# ==========================================
-symbol_timeline_history = {}
-
-def record_symbol_timeline(sym_name, ce_state, pe_state, scenario_text):
-    global symbol_timeline_history
-    now_time = datetime.now().strftime("%I:%M %p").lower()
-    
-    if sym_name not in symbol_timeline_history:
-        symbol_timeline_history[sym_name] = []
-        
-    history_list = symbol_timeline_history[sym_name]
-    
-    # Record only when scenario changes to maintain clean timeline without spam
-    if not history_list or history_list[-1]['scenario'] != scenario_text:
-        entry = {
-            "time": now_time,
-            "ce": ce_state,
-            "pe": pe_state,
-            "scenario": scenario_text
-        }
-        history_list.append(entry)
-        print(f"📊 [TIMELINE SAVED] {sym_name} @ {now_time} ➔ {scenario_text}")
-
 def get_memory(key, default=""):
     return script_memory.get(key, default)
 
@@ -395,7 +370,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -565,9 +540,6 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
-        # 📊 Record to Symbol Timeline Memory
-        record_symbol_timeline(active_symbol_name, checkCe, checkPe, k3Text)
-
         finalD5 = ""
         finalH5 = ""
         finalU5 = ""
@@ -628,12 +600,6 @@ def fetch_and_update_option_chain(smart_api):
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
-            
-            # Print complete timeline of switched symbol if available in background memory
-            if clean_symbol in symbol_timeline_history and symbol_timeline_history[clean_symbol]:
-                print(f"📜 [TIMELINE HISTORY FOR {clean_symbol} FROM 9:15 AM]:")
-                for entry in symbol_timeline_history[clean_symbol]:
-                    print(f"   🕒 {entry['time']} | CE: {entry['ce']} | PE: {entry['pe']} | Scenario: {entry['scenario']}")
 
         spot_token, spot_exchange = "", "NSE"
         if clean_symbol in eq_cache:
