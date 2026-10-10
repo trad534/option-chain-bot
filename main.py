@@ -892,6 +892,7 @@ def multi_symbol_tracker(smart_api):
     if user_symbol:
         fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
         time.sleep(1.0)
+        execute_python_scenario_tracker(forced_symbol=user_symbol, update_dashboard=True)
 
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
