@@ -80,7 +80,9 @@ script_memory = {}
 global_run_date = ""
 last_written_values = {}
 
-# ========== CSV LOGGING ADDITIONS ==========
+# ==========================================
+# MULTI-SYMBOL CSV HISTORY
+# ==========================================
 CSV_HISTORY_PATH = os.path.join(os.getcwd(), "src", "scenario_history_all_symbols.csv")
 LAST_SCENARIO_BY_SYMBOL = {}
 CSV_LOCK = Lock()
@@ -111,6 +113,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
 
         state_key = f"{symbol_name}|{ce_state}|{pe_state}"
         prev_state = LAST_SCENARIO_BY_SYMBOL.get(symbol_name)
+
         if prev_state == state_key:
             return
 
@@ -130,20 +133,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     "scenario_tracker"
                 ])
     except Exception as e:
-        print(f"❌ CSV Log Error: {e}")
-
-# ========== MULTI-SYMBOL LOADER ==========
-def load_symbols_list():
-    symbol_file = os.path.join(os.getcwd(), "src", "symbols_265.txt")
-    try:
-        if os.path.exists(symbol_file):
-            with open(symbol_file, "r", encoding="utf-8") as f:
-                items = [line.strip().upper() for line in f if line.strip()]
-                if items:
-                    return items
-    except Exception as e:
-        print(f"⚠ Symbol file load error: {e}")
-    return ["NIFTY", "BANKNIFTY"]
+        print(f"❠ CSV Log Error: {e}")
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -600,7 +590,6 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        # ========== LOG CSV FOR ACTIVE SYMBOL ==========
         current_time = datetime.now().strftime("%H:%M:%S")
         if "09:15:00" <= current_time <= "15:30:00":
             log_scenario_to_csv(active_symbol_name, checkCe, checkPe, k3Text, 0, 0)
@@ -609,6 +598,21 @@ def execute_python_scenario_tracker():
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
+
+def load_symbols_list():
+    symbol_file = os.path.join(os.getcwd(), "src", "symbols_265.txt")
+    try:
+        if os.path.exists(symbol_file):
+            with open(symbol_file, "r", encoding="utf-8") as f:
+                items = [line.strip().upper() for line in f if line.strip()]
+                if items:
+                    print(f"✅ Loaded {len(items)} symbols from {symbol_file}")
+                    return items
+    except Exception as e:
+        print(f"⚠ Symbol file read error: {e}")
+
+    print("⚠ Using fallback symbols list")
+    return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
@@ -633,14 +637,13 @@ def fetch_and_update_option_chain(smart_api):
             pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
-        if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
+        if clean_symbol in ["TATAMOTORS", "TATA"]:
+            clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
             script_memory.clear()
 
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -785,22 +788,6 @@ def fetch_and_update_option_chain(smart_api):
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
-# ========== MULTI-SYMBOL LOOP ==========
-def multi_symbol_tracker(smart_api):
-    symbols = load_symbols_list()
-    for symbol in symbols:
-        symbol = str(symbol).strip().upper()
-        if not symbol:
-            continue
-        try:
-            # Switch to symbol and fetch data
-            dashboard_sheet.update_acell("J4", symbol)
-            time.sleep(0.5)
-            fetch_and_update_option_chain(smart_api)
-            time.sleep(1.2)
-        except Exception as e:
-            print(f"⚠ Multi Symbol Error ({symbol}): {e}")
-
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
@@ -846,6 +833,33 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
+def multi_symbol_tracker(smart_api):
+    symbols = load_symbols_list()
+    print("Loaded symbols count:", len(symbols))
+    print("Sample:", symbols[:10])
+
+    for symbol in symbols:
+        symbol = str(symbol).strip().upper()
+        if not symbol:
+            continue
+        try:
+            dashboard_sheet.update_acell("J4", symbol)
+            time.sleep(0.6)
+            fetch_and_update_option_chain(smart_api)
+            time.sleep(1.2)
+
+            ce_state = str(dashboard_sheet.cell(5, 4).value or "").strip()
+            pe_state = str(dashboard_sheet.cell(5, 21).value or "").strip()
+            k3_text = str(dashboard_sheet.cell(3, 11).value or "").strip()
+
+            if ce_state and pe_state:
+                current_time = datetime.now().strftime("%H:%M:%S")
+                if "09:15:00" <= current_time <= "15:30:00":
+                    log_scenario_to_csv(symbol, ce_state, pe_state, k3_text, 0, 0)
+                    print(f"LOGGED -> {symbol} | {ce_state} | {pe_state}")
+        except Exception as e:
+            print(f"⚠ Multi Symbol Error ({symbol}): {e}")
+
 def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
     try:
@@ -853,7 +867,7 @@ def run_bot_lock_loop():
     except Exception as e:
         print(f"❌ SmartConnect Init Error: {e}")
         return
-        
+    
     last_session_date = None
 
     while True:
@@ -889,9 +903,7 @@ def run_bot_lock_loop():
                     print("✅ 9:00 AM Session Refreshed Successfully!")
                 time.sleep(60)
 
-            # ========== MULTI-SYMBOL TRACKING ==========
             multi_symbol_tracker(smart_api)
-
         except Exception as _e:
             err_msg = str(_e).lower()
             print(f"❌ Loop Error: {_e}")
@@ -911,10 +923,10 @@ def run_bot_lock_loop():
                     except Exception as recon_err:
                         print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
                         time.sleep(10)
+
         time.sleep(1)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    
     run_bot_lock_loop()
