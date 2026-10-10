@@ -80,9 +80,6 @@ script_memory = {}
 global_run_date = ""
 last_written_values = {}
 
-# ==========================================
-# MULTI-SYMBOL CSV HISTORY LOGGING
-# ==========================================
 CSV_HISTORY_PATH = os.path.join(os.getcwd(), "scenario_history_all_symbols.csv")
 LAST_SCENARIO_BY_SYMBOL = {}
 CSV_LOCK = Lock()
@@ -234,9 +231,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)
     }
 
-# ==========================================
-# MASTER SCENARIO ENGINE (EXACT LOGIC - UNTOUCHED)
-# ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
     try:
@@ -379,7 +373,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -602,9 +596,6 @@ def execute_python_scenario_tracker():
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
-# ==========================================
-# MULTI-SYMBOL LIST LOADER
-# ==========================================
 def load_symbols_list():
     symbol_file = "symbols_265.txt"
     try:
@@ -809,8 +800,6 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             except Exception:
                 pass
 
-        # Handle Silent vs Live Dashboard execution
-        global dashboard_sheet
         original_sheet = dashboard_sheet
         if not update_dashboard:
             dashboard_sheet = SheetProxy(original_sheet, clean_symbol)
@@ -869,9 +858,6 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
-# ==========================================
-# SILENT BACKGROUND TRACKER (USER J4 UNTOUCHED)
-# ==========================================
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
     
@@ -883,12 +869,10 @@ def multi_symbol_tracker(smart_api):
     except Exception:
         pass
 
-    # 1. Process User Selected Symbol on Dashboard Sheet live
     if user_symbol:
         fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
         time.sleep(1.0)
 
-    # 2. Process All 265 Symbols Silently in Background (No Sheet Overwrite, CSV Logged)
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
         if not symbol or symbol == user_symbol:
