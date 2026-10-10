@@ -128,6 +128,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
+        print(f"📝 CSV LOGGED -> [{symbol_name}] | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -231,7 +232,10 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)
     }
 
-def execute_python_scenario_tracker():
+# ==========================================
+# MASTER SCENARIO ENGINE (EXACT LOGIC - UNTOUCHED)
+# ==========================================
+def execute_python_scenario_tracker(forced_symbol=None):
     global global_run_date
     try:
         now_dt = datetime.now()
@@ -529,13 +533,14 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        active_symbol_name = "Nifty"
-        try:
-            j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-            if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-        except Exception:
-            pass
+        active_symbol_name = forced_symbol if forced_symbol else "Nifty"
+        if not forced_symbol:
+            try:
+                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
+                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
+                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+            except Exception:
+                pass
 
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -805,7 +810,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             dashboard_sheet = SheetProxy(original_sheet, clean_symbol)
 
         try:
-            execute_python_scenario_tracker()
+            execute_python_scenario_tracker(forced_symbol=clean_symbol)
         finally:
             if not update_dashboard:
                 dashboard_sheet = original_sheet
