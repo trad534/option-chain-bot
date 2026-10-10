@@ -1,6 +1,7 @@
 import time
 import os
 import json
+import csv
 import requests
 import pandas as pd
 import numpy as np
@@ -14,6 +15,7 @@ from SmartApi import SmartConnect
 from flask import Flask
 import threading
 import builtins
+from threading import Lock
 
 RENDER_URL = "https://option-chain-bot.onrender.com"
 
@@ -30,17 +32,10 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
-
-# ==========================================
-# FORCE FLUSH LOGS IN RENDER
-# ==========================================
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
-# ==========================================
-# FLASK WEB SERVER FOR RENDER PORT
-# ==========================================
 app = Flask(__name__)
 
 @app.route('/')
@@ -51,9 +46,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ==========================================
-# CONFIGURATION & GOOGLE SHEETS
-# ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
@@ -84,12 +76,74 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
-# ==========================================
-# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
-# ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
+
+# ========== CSV LOGGING ADDITIONS ==========
+CSV_HISTORY_PATH = os.path.join(os.getcwd(), "src", "scenario_history_all_symbols.csv")
+LAST_SCENARIO_BY_SYMBOL = {}
+CSV_LOCK = Lock()
+
+def ensure_csv_headers():
+    os.makedirs(os.path.dirname(CSV_HISTORY_PATH), exist_ok=True)
+    if not os.path.exists(CSV_HISTORY_PATH):
+        with open(CSV_HISTORY_PATH, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "timestamp",
+                "symbol",
+                "ce_state",
+                "pe_state",
+                "k3_text",
+                "ce_strike",
+                "pe_strike",
+                "source"
+            ])
+
+def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, pe_strike=0):
+    try:
+        ensure_csv_headers()
+        now_dt = datetime.now()
+        current_time = now_dt.strftime("%H:%M:%S")
+        if not ("09:15:00" <= current_time <= "15:30:00"):
+            return
+
+        state_key = f"{symbol_name}|{ce_state}|{pe_state}"
+        prev_state = LAST_SCENARIO_BY_SYMBOL.get(symbol_name)
+        if prev_state == state_key:
+            return
+
+        LAST_SCENARIO_BY_SYMBOL[symbol_name] = state_key
+
+        with CSV_LOCK:
+            with open(CSV_HISTORY_PATH, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                    symbol_name,
+                    ce_state,
+                    pe_state,
+                    k3_text,
+                    int(ce_strike) if ce_strike else "N/A",
+                    int(pe_strike) if pe_strike else "N/A",
+                    "scenario_tracker"
+                ])
+    except Exception as e:
+        print(f"❌ CSV Log Error: {e}")
+
+# ========== MULTI-SYMBOL LOADER ==========
+def load_symbols_list():
+    symbol_file = os.path.join(os.getcwd(), "src", "symbols_265.txt")
+    try:
+        if os.path.exists(symbol_file):
+            with open(symbol_file, "r", encoding="utf-8") as f:
+                items = [line.strip().upper() for line in f if line.strip()]
+                if items:
+                    return items
+    except Exception as e:
+        print(f"⚠ Symbol file load error: {e}")
+    return ["NIFTY", "BANKNIFTY"]
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -113,19 +167,16 @@ def safe_update_cell(sheet, cell_name, new_value):
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
-# ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
-# ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         
@@ -156,9 +207,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
-# ==========================================
-# ROBUST IV & GREEKS
-# ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -197,9 +245,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)
     }
 
-# ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
-# ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
     try:
@@ -328,7 +373,6 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -356,7 +400,6 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -507,9 +550,6 @@ def execute_python_scenario_tracker():
         except Exception:
             pass
 
-        # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST)
-        # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
@@ -560,14 +600,16 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
+        # ========== LOG CSV FOR ACTIVE SYMBOL ==========
+        current_time = datetime.now().strftime("%H:%M:%S")
+        if "09:15:00" <= current_time <= "15:30:00":
+            log_scenario_to_csv(active_symbol_name, checkCe, checkPe, k3Text, 0, 0)
+
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
-# ==========================================
-# FETCH & UPDATE LOOP
-# ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
     try:
@@ -743,6 +785,22 @@ def fetch_and_update_option_chain(smart_api):
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
 
+# ========== MULTI-SYMBOL LOOP ==========
+def multi_symbol_tracker(smart_api):
+    symbols = load_symbols_list()
+    for symbol in symbols:
+        symbol = str(symbol).strip().upper()
+        if not symbol:
+            continue
+        try:
+            # Switch to symbol and fetch data
+            dashboard_sheet.update_acell("J4", symbol)
+            time.sleep(0.5)
+            fetch_and_update_option_chain(smart_api)
+            time.sleep(1.2)
+        except Exception as e:
+            print(f"⚠ Multi Symbol Error ({symbol}): {e}")
+
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
@@ -803,7 +861,6 @@ def run_bot_lock_loop():
             current_dt = datetime.now()
             current_date_str = current_dt.strftime('%Y-%m-%d')
             
-            # Auto reconnect / fresh session at 9:00 AM or new day
             if last_session_date != current_date_str or current_dt.strftime('%H:%M') == "09:00":
                 print("🔄 Generating Scheduled / Fresh Angel One session...")
             
@@ -823,7 +880,6 @@ def run_bot_lock_loop():
 
     while True:
         try:
-            # Daily 9:00 AM forced session renewal check
             now_check = datetime.now()
             if now_check.strftime('%H:%M') == "09:00":
                 print("⏰ 9:00 AM Reconnect Triggered...")
@@ -831,9 +887,11 @@ def run_bot_lock_loop():
                 data = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if data and data.get('status'):
                     print("✅ 9:00 AM Session Refreshed Successfully!")
-                time.sleep(60) # Wait a minute to avoid loop spam
+                time.sleep(60)
 
-            fetch_and_update_option_chain(smart_api)
+            # ========== MULTI-SYMBOL TRACKING ==========
+            multi_symbol_tracker(smart_api)
+
         except Exception as _e:
             err_msg = str(_e).lower()
             print(f"❌ Loop Error: {_e}")
@@ -859,5 +917,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Run the bot loop
     run_bot_lock_loop()
