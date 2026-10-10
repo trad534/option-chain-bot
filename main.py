@@ -131,7 +131,6 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
-        print(f"📝 CSV RECORDED -> [{symbol_name}] | CE: {ce_state} | PE: {pe_state} | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -236,7 +235,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT LOGIC)
+# MASTER SCENARIO ENGINE (EXACT LOGIC - UNTOUCHED)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -380,7 +379,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -407,7 +406,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -620,8 +619,25 @@ def load_symbols_list():
 
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
-def fetch_and_update_option_chain(smart_api, target_symbol=None):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
+class SheetProxy:
+    def __init__(self, real_sheet, mock_j4_value):
+        self.real_sheet = real_sheet
+        self.mock_j4_value = mock_j4_value
+        self.title = real_sheet.title
+        self.id = real_sheet.id
+    def get(self, range_name):
+        return self.real_sheet.get(range_name)
+    def cell(self, row, col):
+        if row == 4 and col == 10:
+            class CellMock:
+                value = self.mock_j4_value
+            return CellMock()
+        return self.real_sheet.cell(row, col)
+    def update_acell(self, cell_name, val):
+        pass
+
+def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboard=True):
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, dashboard_sheet
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -634,7 +650,6 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None):
             initialize_scrip_master(smart_api)
             if not options_cache: return
 
-        # Respect target symbol without overwriting Sheet's J4
         if target_symbol:
             raw_selected_symbol = target_symbol
         else:
@@ -650,10 +665,10 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None):
         if clean_symbol in ["TATAMOTORS", "TATA"]:
             clean_symbol = "TMCV"
 
-        if cached_selected_symbol and cached_selected_symbol != clean_symbol:
+        if cached_selected_symbol and cached_selected_symbol != clean_symbol and update_dashboard:
             script_memory.clear()
 
-        if cached_selected_symbol != clean_symbol:
+        if cached_selected_symbol != clean_symbol and update_dashboard:
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -699,15 +714,16 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None):
             all_strikes_list = sorted(current_expiry_options['strike'].unique())
             spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-        try:
-            safe_update_cell(data_sheet, "K9", spot_price)
-            safe_update_cell(data_sheet, "L9", str(current_expiry))
-            safe_update_cell(data_sheet, "A7", lot_size)
-            expiry_cells = [['A3', active_expiries[0]], ['A4', active_expiries[1]], ['A5', active_expiries[2]], ['A6', active_expiries[3]]]
-            for cell, val in expiry_cells:
-                safe_update_cell(data_sheet, cell, val)
-        except Exception:
-            pass
+        if update_dashboard:
+            try:
+                safe_update_cell(data_sheet, "K9", spot_price)
+                safe_update_cell(data_sheet, "L9", str(current_expiry))
+                safe_update_cell(data_sheet, "A7", lot_size)
+                expiry_cells = [['A3', active_expiries[0]], ['A4', active_expiries[1]], ['A5', active_expiries[2]], ['A6', active_expiries[3]]]
+                for cell, val in expiry_cells:
+                    safe_update_cell(data_sheet, cell, val)
+            except Exception:
+                pass
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         if all_master_strikes:
@@ -785,7 +801,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None):
                 pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_iv_val, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']
             ])
 
-        if len(output_rows) > 1:
+        if len(output_rows) > 1 and update_dashboard:
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
             try:
@@ -793,7 +809,17 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None):
             except Exception:
                 pass
 
-        execute_python_scenario_tracker()
+        # Handle Silent vs Live Dashboard execution
+        global dashboard_sheet
+        original_sheet = dashboard_sheet
+        if not update_dashboard:
+            dashboard_sheet = SheetProxy(original_sheet, clean_symbol)
+
+        try:
+            execute_python_scenario_tracker()
+        finally:
+            if not update_dashboard:
+                dashboard_sheet = original_sheet
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -844,12 +870,11 @@ baseline_date = None
 cached_selected_symbol = None
 
 # ==========================================
-# SILENT BACKGROUND TRACKER (WITHOUT SHEET J4 OVERWRITE)
+# SILENT BACKGROUND TRACKER (USER J4 UNTOUCHED)
 # ==========================================
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
     
-    # Read user's manual J4 selection first
     user_symbol = None
     try:
         val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
@@ -858,19 +883,19 @@ def multi_symbol_tracker(smart_api):
     except Exception:
         pass
 
-    # Priority 1: Process User Selected Symbol on Sheet
+    # 1. Process User Selected Symbol on Dashboard Sheet live
     if user_symbol:
-        fetch_and_update_option_chain(smart_api, target_symbol=user_symbol)
+        fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
         time.sleep(1.0)
 
-    # Priority 2: Process All 265 Symbols Silently
+    # 2. Process All 265 Symbols Silently in Background (No Sheet Overwrite, CSV Logged)
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
         if not symbol or symbol == user_symbol:
             continue
         try:
-            fetch_and_update_option_chain(smart_api, target_symbol=symbol)
-            time.sleep(1.0)
+            fetch_and_update_option_chain(smart_api, target_symbol=symbol, update_dashboard=False)
+            time.sleep(0.5)
         except Exception as e:
             print(f"⚠ Silent Multi Symbol Error ({symbol}): {e}")
 
