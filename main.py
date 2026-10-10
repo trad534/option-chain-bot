@@ -81,14 +81,13 @@ global_run_date = ""
 last_written_values = {}
 
 # ==========================================
-# MULTI-SYMBOL CSV HISTORY
+# MULTI-SYMBOL CSV HISTORY & LOGGING
 # ==========================================
-CSV_HISTORY_PATH = os.path.join(os.getcwd(), "src", "scenario_history_all_symbols.csv")
+CSV_HISTORY_PATH = os.path.join(os.getcwd(), "scenario_history_all_symbols.csv")
 LAST_SCENARIO_BY_SYMBOL = {}
 CSV_LOCK = Lock()
 
 def ensure_csv_headers():
-    os.makedirs(os.path.dirname(CSV_HISTORY_PATH), exist_ok=True)
     if not os.path.exists(CSV_HISTORY_PATH):
         with open(CSV_HISTORY_PATH, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -133,7 +132,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     "scenario_tracker"
                 ])
     except Exception as e:
-        print(f"❠ CSV Log Error: {e}")
+        print(f"⚠ CSV Log Error: {e}")
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -235,6 +234,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)
     }
 
+# ==========================================
+# MASTER SCENARIO ENGINE (EXACT LOGIC)
+# ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
     try:
@@ -242,8 +244,9 @@ def execute_python_scenario_tracker():
         current_kolkata_time = now_dt.strftime("%H:%M:%S")
         today_str = now_dt.strftime("%Y-%m-%d")
 
-        if global_run_date != today_str:
+        if global_run_date != today_str or current_kolkata_time == "09:15:00":
             script_memory.clear()
+            LAST_SCENARIO_BY_SYMBOL.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
@@ -366,7 +369,7 @@ def execute_python_scenario_tracker():
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -403,7 +406,7 @@ def execute_python_scenario_tracker():
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -599,8 +602,11 @@ def execute_python_scenario_tracker():
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
+# ==========================================
+# MULTI-SYMBOL LIST LOADER
+# ==========================================
 def load_symbols_list():
-    symbol_file = os.path.join(os.getcwd(), "src", "symbols_265.txt")
+    symbol_file = "symbols_265.txt"
     try:
         if os.path.exists(symbol_file):
             with open(symbol_file, "r", encoding="utf-8") as f:
@@ -611,7 +617,6 @@ def load_symbols_list():
     except Exception as e:
         print(f"⚠ Symbol file read error: {e}")
 
-    print("⚠ Using fallback symbols list")
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
 def fetch_and_update_option_chain(smart_api):
@@ -833,10 +838,12 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
+# ==========================================
+# BACKGROUND MULTI-SYMBOL TRACKER
+# ==========================================
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
-    print("Loaded symbols count:", len(symbols))
-    print("Sample:", symbols[:10])
+    print(f"📊 Processing {len(symbols)} Symbols in Background Loop...")
 
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
@@ -856,7 +863,6 @@ def multi_symbol_tracker(smart_api):
                 current_time = datetime.now().strftime("%H:%M:%S")
                 if "09:15:00" <= current_time <= "15:30:00":
                     log_scenario_to_csv(symbol, ce_state, pe_state, k3_text, 0, 0)
-                    print(f"LOGGED -> {symbol} | {ce_state} | {pe_state}")
         except Exception as e:
             print(f"⚠ Multi Symbol Error ({symbol}): {e}")
 
