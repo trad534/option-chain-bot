@@ -14,7 +14,6 @@ from SmartApi import SmartConnect
 from flask import Flask
 import threading
 import builtins
-import csv
 from threading import Lock
 
 RENDER_URL = "https://option-chain-bot.onrender.com"
@@ -47,7 +46,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & Direct Cell-Read Scenarios Engine is active!"
+    return "Angel One Option Chain Bot & 5-Second Time-Series Scenario Engine is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -87,7 +86,7 @@ try:
     try:
         history_sheet = spreadsheet.worksheet(HISTORY_SHEET_NAME)
     except Exception:
-        history_sheet = spreadsheet.add_worksheet(title=HISTORY_SHEET_NAME, rows="1000", cols="10")
+        history_sheet = spreadsheet.add_worksheet(title=HISTORY_SHEET_NAME, rows="10000", cols="10")
         history_sheet.append_row(["Timestamp", "Symbol", "CE State", "PE State", "K3 Scenario Text"])
         
     print("✅ SUCCESS: Google Sheets & Scenario History Connected Successfully!")
@@ -96,25 +95,15 @@ except Exception as e:
     exit()
 
 # ==========================================
-# SIDECAR HISTORICAL SCENARIO RECORDER (TESTING MODE - TIME CHECK REMOVED)
+# 5-SECOND TIME-BASED HISTORICAL RECORDER
 # ==========================================
-LAST_SCENARIO_LOGGED = {}
 SHEET_LOCK = Lock()
 
 def log_market_scenario_to_sheet(symbol_name, ce_state, pe_state, k3_text):
     try:
         now_dt = datetime.now()
         
-        # TEMPORARY: Time check removed for testing purposes so data logs anytime!
-        # if not ("09:15:00" <= current_time_str <= "15:30:00"):
-        #     return
-
-        state_key = f"{symbol_name}|{ce_state}|{pe_state}|{k3_text}"
-        if LAST_SCENARIO_LOGGED.get(symbol_name) == state_key:
-            return
-
-        LAST_SCENARIO_LOGGED[symbol_name] = state_key
-
+        # Duplicate check hata diya gaya hai taaki har 5-second loop mein data record ho sake
         with SHEET_LOCK:
             history_sheet.append_row([
                 now_dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -123,7 +112,7 @@ def log_market_scenario_to_sheet(symbol_name, ce_state, pe_state, k3_text):
                 pe_state,
                 k3_text
             ])
-            print(f"📜 History Recorded in Sheet -> [{symbol_name}] {k3_text}")
+            print(f"📜 5S History Logged -> [{symbol_name}] {k3_text}")
     except Exception as e:
         print(f"⚠ History Sheet Append Error: {e}")
 
@@ -152,12 +141,12 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.3)
+            time.sleep(0.2)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
 # ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
+# COLOR FORMATTING FOR K3
 # ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
@@ -241,7 +230,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS - UNTOUCHED)
+# MASTER SCENARIO ENGINE
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -551,7 +540,7 @@ def execute_python_scenario_tracker():
             pass
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST - UNTOUCHED)
+        # EXACT 27 SCENARIOS MAPPING
         # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -605,7 +594,7 @@ def execute_python_scenario_tracker():
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
         
-        # LOGS LIVE TO "Scenario History" GOOGLE WORKSHEET (TESTING ENABLED)
+        # HAR LOOP (5 SECONDS) MEIN SCENARIO HISTORY MEIN ENTRY RECORD HOGI
         log_market_scenario_to_sheet(active_symbol_name, checkCe, checkPe, k3Text)
 
     except Exception as err:
@@ -835,7 +824,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting Exact Logic Python Bot...")
+    print("🚀 Starting 5-Second Interval Bot Loop...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -897,7 +886,7 @@ def run_bot_lock_loop():
                     except Exception as recon_err:
                         print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
                         time.sleep(10)
-        time.sleep(1)
+        time.sleep(5) # HAR 5 SECONDS MEIN LOOP CHALEGA AUR HISTORY RECORD HOGI
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
