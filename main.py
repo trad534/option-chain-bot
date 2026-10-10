@@ -881,26 +881,29 @@ cached_selected_symbol = None
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
     
+    # 1. Hamesha sabse pehle J4 cell ke active user symbol ko high priority ke sath fetch & update karo
     user_symbol = None
     try:
         val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-        if val and val not in ["NONE", "NAN", "0"]:
+        if val and val not in ["NONE", "NAN", "0", ""]:
             user_symbol = val
     except Exception:
         pass
 
     if user_symbol:
+        print(f"🎯 High Priority User Symbol Update -> [{user_symbol}]")
         fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
-        time.sleep(1.0)
         execute_python_scenario_tracker(forced_symbol=user_symbol, update_dashboard=True)
+        time.sleep(0.5)
 
+    # 2. Baaki background symbols silent track honge (dashboard update bina)
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
         if not symbol or symbol == user_symbol:
             continue
         try:
             fetch_and_update_option_chain(smart_api, target_symbol=symbol, update_dashboard=False)
-            time.sleep(0.5)
+            time.sleep(0.2)
         except Exception as e:
             print(f"⚠ Silent Multi Symbol Error ({symbol}): {e}")
 
