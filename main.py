@@ -128,7 +128,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
-        print(f"📝 CSV LOGGED -> [{symbol_name}] | {k3_text}")
+        print(f"📝 CSV LOGGED -> [{symbol_name}] | CE: {ce_state} | PE: {pe_state} | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -233,9 +233,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT LOGIC - UNTOUCHED)
+# MASTER SCENARIO ENGINE (EXACT MATH LOGIC - UNTOUCHED)
 # ==========================================
-def execute_python_scenario_tracker(forced_symbol=None):
+def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None, update_dashboard=True):
     global global_run_date
     try:
         now_dt = datetime.now()
@@ -250,7 +250,11 @@ def execute_python_scenario_tracker(forced_symbol=None):
         if current_kolkata_time.startswith("09:14:5"):
             script_memory.clear()
 
-        range_values = dashboard_sheet.get("A8:T28")
+        if custom_range_values is not None:
+            range_values = custom_range_values
+        else:
+            range_values = dashboard_sheet.get("A8:T28")
+
         if not range_values: return
 
         MARKET_ROW = 18
@@ -336,13 +340,24 @@ def execute_python_scenario_tracker(forced_symbol=None):
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
+        active_symbol_name = forced_symbol if forced_symbol else "Nifty"
+        if not forced_symbol:
+            try:
+                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
+                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
+                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+            except Exception:
+                pass
+
+        prefix = active_symbol_name + "_"
+
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
+            prev_strike_str = get_memory(prefix + "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
+            current_weak_hist = get_memory(prefix + "WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
                 if current_weak_hist == "wtt":
@@ -377,7 +392,7 @@ def execute_python_scenario_tracker(forced_symbol=None):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -404,7 +419,7 @@ def execute_python_scenario_tracker(forced_symbol=None):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -418,10 +433,10 @@ def execute_python_scenario_tracker(forced_symbol=None):
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_memory("WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState == "wtt" or peOiRawState == "wtb": set_memory("WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState == "wtt" or peVolRawState == "wtb": set_memory("WEAK_HIST_PE_VOL", peVolRawState)
+        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_memory(prefix + "WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_memory(prefix + "WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState == "wtt" or peOiRawState == "wtb": set_memory(prefix + "WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState == "wtt" or peVolRawState == "wtb": set_memory(prefix + "WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
@@ -434,27 +449,27 @@ def execute_python_scenario_tracker(forced_symbol=None):
             if top_obj.get('second') and top_obj['second'].get('val', 0) > 0:
                 second_strike = top_obj['second']['strike']
 
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
+            prev_strike_str = get_memory(prefix + "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
 
             if not prev_strike_str:
-                set_memory("PREV_STRK_" + cache_key, str(strike))
+                set_memory(prefix + "PREV_STRK_" + cache_key, str(strike))
                 prev_strike = strike
 
             display_status = final_status_text
             scenario_status = final_status_text
 
             is_shifting = False
-            shift_type = get_memory("SHIFT_TYPE_" + cache_key, "")
-            shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
-            last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
+            shift_type = get_memory(prefix + "SHIFT_TYPE_" + cache_key, "")
+            shift_from_strike = float(get_memory(prefix + "SHIFT_FROM_" + cache_key, 0)) if get_memory(prefix + "SHIFT_FROM_" + cache_key) else 0.0
+            last_target_strike = float(get_memory(prefix + "SHIFT_TARGET_" + cache_key, 0)) if get_memory(prefix + "SHIFT_TARGET_" + cache_key) else 0.0
 
             if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
-                set_memory("IS_SHIFTED_" + cache_key, "false")
-                set_memory("PREV_STRK_" + cache_key, str(strike))
-                remove_memory("SHIFT_TYPE_" + cache_key)
-                remove_memory("SHIFT_FROM_" + cache_key)
-                remove_memory("SHIFT_TARGET_" + cache_key)
+                set_memory(prefix + "IS_SHIFTED_" + cache_key, "false")
+                set_memory(prefix + "PREV_STRK_" + cache_key, str(strike))
+                remove_memory(prefix + "SHIFT_TYPE_" + cache_key)
+                remove_memory(prefix + "SHIFT_FROM_" + cache_key)
+                remove_memory(prefix + "SHIFT_TARGET_" + cache_key)
                 is_shifting = False
                 scenario_status = final_status_text
             else:
@@ -465,25 +480,25 @@ def execute_python_scenario_tracker(forced_symbol=None):
                     else:
                         shift_type = "bottom to top"
                         scenario_status = "wtt"
-                    set_memory("IS_SHIFTED_" + cache_key, "true")
-                    set_memory("SHIFT_TYPE_" + cache_key, shift_type)
-                    set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
-                    set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
+                    set_memory(prefix + "IS_SHIFTED_" + cache_key, "true")
+                    set_memory(prefix + "SHIFT_TYPE_" + cache_key, shift_type)
+                    set_memory(prefix + "SHIFT_FROM_" + cache_key, str(prev_strike))
+                    set_memory(prefix + "SHIFT_TARGET_" + cache_key, str(second_strike))
 
-                if get_memory("IS_SHIFTED_" + cache_key) == "true":
+                if get_memory(prefix + "IS_SHIFTED_" + cache_key) == "true":
                     is_shifting = True
-                    shift_type = get_memory("SHIFT_TYPE_" + cache_key)
+                    shift_type = get_memory(prefix + "SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
                 else:
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    set_memory(prefix + "PREV_STRK_" + cache_key, str(strike))
                     scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
                 scenario_status = "stable strong"
 
-            display_time = get_memory("TIME_" + cache_key)
-            last_recorded_status = get_memory("LAST_STATUS_" + cache_key, "")
+            display_time = get_memory(prefix + "TIME_" + cache_key)
+            last_recorded_status = get_memory(prefix + "LAST_STATUS_" + cache_key, "")
 
             is_trigger_status = (
                 display_status == "wtb" or
@@ -495,12 +510,12 @@ def execute_python_scenario_tracker(forced_symbol=None):
 
             if is_trigger_status and display_status != last_recorded_status:
                 display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
+                set_memory(prefix + "TIME_" + cache_key, display_time)
+                set_memory(prefix + "LAST_STATUS_" + cache_key, display_status)
             elif not display_time:
                 display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
+                set_memory(prefix + "TIME_" + cache_key, display_time)
+                set_memory(prefix + "LAST_STATUS_" + cache_key, display_status)
 
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
@@ -532,15 +547,6 @@ def execute_python_scenario_tracker(forced_symbol=None):
 
         checkCe = finalCeState
         checkPe = finalPeState
-
-        active_symbol_name = forced_symbol if forced_symbol else "Nifty"
-        if not forced_symbol:
-            try:
-                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-            except Exception:
-                pass
 
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -585,18 +591,18 @@ def execute_python_scenario_tracker(forced_symbol=None):
         elif peWinner == "VOL": finalU5 = "(-----)"; finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']; finalQ5 = "(-----)"
 
-        safe_update_cell(dashboard_sheet, "D5", finalD5)
-        safe_update_cell(dashboard_sheet, "U5", finalU5)
-        safe_update_cell(dashboard_sheet, "H5", finalH5)
-        safe_update_cell(dashboard_sheet, "Q5", finalQ5)
-        
-        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
+        if update_dashboard:
+            safe_update_cell(dashboard_sheet, "D5", finalD5)
+            safe_update_cell(dashboard_sheet, "U5", finalU5)
+            safe_update_cell(dashboard_sheet, "H5", finalH5)
+            safe_update_cell(dashboard_sheet, "Q5", finalQ5)
+            update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         current_time = datetime.now().strftime("%H:%M:%S")
         if "09:15:00" <= current_time <= "15:30:00":
             log_scenario_to_csv(active_symbol_name, checkCe, checkPe, k3Text, 0, 0)
 
-        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
+        print(f"✅ SUCCESS -> [{active_symbol_name}] K3: '{k3Text}' (CE: {checkCe}, PE: {checkPe})")
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
@@ -615,25 +621,8 @@ def load_symbols_list():
 
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
-class SheetProxy:
-    def __init__(self, real_sheet, mock_j4_value):
-        self.real_sheet = real_sheet
-        self.mock_j4_value = mock_j4_value
-        self.title = real_sheet.title
-        self.id = real_sheet.id
-    def get(self, range_name):
-        return self.real_sheet.get(range_name)
-    def cell(self, row, col):
-        if row == 4 and col == 10:
-            class CellMock:
-                value = self.mock_j4_value
-            return CellMock()
-        return self.real_sheet.cell(row, col)
-    def update_acell(self, cell_name, val):
-        pass
-
 def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboard=True):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, dashboard_sheet
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -805,15 +794,38 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             except Exception:
                 pass
 
-        original_sheet = dashboard_sheet
-        if not update_dashboard:
-            dashboard_sheet = SheetProxy(original_sheet, clean_symbol)
+        # Build Virtual Range A8:T28 for Silent Symbol Processing
+        max_ce_vol = max([r[7] for r in output_rows[1:]], default=1) or 1
+        max_ce_oi = max([r[6] for r in output_rows[1:]], default=1) or 1
+        max_pe_vol = max([r[13] for r in output_rows[1:]], default=1) or 1
+        max_pe_oi = max([r[14] for r in output_rows[1:]], default=1) or 1
 
-        try:
-            execute_python_scenario_tracker(forced_symbol=clean_symbol)
-        finally:
-            if not update_dashboard:
-                dashboard_sheet = original_sheet
+        virtual_a8_t28 = []
+        for r_idx, row in enumerate(output_rows[1:]):
+            stk = row[10]
+            ce_oi = row[6]
+            ce_vol = row[7]
+            pe_vol = row[13]
+            pe_oi = row[14]
+
+            ce_oi_pct = round((ce_oi / max_ce_oi) * 100, 2)
+            ce_vol_pct = round((ce_vol / max_ce_vol) * 100, 2)
+            pe_vol_pct = round((pe_vol / max_pe_vol) * 100, 2)
+            pe_oi_pct = round((pe_oi / max_pe_oi) * 100, 2)
+
+            v_row = [""] * 20
+            v_row[7] = f"{ce_oi_pct}%"
+            v_row[8] = f"{ce_vol_pct}%"
+            v_row[13] = stk
+            v_row[18] = f"{pe_vol_pct}%"
+            v_row[19] = f"{pe_oi_pct}%"
+            virtual_a8_t28.append(v_row)
+
+        execute_python_scenario_tracker(
+            forced_symbol=clean_symbol, 
+            custom_range_values=virtual_a8_t28 if not update_dashboard else None,
+            update_dashboard=update_dashboard
+        )
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
