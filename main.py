@@ -81,7 +81,7 @@ global_run_date = ""
 last_written_values = {}
 
 # ==========================================
-# MULTI-SYMBOL CSV HISTORY & LOGGING
+# MULTI-SYMBOL CSV HISTORY LOGGING
 # ==========================================
 CSV_HISTORY_PATH = os.path.join(os.getcwd(), "scenario_history_all_symbols.csv")
 LAST_SCENARIO_BY_SYMBOL = {}
@@ -131,6 +131,7 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
+        print(f"📝 CSV RECORDED -> [{symbol_name}] | CE: {ce_state} | PE: {pe_state} | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -369,7 +370,7 @@ def execute_python_scenario_tracker():
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -619,7 +620,7 @@ def load_symbols_list():
 
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
-def fetch_and_update_option_chain(smart_api):
+def fetch_and_update_option_chain(smart_api, target_symbol=None):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
     try:
         now_dt = datetime.now()
@@ -633,13 +634,17 @@ def fetch_and_update_option_chain(smart_api):
             initialize_scrip_master(smart_api)
             if not options_cache: return
 
-        raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
-        try:
-            val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-            if val and val not in ["NONE", "NAN", "0"]:
-                raw_selected_symbol = val
-        except Exception:
-            pass
+        # Respect target symbol without overwriting Sheet's J4
+        if target_symbol:
+            raw_selected_symbol = target_symbol
+        else:
+            raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
+            try:
+                val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
+                if val and val not in ["NONE", "NAN", "0"]:
+                    raw_selected_symbol = val
+            except Exception:
+                pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]:
@@ -839,32 +844,35 @@ baseline_date = None
 cached_selected_symbol = None
 
 # ==========================================
-# BACKGROUND MULTI-SYMBOL TRACKER
+# SILENT BACKGROUND TRACKER (WITHOUT SHEET J4 OVERWRITE)
 # ==========================================
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
-    print(f"📊 Processing {len(symbols)} Symbols in Background Loop...")
+    
+    # Read user's manual J4 selection first
+    user_symbol = None
+    try:
+        val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
+        if val and val not in ["NONE", "NAN", "0"]:
+            user_symbol = val
+    except Exception:
+        pass
 
+    # Priority 1: Process User Selected Symbol on Sheet
+    if user_symbol:
+        fetch_and_update_option_chain(smart_api, target_symbol=user_symbol)
+        time.sleep(1.0)
+
+    # Priority 2: Process All 265 Symbols Silently
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
-        if not symbol:
+        if not symbol or symbol == user_symbol:
             continue
         try:
-            dashboard_sheet.update_acell("J4", symbol)
-            time.sleep(0.6)
-            fetch_and_update_option_chain(smart_api)
-            time.sleep(1.2)
-
-            ce_state = str(dashboard_sheet.cell(5, 4).value or "").strip()
-            pe_state = str(dashboard_sheet.cell(5, 21).value or "").strip()
-            k3_text = str(dashboard_sheet.cell(3, 11).value or "").strip()
-
-            if ce_state and pe_state:
-                current_time = datetime.now().strftime("%H:%M:%S")
-                if "09:15:00" <= current_time <= "15:30:00":
-                    log_scenario_to_csv(symbol, ce_state, pe_state, k3_text, 0, 0)
+            fetch_and_update_option_chain(smart_api, target_symbol=symbol)
+            time.sleep(1.0)
         except Exception as e:
-            print(f"⚠ Multi Symbol Error ({symbol}): {e}")
+            print(f"⚠ Silent Multi Symbol Error ({symbol}): {e}")
 
 def run_bot_lock_loop():
     print("🚀 Starting Exact Logic Python Bot...")
