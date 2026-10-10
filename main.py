@@ -149,7 +149,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.3)
+            time.sleep(0.15)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -232,7 +232,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT MATH LOGIC - UNTOUCHED)
+# MASTER SCENARIO ENGINE (EXACT MATH LOGIC)
 # ==========================================
 def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None, update_dashboard=True):
     global global_run_date
@@ -340,13 +340,6 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
         active_symbol_name = forced_symbol if forced_symbol else "Nifty"
-        if not forced_symbol:
-            try:
-                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-            except Exception:
-                pass
 
         prefix = active_symbol_name + "_"
 
@@ -387,7 +380,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -414,7 +407,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -460,7 +453,6 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
 
             is_shifting = False
             shift_type = get_memory(prefix + "SHIFT_TYPE_" + cache_key, "")
-            shift_from_strike = float(get_memory(prefix + "SHIFT_FROM_" + cache_key, 0)) if get_memory(prefix + "SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory(prefix + "SHIFT_TARGET_" + cache_key, 0)) if get_memory(prefix + "SHIFT_TARGET_" + cache_key) else 0.0
 
             if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
@@ -556,8 +548,6 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
         elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
@@ -566,16 +556,6 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
         elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
         elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         finalD5 = ""
         finalH5 = ""
@@ -621,7 +601,7 @@ def load_symbols_list():
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
 def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboard=True):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, dashboard_sheet
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, dashboard_sheet, data_sheet
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -634,16 +614,9 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             initialize_scrip_master(smart_api)
             if not options_cache: return
 
+        raw_selected_symbol = "RELIANCE"
         if target_symbol:
             raw_selected_symbol = target_symbol
-        else:
-            raw_selected_symbol = cached_selected_symbol if cached_selected_symbol else "RELIANCE"
-            try:
-                val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-                if val and val not in ["NONE", "NAN", "0"]:
-                    raw_selected_symbol = val
-            except Exception:
-                pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip().upper()
         if clean_symbol in ["TATAMOTORS", "TATA", "TMCV"]:
@@ -652,7 +625,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
         if cached_selected_symbol and cached_selected_symbol != clean_symbol and update_dashboard:
             script_memory.clear()
 
-        if cached_selected_symbol != clean_symbol and update_dashboard:
+        if update_dashboard:
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -682,6 +655,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
                     break
 
         if sym_options.empty:
+            print(f"⚠ Option chain empty for symbol: {clean_symbol}")
             return
 
         today_date = pd.Timestamp(now_dt.date())
@@ -711,8 +685,8 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
                 expiry_cells = [['A3', active_expiries[0]], ['A4', active_expiries[1]], ['A5', active_expiries[2]], ['A6', active_expiries[3]]]
                 for cell, val in expiry_cells:
                     safe_update_cell(data_sheet, cell, val)
-            except Exception:
-                pass
+            except Exception as ex:
+                print(f"Header update err: {ex}")
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         if all_master_strikes:
@@ -793,10 +767,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
         if len(output_rows) > 1 and update_dashboard:
             last_row_num = 10 + len(output_rows) - 1
             data_sheet.update(range_name=f"A10:U{last_row_num}", values=output_rows)
-            try:
-                data_sheet.batch_clear([f"A{last_row_num + 1}:U100"])
-            except Exception:
-                pass
+            print(f"🔥 Dashboard Sheet Updated For Selected Symbol: [{clean_symbol}]")
 
         max_ce_vol = max([r[7] for r in output_rows[1:]], default=1) or 1
         max_ce_oi = max([r[6] for r in output_rows[1:]], default=1) or 1
@@ -878,32 +849,35 @@ morning_oi_dict = {}
 baseline_date = None
 cached_selected_symbol = None
 
+def get_j4_symbol_safely():
+    for _ in range(3):
+        try:
+            val = dashboard_sheet.acell('J4').value
+            if val and str(val).strip().upper() not in ["NONE", "NAN", "0", ""]:
+                return str(val).strip().upper()
+        except Exception as e:
+            time.sleep(0.2)
+    return None
+
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
     
-    # 1. Hamesha sabse pehle J4 cell ke active user symbol ko high priority ke sath fetch & update karo
-    user_symbol = None
-    try:
-        val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-        if val and val not in ["NONE", "NAN", "0", ""]:
-            user_symbol = val
-    except Exception:
-        pass
+    # Dedicated Direct Cell-Fetch
+    user_symbol = get_j4_symbol_safely()
 
     if user_symbol:
-        print(f"🎯 High Priority User Symbol Update -> [{user_symbol}]")
+        print(f"⚡ FORCE ACTIVE FETCH FOR J4 SYMBOL -> [{user_symbol}]")
         fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
         execute_python_scenario_tracker(forced_symbol=user_symbol, update_dashboard=True)
-        time.sleep(0.5)
 
-    # 2. Baaki background symbols silent track honge (dashboard update bina)
+    # Silent Loop For 265 Symbols
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
         if not symbol or symbol == user_symbol:
             continue
         try:
             fetch_and_update_option_chain(smart_api, target_symbol=symbol, update_dashboard=False)
-            time.sleep(0.2)
+            time.sleep(0.15)
         except Exception as e:
             print(f"⚠ Silent Multi Symbol Error ({symbol}): {e}")
 
