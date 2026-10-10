@@ -17,57 +17,6 @@ import builtins
 import csv
 from threading import Lock
 
-# ==========================================
-# SIDECAR HISTORICAL SCENARIO RECORDER (NON-INVASIVE)
-# ==========================================
-CSV_HISTORY_PATH = os.path.join(os.getcwd(), "scenario_history_all_symbols.csv")
-LAST_SCENARIO_LOGGED = {}
-CSV_LOCK = Lock()
-
-def ensure_csv_headers():
-    if not os.path.exists(CSV_HISTORY_PATH):
-        with open(CSV_HISTORY_PATH, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "timestamp",
-                "symbol",
-                "ce_state",
-                "pe_state",
-                "k3_text",
-                "source"
-            ])
-
-def log_market_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text):
-    try:
-        ensure_csv_headers()
-        now_dt = datetime.now()
-        current_time_str = now_dt.strftime("%H:%M:%S")
-        
-        # Sirf Market Hours (9:15 AM to 3:30 PM) mein record karega
-        if not ("09:15:00" <= current_time_str <= "15:30:00"):
-            return
-
-        state_key = f"{symbol_name}|{ce_state}|{pe_state}|{k3_text}"
-        if LAST_SCENARIO_LOGGED.get(symbol_name) == state_key:
-            return
-
-        LAST_SCENARIO_LOGGED[symbol_name] = state_key
-
-        with CSV_LOCK:
-            with open(CSV_HISTORY_PATH, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    now_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                    symbol_name,
-                    ce_state,
-                    pe_state,
-                    k3_text,
-                    "live_recorder"
-                ])
-    except Exception as e:
-        print(f"⚠ CSV Background Log Error: {e}")
-
-
 RENDER_URL = "https://option-chain-bot.onrender.com"
 
 def self_ping():
@@ -115,6 +64,7 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
 MAIN_SHEET_NAME = "upstox get data"
 SYMBOL_SHEET_NAME = "Option chain index new"
+HISTORY_SHEET_NAME = "Scenario History"
 
 def get_gspread_client():
     if os.path.exists("/etc/secrets/Credentials.json"):
@@ -132,10 +82,50 @@ try:
     spreadsheet = gc.open(GOOGLE_SHEET_NAME)
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheets Connected Successfully!")
+    
+    # Connect or Auto-Create "Scenario History" worksheet
+    try:
+        history_sheet = spreadsheet.worksheet(HISTORY_SHEET_NAME)
+    except Exception:
+        history_sheet = spreadsheet.add_worksheet(title=HISTORY_SHEET_NAME, rows="1000", cols="10")
+        history_sheet.append_row(["Timestamp", "Symbol", "CE State", "PE State", "K3 Scenario Text"])
+        
+    print("✅ SUCCESS: Google Sheets & Scenario History Connected Successfully!")
 except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
+
+# ==========================================
+# SIDECAR HISTORICAL SCENARIO RECORDER (TESTING MODE - TIME CHECK REMOVED)
+# ==========================================
+LAST_SCENARIO_LOGGED = {}
+SHEET_LOCK = Lock()
+
+def log_market_scenario_to_sheet(symbol_name, ce_state, pe_state, k3_text):
+    try:
+        now_dt = datetime.now()
+        
+        # TEMPORARY: Time check removed for testing purposes so data logs anytime!
+        # if not ("09:15:00" <= current_time_str <= "15:30:00"):
+        #     return
+
+        state_key = f"{symbol_name}|{ce_state}|{pe_state}|{k3_text}"
+        if LAST_SCENARIO_LOGGED.get(symbol_name) == state_key:
+            return
+
+        LAST_SCENARIO_LOGGED[symbol_name] = state_key
+
+        with SHEET_LOCK:
+            history_sheet.append_row([
+                now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                symbol_name,
+                ce_state,
+                pe_state,
+                k3_text
+            ])
+            print(f"📜 History Recorded in Sheet -> [{symbol_name}] {k3_text}")
+    except Exception as e:
+        print(f"⚠ History Sheet Append Error: {e}")
 
 # ==========================================
 # PYTHON MEMORY STORE & QUOTA OPTIMIZATION
@@ -251,7 +241,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
+# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS - UNTOUCHED)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -561,7 +551,7 @@ def execute_python_scenario_tracker():
             pass
 
         # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST)
+        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST - UNTOUCHED)
         # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
@@ -614,7 +604,9 @@ def execute_python_scenario_tracker():
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
         print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
-        log_market_scenario_to_csv(active_symbol_name, checkCe, checkPe, k3Text)
+        
+        # LOGS LIVE TO "Scenario History" GOOGLE WORKSHEET (TESTING ENABLED)
+        log_market_scenario_to_sheet(active_symbol_name, checkCe, checkPe, k3Text)
 
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
@@ -857,7 +849,6 @@ def run_bot_lock_loop():
             current_dt = datetime.now()
             current_date_str = current_dt.strftime('%Y-%m-%d')
             
-            # Auto reconnect / fresh session at 9:00 AM or new day
             if last_session_date != current_date_str or current_dt.strftime('%H:%M') == "09:00":
                 print("🔄 Generating Scheduled / Fresh Angel One session...")
             
@@ -877,7 +868,6 @@ def run_bot_lock_loop():
 
     while True:
         try:
-            # Daily 9:00 AM forced session renewal check
             now_check = datetime.now()
             if now_check.strftime('%H:%M') == "09:00":
                 print("⏰ 9:00 AM Reconnect Triggered...")
@@ -885,7 +875,7 @@ def run_bot_lock_loop():
                 data = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if data and data.get('status'):
                     print("✅ 9:00 AM Session Refreshed Successfully!")
-                time.sleep(60) # Wait a minute to avoid loop spam
+                time.sleep(60)
 
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
@@ -913,5 +903,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Run the bot loop
     run_bot_lock_loop()
