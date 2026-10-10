@@ -31,7 +31,6 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
-
 # ==========================================
 # FORCE FLUSH LOGS IN RENDER
 # ==========================================
@@ -46,7 +45,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Angel One Option Chain Bot & 5-Second Time-Series Scenario Engine is active!"
+    return "Angel One Multi-Symbol Investing Daddy Style Memory Engine Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -82,7 +81,6 @@ try:
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
     
-    # Connect or Auto-Create "Scenario History" worksheet
     try:
         history_sheet = spreadsheet.worksheet(HISTORY_SHEET_NAME)
     except Exception:
@@ -95,43 +93,26 @@ except Exception as e:
     exit()
 
 # ==========================================
-# 5-SECOND TIME-BASED HISTORICAL RECORDER
+# 🧠 INVESTING DADDY MULTI-SYMBOL MEMORY STORE
 # ==========================================
-SHEET_LOCK = Lock()
-
-def log_market_scenario_to_sheet(symbol_name, ce_state, pe_state, k3_text):
-    try:
-        now_dt = datetime.now()
-        
-        # Duplicate check hata diya gaya hai taaki har 5-second loop mein data record ho sake
-        with SHEET_LOCK:
-            history_sheet.append_row([
-                now_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                symbol_name,
-                ce_state,
-                pe_state,
-                k3_text
-            ])
-            print(f"📜 5S History Logged -> [{symbol_name}] {k3_text}")
-    except Exception as e:
-        print(f"⚠ History Sheet Append Error: {e}")
-
-# ==========================================
-# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
-# ==========================================
-script_memory = {}
+# Continuous isolated memory dict for all 265 symbols
+ALL_SYMBOLS_MEMORY = {}
 global_run_date = ""
 last_written_values = {}
+SHEET_LOCK = Lock()
 
-def get_memory(key, default=""):
-    return script_memory.get(key, default)
+def get_sym_memory(symbol_name, key, default=""):
+    sym_dict = ALL_SYMBOLS_MEMORY.get(symbol_name, {})
+    return sym_dict.get(key, default)
 
-def set_memory(key, value):
-    script_memory[key] = str(value)
+def set_sym_memory(symbol_name, key, value):
+    if symbol_name not in ALL_SYMBOLS_MEMORY:
+        ALL_SYMBOLS_MEMORY[symbol_name] = {}
+    ALL_SYMBOLS_MEMORY[symbol_name][key] = str(value)
 
-def remove_memory(key):
-    if key in script_memory:
-        del script_memory[key]
+def remove_sym_memory(symbol_name, key):
+    if symbol_name in ALL_SYMBOLS_MEMORY and key in ALL_SYMBOLS_MEMORY[symbol_name]:
+        del ALL_SYMBOLS_MEMORY[symbol_name][key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -141,9 +122,27 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.2)
+            time.sleep(0.15)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
+
+# ==========================================
+# TIME-SERIES SCENARIO LOGGING
+# ==========================================
+def log_market_scenario_to_sheet(symbol_name, ce_state, pe_state, k3_text):
+    try:
+        now_dt = datetime.now()
+        with SHEET_LOCK:
+            history_sheet.append_row([
+                now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                symbol_name,
+                ce_state,
+                pe_state,
+                k3_text
+            ])
+            print(f"📜 Logged -> [{symbol_name}] {k3_text}")
+    except Exception as e:
+        print(f"⚠ History Sheet Append Error: {e}")
 
 # ==========================================
 # COLOR FORMATTING FOR K3
@@ -153,11 +152,11 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         
@@ -230,9 +229,9 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE
+# MASTER SCENARIO ENGINE (SYMBOL-ISOLATED)
 # ==========================================
-def execute_python_scenario_tracker():
+def execute_python_scenario_tracker(symbol_name):
     global global_run_date
     try:
         now_dt = datetime.now()
@@ -240,11 +239,11 @@ def execute_python_scenario_tracker():
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
-            script_memory.clear()
+            ALL_SYMBOLS_MEMORY.clear()
             global_run_date = today_str
 
         if current_kolkata_time.startswith("09:14:5"):
-            script_memory.clear()
+            ALL_SYMBOLS_MEMORY.clear()
 
         range_values = dashboard_sheet.get("A8:T28")
         if not range_values: return
@@ -336,9 +335,9 @@ def execute_python_scenario_tracker():
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
             strike = top_obj['highest']['strike']
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
+            prev_strike_str = get_sym_memory(symbol_name, "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
+            current_weak_hist = get_sym_memory(symbol_name, "WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
                 if current_weak_hist == "wtt":
@@ -416,10 +415,10 @@ def execute_python_scenario_tracker():
             else:
                 peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_memory("WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState == "wtt" or peOiRawState == "wtb": set_memory("WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState == "wtt" or peVolRawState == "wtb": set_memory("WEAK_HIST_PE_VOL", peVolRawState)
+        if ceOiRawState == "wtt" or ceOiRawState == "wtb": set_sym_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState == "wtt" or ceVolRawState == "wtb": set_sym_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState == "wtt" or peOiRawState == "wtb": set_sym_memory(symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState == "wtt" or peVolRawState == "wtb": set_sym_memory(symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
@@ -432,27 +431,27 @@ def execute_python_scenario_tracker():
             if top_obj.get('second') and top_obj['second'].get('val', 0) > 0:
                 second_strike = top_obj['second']['strike']
 
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
+            prev_strike_str = get_sym_memory(symbol_name, "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
 
             if not prev_strike_str:
-                set_memory("PREV_STRK_" + cache_key, str(strike))
+                set_sym_memory(symbol_name, "PREV_STRK_" + cache_key, str(strike))
                 prev_strike = strike
 
             display_status = final_status_text
             scenario_status = final_status_text
 
             is_shifting = False
-            shift_type = get_memory("SHIFT_TYPE_" + cache_key, "")
-            shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
-            last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
+            shift_type = get_sym_memory(symbol_name, "SHIFT_TYPE_" + cache_key, "")
+            shift_from_strike = float(get_sym_memory(symbol_name, "SHIFT_FROM_" + cache_key, 0)) if get_sym_memory(symbol_name, "SHIFT_FROM_" + cache_key) else 0.0
+            last_target_strike = float(get_sym_memory(symbol_name, "SHIFT_TARGET_" + cache_key, 0)) if get_sym_memory(symbol_name, "SHIFT_TARGET_" + cache_key) else 0.0
 
             if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
-                set_memory("IS_SHIFTED_" + cache_key, "false")
-                set_memory("PREV_STRK_" + cache_key, str(strike))
-                remove_memory("SHIFT_TYPE_" + cache_key)
-                remove_memory("SHIFT_FROM_" + cache_key)
-                remove_memory("SHIFT_TARGET_" + cache_key)
+                set_sym_memory(symbol_name, "IS_SHIFTED_" + cache_key, "false")
+                set_sym_memory(symbol_name, "PREV_STRK_" + cache_key, str(strike))
+                remove_sym_memory(symbol_name, "SHIFT_TYPE_" + cache_key)
+                remove_sym_memory(symbol_name, "SHIFT_FROM_" + cache_key)
+                remove_sym_memory(symbol_name, "SHIFT_TARGET_" + cache_key)
                 is_shifting = False
                 scenario_status = final_status_text
             else:
@@ -463,25 +462,25 @@ def execute_python_scenario_tracker():
                     else:
                         shift_type = "bottom to top"
                         scenario_status = "wtt"
-                    set_memory("IS_SHIFTED_" + cache_key, "true")
-                    set_memory("SHIFT_TYPE_" + cache_key, shift_type)
-                    set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
-                    set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
+                    set_sym_memory(symbol_name, "IS_SHIFTED_" + cache_key, "true")
+                    set_sym_memory(symbol_name, "SHIFT_TYPE_" + cache_key, shift_type)
+                    set_sym_memory(symbol_name, "SHIFT_FROM_" + cache_key, str(prev_strike))
+                    set_sym_memory(symbol_name, "SHIFT_TARGET_" + cache_key, str(second_strike))
 
-                if get_memory("IS_SHIFTED_" + cache_key) == "true":
+                if get_sym_memory(symbol_name, "IS_SHIFTED_" + cache_key) == "true":
                     is_shifting = True
-                    shift_type = get_memory("SHIFT_TYPE_" + cache_key)
+                    shift_type = get_sym_memory(symbol_name, "SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
                 else:
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    set_sym_memory(symbol_name, "PREV_STRK_" + cache_key, str(strike))
                     scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
                 scenario_status = "stable strong"
 
-            display_time = get_memory("TIME_" + cache_key)
-            last_recorded_status = get_memory("LAST_STATUS_" + cache_key, "")
+            display_time = get_sym_memory(symbol_name, "TIME_" + cache_key)
+            last_recorded_status = get_sym_memory(symbol_name, "LAST_STATUS_" + cache_key, "")
 
             is_trigger_status = (
                 display_status == "wtb" or
@@ -493,12 +492,12 @@ def execute_python_scenario_tracker():
 
             if is_trigger_status and display_status != last_recorded_status:
                 display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
+                set_sym_memory(symbol_name, "TIME_" + cache_key, display_time)
+                set_sym_memory(symbol_name, "LAST_STATUS_" + cache_key, display_status)
             elif not display_time:
                 display_time = current_time_str
-                set_memory("TIME_" + cache_key, display_time)
-                set_memory("LAST_STATUS_" + cache_key, display_status)
+                set_sym_memory(symbol_name, "TIME_" + cache_key, display_time)
+                set_sym_memory(symbol_name, "LAST_STATUS_" + cache_key, display_status)
 
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
@@ -531,46 +530,36 @@ def execute_python_scenario_tracker():
         checkCe = finalCeState
         checkPe = finalPeState
 
-        active_symbol_name = "Nifty"
-        try:
-            j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-            if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
-        except Exception:
-            pass
+        # 27 SCENARIOS MAPPING
+        k3Text = f"{symbol_name} is Neutral"
 
-        # ==========================================
-        # EXACT 27 SCENARIOS MAPPING
-        # ==========================================
-        k3Text = f"{active_symbol_name} is Neutral"
-
-        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
-        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
-        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is Neutral"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
-        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
-        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
+        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
 
         finalD5 = ""
         finalH5 = ""
@@ -592,13 +581,11 @@ def execute_python_scenario_tracker():
         
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
 
-        print(f"✅ SUCCESS -> K3 Updated with: '{k3Text}' (CE State: {checkCe}, PE State: {checkPe})")
-        
-        # HAR LOOP (5 SECONDS) MEIN SCENARIO HISTORY MEIN ENTRY RECORD HOGI
-        log_market_scenario_to_sheet(active_symbol_name, checkCe, checkPe, k3Text)
+        print(f"✅ SUCCESS -> [{symbol_name}] K3 Updated: '{k3Text}' (CE: {checkCe}, PE: {checkPe})")
+        log_market_scenario_to_sheet(symbol_name, checkCe, checkPe, k3Text)
 
     except Exception as err:
-        print(f"❌ Critical Scenario Engine Error: {err}")
+        print(f"❌ Scenario Engine Error for {symbol_name}: {err}")
 
 # ==========================================
 # FETCH & UPDATE LOOP
@@ -628,12 +615,8 @@ def fetch_and_update_option_chain(smart_api):
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
         if clean_symbol in ["TATAMOTORS", "TATA"]: clean_symbol = "TMCV"
 
-        if cached_selected_symbol and cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
-            script_memory.clear()
-
         if cached_selected_symbol != clean_symbol:
-            print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
+            print(f"\n⚡ Active Symbol Switched To: {clean_symbol} -> Re-hydrating Background Memory!")
             cached_selected_symbol = clean_symbol
 
         spot_token, spot_exchange = "", "NSE"
@@ -773,7 +756,7 @@ def fetch_and_update_option_chain(smart_api):
             except Exception:
                 pass
 
-        execute_python_scenario_tracker()
+        execute_python_scenario_tracker(clean_symbol)
 
     except Exception as ex:
         print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -812,7 +795,7 @@ def initialize_scrip_master(smart_api):
                 options_cache["TATAMOTORS"] = options_cache["TMCV"]
                 options_cache["TATA"] = options_cache["TMCV"]
 
-            print(f"✅ Scrip Master Cached! Total Records: {len(full_scrip_df)}")
+            print(f"✅ Scrip Master Cached! Total Symbols Loaded: {len(options_cache)}")
     except Exception as e:
         print(f"⚠ Scrip Master Error: {e}")
 
@@ -824,7 +807,7 @@ baseline_date = None
 cached_selected_symbol = None
 
 def run_bot_lock_loop():
-    print("🚀 Starting 5-Second Interval Bot Loop...")
+    print("🚀 Starting Investing Daddy Multi-Symbol Engine...")
     try:
         smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e:
@@ -886,7 +869,7 @@ def run_bot_lock_loop():
                     except Exception as recon_err:
                         print(f"❌ Auto-Reconnect Exception: {recon_err}. Retrying in 10 seconds...")
                         time.sleep(10)
-        time.sleep(5) # HAR 5 SECONDS MEIN LOOP CHALEGA AUR HISTORY RECORD HOGI
+        time.sleep(2)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
