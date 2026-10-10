@@ -149,7 +149,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.15)
+            time.sleep(0.3)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -232,7 +232,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT MATH LOGIC)
+# MASTER SCENARIO ENGINE (EXACT MATH LOGIC - UNTOUCHED)
 # ==========================================
 def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None, update_dashboard=True):
     global global_run_date
@@ -340,6 +340,13 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
         active_symbol_name = forced_symbol if forced_symbol else "Nifty"
+        if not forced_symbol:
+            try:
+                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
+                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
+                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
+            except Exception:
+                pass
 
         prefix = active_symbol_name + "_"
 
@@ -380,7 +387,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -407,7 +414,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -453,6 +460,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
 
             is_shifting = False
             shift_type = get_memory(prefix + "SHIFT_TYPE_" + cache_key, "")
+            shift_from_strike = float(get_memory(prefix + "SHIFT_FROM_" + cache_key, 0)) if get_memory(prefix + "SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory(prefix + "SHIFT_TARGET_" + cache_key, 0)) if get_memory(prefix + "SHIFT_TARGET_" + cache_key) else 0.0
 
             if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
@@ -855,14 +863,13 @@ def get_j4_symbol_safely():
             val = dashboard_sheet.acell('J4').value
             if val and str(val).strip().upper() not in ["NONE", "NAN", "0", ""]:
                 return str(val).strip().upper()
-        except Exception as e:
+        except Exception:
             time.sleep(0.2)
     return None
 
 def multi_symbol_tracker(smart_api):
     symbols = load_symbols_list()
     
-    # Dedicated Direct Cell-Fetch
     user_symbol = get_j4_symbol_safely()
 
     if user_symbol:
@@ -870,7 +877,6 @@ def multi_symbol_tracker(smart_api):
         fetch_and_update_option_chain(smart_api, target_symbol=user_symbol, update_dashboard=True)
         execute_python_scenario_tracker(forced_symbol=user_symbol, update_dashboard=True)
 
-    # Silent Loop For 265 Symbols
     for symbol in symbols:
         symbol = str(symbol).strip().upper()
         if not symbol or symbol == user_symbol:
