@@ -128,7 +128,6 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
-        print(f"📝 CSV LOGGED -> [{symbol_name}] | CE: {ce_state} | PE: {pe_state} | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -392,7 +391,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -419,7 +418,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -622,7 +621,7 @@ def load_symbols_list():
     return ["NIFTY", "BANKNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
 
 def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboard=True):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, dashboard_sheet
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -678,7 +677,9 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
                 if clean_symbol in key:
                     sym_options = options_cache[key]
                     break
-        if sym_options.empty: return
+        if sym_options.empty:
+            print(f"⚠ Symbol '{clean_symbol}' not found in options_cache!")
+            return
 
         today_date = pd.Timestamp(now_dt.date())
         valid_opts = sym_options[sym_options['parsed_expiry'] >= today_date].copy()
@@ -794,7 +795,6 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             except Exception:
                 pass
 
-        # Build Virtual Range A8:T28 for Silent Symbol Processing
         max_ce_vol = max([r[7] for r in output_rows[1:]], default=1) or 1
         max_ce_oi = max([r[6] for r in output_rows[1:]], default=1) or 1
         max_pe_vol = max([r[13] for r in output_rows[1:]], default=1) or 1
