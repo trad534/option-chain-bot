@@ -128,7 +128,6 @@ def log_scenario_to_csv(symbol_name, ce_state, pe_state, k3_text, ce_strike=0, p
                     int(pe_strike) if pe_strike else "N/A",
                     "scenario_tracker"
                 ])
-        print(f"📝 CSV LOGGED -> [{symbol_name}] | CE: {ce_state} | PE: {pe_state} | {k3_text}")
     except Exception as e:
         print(f"⚠ CSV Log Error: {e}")
 
@@ -207,7 +206,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if sigma <= 0: sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
-        price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) - S * norm.cdf(-d1)
+        price = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)
         return price - ltp
 
     try:
@@ -392,7 +391,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -419,7 +418,7 @@ def execute_python_scenario_tracker(forced_symbol=None, custom_range_values=None
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -647,7 +646,7 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
                 pass
 
         clean_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip().upper()
-        if clean_symbol in ["TATAMOTORS", "TATA"]:
+        if clean_symbol in ["TATAMOTORS", "TATA", "TMCV"]:
             clean_symbol = "TMCV"
 
         if cached_selected_symbol and cached_selected_symbol != clean_symbol and update_dashboard:
@@ -661,6 +660,8 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             spot_token, spot_exchange = eq_cache[clean_symbol]
         elif clean_symbol + "-EQ" in eq_cache:
             spot_token, spot_exchange = eq_cache[clean_symbol + "-EQ"]
+        elif "TMCV" in eq_cache and clean_symbol in ["TATAMOTORS", "TATA"]:
+            spot_token, spot_exchange = eq_cache["TMCV"]
 
         spot_price = 0.0
         if spot_token:
@@ -672,7 +673,6 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
             except Exception:
                 pass
 
-        # Robust Options Lookup for ALL Symbols (e.g. LTTS, MCX, etc.)
         sym_options = options_cache.get(clean_symbol, pd.DataFrame())
         if sym_options.empty:
             for key in options_cache:
@@ -682,7 +682,6 @@ def fetch_and_update_option_chain(smart_api, target_symbol=None, update_dashboar
                     break
 
         if sym_options.empty:
-            print(f"⚠ Symbol '{clean_symbol}' not found in options_cache!")
             return
 
         today_date = pd.Timestamp(now_dt.date())
