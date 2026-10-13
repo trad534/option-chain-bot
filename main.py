@@ -30,17 +30,10 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
-
-# ==========================================
-# FORCE FLUSH LOGS IN RENDER
-# ==========================================
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
-# ==========================================
-# FLASK WEB SERVER FOR RENDER PORT
-# ==========================================
 app = Flask(__name__)
 
 @app.route('/')
@@ -51,9 +44,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ==========================================
-# CONFIGURATION & GOOGLE SHEETS
-# ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
@@ -84,13 +74,9 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
-# ==========================================
-# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
-# ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
-# 🛡️ Persistent Strike Cache to protect against 0-value blips
 persistent_quotes_cache = {}
 
 def get_memory(key, default=""):
@@ -115,22 +101,18 @@ def safe_update_cell(sheet, cell_name, new_value):
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
-# ==========================================
-# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
-# ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
-        
         body = {
             "requests": [
                 {
@@ -158,9 +140,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
-# ==========================================
-# ROBUST IV & GREEKS
-# ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -200,7 +179,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT 27 SCENARIOS)
+# MASTER SCENARIO ENGINE (EXACT TESTED WINNER LOGIC)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -271,10 +250,10 @@ def execute_python_scenario_tracker():
             peOiArray.append({'strike': strike, 'val': float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
         def extract_top_two(data_array):
-            if not data_array:
+            if not data_array or len(data_array) == 0:
                 return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered = [item for item in data_array if item['val'] > 0]
-            if not filtered:
+            if len(filtered) == 0:
                 return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered.sort(key=lambda x: x['val'], reverse=True)
             highest = filtered[0]
@@ -330,7 +309,9 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 🏆 CE WINNER ENGINE
+        # ==========================================
+        # 🏆 1. CE WINNER (EXACT TESTED LOGIC)
+        # ==========================================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -344,7 +325,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -358,7 +339,9 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 🏆 PE WINNER ENGINE
+        # ==========================================
+        # 🏆 2. PE WINNER (EXACT TESTED LOGIC)
+        # ==========================================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -368,11 +351,11 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -417,34 +400,37 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
-            if raw_state == "STRONG" or "to strong" in final_status_text or final_status_text == "stable strong" or (last_target_strike > 0 and second_strike != last_target_strike):
-                set_memory("IS_SHIFTED_" + cache_key, "false")
-                set_memory("PREV_STRK_" + cache_key, str(strike))
-                remove_memory("SHIFT_TYPE_" + cache_key)
-                remove_memory("SHIFT_FROM_" + cache_key)
-                remove_memory("SHIFT_TARGET_" + cache_key)
-                is_shifting = False
-                scenario_status = final_status_text
-            else:
-                if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
-                    if strike < prev_strike:
-                        shift_type = "top to bottom"
-                        scenario_status = "wtb"
-                    else:
-                        shift_type = "bottom to top"
-                        scenario_status = "wtt"
-                    set_memory("IS_SHIFTED_" + cache_key, "true")
-                    set_memory("SHIFT_TYPE_" + cache_key, shift_type)
-                    set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
-                    set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
+            if get_memory("IS_SHIFTED_" + cache_key) == "true":
+                if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
+                    set_memory("IS_SHIFTED_" + cache_key, "false")
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    remove_memory("SHIFT_TARGET_" + cache_key)
 
-                if get_memory("IS_SHIFTED_" + cache_key) == "true":
+            if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
+                if strike < prev_strike:
+                    shift_type = "top to bottom"
+                    scenario_status = "wtb"
+                else:
+                    shift_type = "bottom to top"
+                    scenario_status = "wtt"
+                set_memory("IS_SHIFTED_" + cache_key, "true")
+                set_memory("SHIFT_TYPE_" + cache_key, shift_type)
+                set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
+                set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
+
+            if get_memory("IS_SHIFTED_" + cache_key) == "true":
+                if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
+                    set_memory("IS_SHIFTED_" + cache_key, "false")
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    is_shifting = False
+                    scenario_status = final_status_text
+                else:
                     is_shifting = True
                     shift_type = get_memory("SHIFT_TYPE_" + cache_key)
                     scenario_status = "wtb" if shift_type == "top to bottom" else "wtt"
-                else:
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
-                    scenario_status = final_status_text
+            else:
+                set_memory("PREV_STRK_" + cache_key, str(strike))
+                scenario_status = final_status_text
 
             if not is_winner and raw_state != "STRONG":
                 display_status = "stable strong"
@@ -509,9 +495,6 @@ def execute_python_scenario_tracker():
         except Exception:
             pass
 
-        # ==========================================
-        # EXACT 27 SCENARIOS MAPPING (USER PROVIDED LIST)
-        # ==========================================
         k3Text = f"{active_symbol_name} is Neutral"
 
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
@@ -567,9 +550,6 @@ def execute_python_scenario_tracker():
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
-# ==========================================
-# FETCH & UPDATE LOOP (PERMANENTLY FIXED FOR 0-VALUES)
-# ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, persistent_quotes_cache
     try:
@@ -677,7 +657,7 @@ def fetch_and_update_option_chain(smart_api):
                 batch_tokens = tokens_list[i:i+40]
                 if not batch_tokens: continue
                 fetched_success = False
-                for attempt in range(2):  # 🛡️ Retry logic to eliminate 0-value blips
+                for attempt in range(2):
                     try:
                         res = smart_api.getMarketData("FULL", {exch: batch_tokens})
                         if res and res.get('status') and res.get('data'):
@@ -689,8 +669,6 @@ def fetch_and_update_option_chain(smart_api):
                     except Exception:
                         pass
                     time.sleep(0.3)
-                if not fetched_success:
-                    pass
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
         is_market_open_passed = now_dt.time() >= market_open_time
