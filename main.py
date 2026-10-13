@@ -16,7 +16,7 @@ import threading
 import builtins
 
 # ==========================================
-# RENDER CONFIGURATION & SHIELD
+# RENDER SERVER SYSTEM KEEP-ALIVE SHIELD
 # ==========================================
 RENDER_URL = "https://onrender.com"
 
@@ -33,10 +33,14 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
+# Force flush standard print outputs for continuous logs visibility in Render terminal
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
+# ==========================================
+# FLASK WEB SERVER FOR PORT BINDING
+# ==========================================
 app = Flask(__name__)
 
 @app.route('/')
@@ -48,7 +52,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ==========================================
-# INITIALIZATION & GOOGLE SHEETS CONNECTIONS
+# CREDENTIALS CONFIGURATION & GOOGLE SHEETS
 # ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -77,6 +81,7 @@ try:
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
     
+    # Auto-create or connect historical logging tab safely
     try:
         historical_log_sheet = spreadsheet.worksheet(HISTORICAL_SHEET_NAME)
     except Exception:
@@ -117,11 +122,11 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         body = {
@@ -160,7 +165,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
     intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S)
-    if ltp < intrinsic: ltp = intrinsic + 0.05
+    if ltp < intrinsic: 
+        ltp = intrinsic + 0.05
 
     def objective_function(sigma):
         if sigma <= 0: sigma = 1e-4
@@ -168,8 +174,10 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         d2 = d1 - sigma * np.sqrt(t)
         return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)) - ltp
 
-    try: sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
-    except Exception: sigma = 0.20
+    try: 
+        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+    except Exception: 
+        sigma = 0.20
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
@@ -227,6 +235,12 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
+        # Fallback for post-market / 3:30 PM retention when volume is zero
+        if ceVolTop['highest']['val'] == 0:
+            ceVolTop = ceOiTop
+        if peVolTop['highest']['val'] == 0:
+            peVolTop = peOiTop
+
         if ceVolTop['highest']['val'] == 0 or peVolTop['highest']['val'] == 0: return
 
         ceVolRawState = "STRONG" if ceVolTop['pct'] < 75.0 else ("wtt" if ceVolTop['second']['strike'] > ceVolTop['highest']['strike'] else "wtb")
@@ -254,10 +268,10 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         # Call / Put Winner Matrix Assignments
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         peWinner = "VOL"
@@ -317,17 +331,17 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
 
-            if is_shifting: output_text = f"({state[f'TIME_{cache_key}']} - {side_label}-{s_val}-{display_status}-{sec_val})\n (shifted {state[f'SHIFT_TYPE_{cache_key}']})"
+            if is_shifting: output_text = f"({state[f'TIME_{cache_key}']} - {side_label}-{s_val}-{display_status}-{sec_val})\n   (shifted {state[f'SHIFT_TYPE_{cache_key}']})"
             else:
-                if display_status == "stable strong": output_text = f"({state[f'TIME_{cache_key}']} - {side_label} - {s_val})\n (stable strong)"
-                elif "to strong" in display_status: output_text = f"({state[f'TIME_{cache_key}']} - {side_label} - {s_val})\n ({display_status})"
+                if display_status == "stable strong": output_text = f"({state[f'TIME_{cache_key}']} - {side_label} - {s_val})\n    (stable strong)"
+                elif "to strong" in display_status: output_text = f"({state[f'TIME_{cache_key}']} - {side_label} - {s_val})\n   ({display_status})"
                 else: output_text = f"({state[f'TIME_{cache_key}']} - {side_label}-{s_val}-{display_status}-{sec_val})\n({'weak towards top' if display_status == 'wtt' else 'weak towards bottom'})"
             return {'text': output_text, 'scenarioStatus': scenario_status}
 
-        ceOiResult = parse_cell_state(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
+        ceOiResult  = parse_cell_state(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
         ceVolResult = parse_cell_state(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
         peVolResult = parse_cell_state(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
-        peOiResult = parse_cell_state(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
+        peOiResult  = parse_cell_state(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
@@ -362,9 +376,10 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
                 "resistance": f"PE Winner: {peWinner} ({finalPeState.upper()})",
                 "scenario": k3Text
             })
-    except Exception as e: print(f"Error in heavy background calculator loop: {e}")
+    except Exception as e: 
+        print(f"Error in heavy background calculator loop: {e}")
 
-# ==================================================
+# ===================================================
 # DASHBOARD WRITING EXECUTOR (INVOKED ON RE-ALIGNED)
 # ===================================================
 def execute_python_scenario_tracker():
@@ -400,10 +415,12 @@ def execute_python_scenario_tracker():
             rows_to_flush = []
             for item in time_travel_db.get(active_symbol_name, []):
                 rows_to_flush.append([item["timestamp"], item["symbol"], item["support"], item["resistance"], item["scenario"]])
-            if rows_to_flush: historical_log_sheet.append_rows(rows_to_flush)
+            if rows_to_flush: 
+                historical_log_sheet.append_rows(rows_to_flush)
             last_flashed_symbol = active_symbol_name
 
-    except Exception as err: print(f"❌ Dashboard Update Engine Error: {err}")
+    except Exception as err: 
+        print(f"❌ Dashboard Update Engine Error: {err}")
 
 # ==========================================
 # PARALLEL PACKET BATCH DATA PROCESSOR
@@ -455,7 +472,8 @@ def fetch_and_update_option_chain(smart_api):
         for batch in chunks[:10]:
             try:
                 res = smart_api.getMarketData("FULL", {"NFO": batch})
-                if res and res.get('status') and res.get('data'): all_fetched_quotes.extend(res['data'].get('fetched', []))
+                if res and res.get('status') and res.get('data'): 
+                    all_fetched_quotes.extend(res['data'].get('fetched', []))
             except Exception: pass
 
         global_quotes_dict = {}
@@ -467,7 +485,6 @@ def fetch_and_update_option_chain(smart_api):
         # Silent parallel extraction pipeline execution
         for tok, meta in token_data_meta_map.items():
             sym_name = meta['symbol']
-            # Reconstruct dummy arrays inside loops dynamically to trigger multi-state variables
             process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
 
         # Fetch and write standard option chain deep metrics for ONLY active dashboard sheet
@@ -529,11 +546,11 @@ def fetch_and_update_option_chain(smart_api):
                     if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
 
                 for tok, q_data in persistent_quotes_cache.items():
-                    if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
+                    if datetime.now().time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
                     base_oi = morning_oi_dict.get(tok, q_data['oi'])
                     dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']}
 
-                t = max((current_expiry_options['parsed_expiry'].iloc[0].replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+                t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
                 output_rows = [["CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP", "Strike Price", "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]]
                 for st in strikes:
@@ -554,8 +571,8 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-                # Synchronize dashboard sheet cells layout completely
-                execute_python_scenario_tracker()
+        # Synchronize dashboard sheet cells layout completely
+        execute_python_scenario_tracker()
 
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
 
@@ -575,65 +592,31 @@ def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, curren
         calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
     except Exception: pass
 
-# ==========================================
-# SCRIP MASTER DOWNLOAD & SYMBOLS CACHING (FIXED WORKING ENDPOINT)
-# ==========================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
-    
-    # Official Angel One Scrip Master Endpoints
-    urls_to_try = [
-        "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json",
-        "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json",
-        "https://margincalculator.angelbroking.com/OpenAPI_Data/files/OpenAPIScripMaster.json"
-    ]
-    
-    for url in urls_to_try:
-        try:
-            print(f"📥 Downloading Angel One Scrip Master JSON from: {url}")
-            resp = requests.get(url, timeout=35)
-            print(f"📊 Scrip Master Response Status: {resp.status_code}")
-            
-            if resp.status_code == 200:
-                scrip_data = resp.json()
-                full_scrip_df = pd.DataFrame(scrip_data)
-                
-                if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: 
-                    full_scrip_df['token'] = full_scrip_df['symboltoken']
-                if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: 
-                    full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
-                if 'strike' in full_scrip_df.columns: 
-                    full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
-                
-                nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
-                for _, row in nse_eq.iterrows():
-                    sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
-                    eq_cache[sym] = (tok, 'NSE')
-                    eq_cache[name] = (tok, 'NSE')
-                    if sym.endswith("-EQ"): 
-                        eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
-                
-                fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
-                fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-                fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
-                
-                for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): 
-                    options_cache[name.strip()] = group
-                    
-                print(f"✅ Scrip Master Cached Successfully! Total Symbols: {len(options_cache)}")
-                return
-            else:
-                print(f"⚠ HTTP {resp.status_code} on {url}, trying fallback...")
-        except Exception as e:
-            print(f"❌ Error fetching from {url}: {e}")
-            
-    time.sleep(10)
+    try:
+        print("📥 Downloading Angel One Scrip Master JSON...")
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        resp = requests.get(url, timeout=25)
+        if resp.status_code == 200:
+            scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
+            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: full_scrip_df['token'] = full_scrip_df['symboltoken']
+            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+            if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+            for _, row in nse_eq.iterrows():
+                sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
+                eq_cache[sym] = (tok, 'NSE'); eq_cache[name] = (tok, 'NSE')
+                if sym.endswith("-EQ"): eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
+            fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
+            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): options_cache[name.strip()] = group
+            print(f"✅ Scrip Master Cached Successfully!")
+    except Exception as e: print(f"⚠ Scrip Master Error: {e}")
 
 full_scrip_df = pd.DataFrame(); eq_cache = {}; options_cache = {}; morning_oi_dict = {}; baseline_date = None
 
-# ==========================================
-# MAIN LOOP EXECUTION THREAD
-# ==========================================
 def run_bot_lock_loop():
     print("🚀 Starting Advanced F&O Symbols Parallel Live Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
@@ -660,9 +643,9 @@ def run_bot_lock_loop():
                         if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'): break
                     except Exception: pass
                     time.sleep(10)
-            time.sleep(4)
+        time.sleep(4)
 
-if __name__ == "__main__":
+if name == "main":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     run_bot_lock_loop()
