@@ -576,49 +576,58 @@ def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, curren
     except Exception: pass
 
 # ==========================================
-# SCRIP MASTER DOWNLOAD & SYMBOLS CACHING (FIXED & OPTIMIZED)
+# SCRIP MASTER DOWNLOAD & SYMBOLS CACHING (FIXED WORKING ENDPOINT)
 # ==========================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
-    try:
-        print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://margincalculator.angelbroking.com/OpenAPI_Data/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=45)
-        print(f"📊 Scrip Master Response Status: {resp.status_code}")
-        
-        if resp.status_code == 200:
-            scrip_data = resp.json()
-            full_scrip_df = pd.DataFrame(scrip_data)
+    
+    # Official Angel One Scrip Master Endpoints
+    urls_to_try = [
+        "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json",
+        "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json",
+        "https://margincalculator.angelbroking.com/OpenAPI_Data/files/OpenAPIScripMaster.json"
+    ]
+    
+    for url in urls_to_try:
+        try:
+            print(f"📥 Downloading Angel One Scrip Master JSON from: {url}")
+            resp = requests.get(url, timeout=35)
+            print(f"📊 Scrip Master Response Status: {resp.status_code}")
             
-            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: 
-                full_scrip_df['token'] = full_scrip_df['symboltoken']
-            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: 
-                full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
-            if 'strike' in full_scrip_df.columns: 
-                full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
-            
-            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
-            for _, row in nse_eq.iterrows():
-                sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
-                eq_cache[sym] = (tok, 'NSE')
-                eq_cache[name] = (tok, 'NSE')
-                if sym.endswith("-EQ"): 
-                    eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
-            
-            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
-            fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
-            
-            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): 
-                options_cache[name.strip()] = group
+            if resp.status_code == 200:
+                scrip_data = resp.json()
+                full_scrip_df = pd.DataFrame(scrip_data)
                 
-            print(f"✅ Scrip Master Cached Successfully! Total Symbols: {len(options_cache)}")
-        else:
-            print(f"⚠ Failed to download Scrip Master. HTTP Status Code: {resp.status_code}")
-            time.sleep(10)
-    except Exception as e: 
-        print(f"❌ Scrip Master Error Exception: {e}")
-        time.sleep(10)
+                if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: 
+                    full_scrip_df['token'] = full_scrip_df['symboltoken']
+                if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: 
+                    full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+                if 'strike' in full_scrip_df.columns: 
+                    full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+                
+                nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+                for _, row in nse_eq.iterrows():
+                    sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
+                    eq_cache[sym] = (tok, 'NSE')
+                    eq_cache[name] = (tok, 'NSE')
+                    if sym.endswith("-EQ"): 
+                        eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+                
+                fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
+                fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
+                fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+                
+                for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): 
+                    options_cache[name.strip()] = group
+                    
+                print(f"✅ Scrip Master Cached Successfully! Total Symbols: {len(options_cache)}")
+                return
+            else:
+                print(f"⚠ HTTP {resp.status_code} on {url}, trying fallback...")
+        except Exception as e:
+            print(f"❌ Error fetching from {url}: {e}")
+            
+    time.sleep(10)
 
 full_scrip_df = pd.DataFrame(); eq_cache = {}; options_cache = {}; morning_oi_dict = {}; baseline_date = None
 
