@@ -30,10 +30,17 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
+
+# ==========================================
+# FORCE FLUSH LOGS IN RENDER
+# ==========================================
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
+# ==========================================
+# FLASK WEB SERVER FOR RENDER PORT
+# ==========================================
 app = Flask(__name__)
 
 @app.route('/')
@@ -44,6 +51,9 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
+# ==========================================
+# CONFIGURATION & GOOGLE SHEETS
+# ==========================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
@@ -74,6 +84,9 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
+# ==========================================
+# PYTHON MEMORY STORE & QUOTA OPTIMIZATION
+# ==========================================
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
@@ -101,18 +114,22 @@ def safe_update_cell(sheet, cell_name, new_value):
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
+# ==========================================
+# COLOR FORMATTING FOR K3 (PRESERVES FONT SIZE & BOLD)
+# ==========================================
 def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     try:
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
+        
         body = {
             "requests": [
                 {
@@ -140,6 +157,9 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
+# ==========================================
+# ROBUST IV & GREEKS
+# ==========================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -179,7 +199,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT TESTED WINNER LOGIC)
+# MASTER SCENARIO ENGINE (EXACT MATCH WITH GAS)
 # ==========================================
 def execute_python_scenario_tracker():
     global global_run_date
@@ -201,6 +221,7 @@ def execute_python_scenario_tracker():
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
+        # CE Scan: Row 15 to Row 28
         for r in range(15, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -225,6 +246,7 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
+        # PE Scan: Row 8 to Row 21
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -309,23 +331,23 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # ==========================================
-        # 🏆 1. CE WINNER (EXACT TESTED LOGIC)
-        # ==========================================
+        # ==================================================================================
+        # 🏆 1. CALL (CE) SIDE TRIPLE PRIORITY POINTS ENGINE (EXACT GAS MATCH)
+        # ==================================================================================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -339,9 +361,9 @@ def execute_python_scenario_tracker():
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # ==========================================
-        # 🏆 2. PE WINNER (EXACT TESTED LOGIC)
-        # ==========================================
+        # ==================================================================================
+        # 🏆 2. PUT (PE) SIDE TRIPLE PRIORITY POINTS ENGINE (EXACT GAS MATCH)
+        # ==================================================================================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -349,13 +371,13 @@ def execute_python_scenario_tracker():
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -376,6 +398,7 @@ def execute_python_scenario_tracker():
 
         current_time_str = now_dt.strftime("%I:%M %p").lower()
 
+        # EXACT ORIGINAL calculateIndependentCell FUNCTION FROM YOUR SCRIPT
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
@@ -400,12 +423,14 @@ def execute_python_scenario_tracker():
             shift_from_strike = float(get_memory("SHIFT_FROM_" + cache_key, 0)) if get_memory("SHIFT_FROM_" + cache_key) else 0.0
             last_target_strike = float(get_memory("SHIFT_TARGET_" + cache_key, 0)) if get_memory("SHIFT_TARGET_" + cache_key) else 0.0
 
+            # 🎯 1. REVERSAL CHECK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if strike == shift_from_strike or (last_target_strike > 0 and second_strike != last_target_strike):
                     set_memory("IS_SHIFTED_" + cache_key, "false")
                     set_memory("PREV_STRK_" + cache_key, str(strike))
                     remove_memory("SHIFT_TARGET_" + cache_key)
 
+            # 🎯 2. NEW SHIFT TRIGGER CHECK
             if strike != prev_strike and prev_strike > 0 and (final_status_text == "wtb" or final_status_text == "wtt"):
                 if strike < prev_strike:
                     shift_type = "top to bottom"
@@ -418,6 +443,7 @@ def execute_python_scenario_tracker():
                 set_memory("SHIFT_FROM_" + cache_key, str(prev_strike))
                 set_memory("SHIFT_TARGET_" + cache_key, str(second_strike))
 
+            # 🎯 3. EVALUATE PERSISTENT SHIFT LOCK
             if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if raw_state == "STRONG" or final_status_text == "stable strong" or "to strong" in final_status_text:
                     set_memory("IS_SHIFTED_" + cache_key, "false")
@@ -525,10 +551,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
-        finalD5 = ""
-        finalH5 = ""
-        finalU5 = ""
-        finalQ5 = ""
+        finalD5, finalH5, finalU5, finalQ5 = "", "", "", ""
 
         if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
         elif ceWinner == "VOL": finalD5 = "(-----)"; finalH5 = ceVolResult['text']
@@ -550,6 +573,9 @@ def execute_python_scenario_tracker():
     except Exception as err:
         print(f"❌ Critical Scenario Engine Error: {err}")
 
+# ==========================================
+# FETCH & UPDATE LOOP
+# ==========================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, persistent_quotes_cache
     try:
