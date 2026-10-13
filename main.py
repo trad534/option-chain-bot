@@ -254,7 +254,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         # Call / Put Winner Matrix Assignments
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
@@ -262,7 +262,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
 
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
         else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -576,31 +576,49 @@ def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, curren
     except Exception: pass
 
 # ==========================================
-# SCRIP MASTER DOWNLOAD & SYMBOLS CACHING
+# SCRIP MASTER DOWNLOAD & SYMBOLS CACHING (FIXED & OPTIMIZED)
 # ==========================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
         url = "https://margincalculator.angelbroking.com/OpenAPI_Data/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=25)
+        resp = requests.get(url, timeout=45)
+        print(f"📊 Scrip Master Response Status: {resp.status_code}")
+        
         if resp.status_code == 200:
             scrip_data = resp.json()
             full_scrip_df = pd.DataFrame(scrip_data)
-            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: full_scrip_df['token'] = full_scrip_df['symboltoken']
-            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
-            if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+            
+            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: 
+                full_scrip_df['token'] = full_scrip_df['symboltoken']
+            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: 
+                full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+            if 'strike' in full_scrip_df.columns: 
+                full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+            
             nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
                 sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
-                eq_cache[sym] = (tok, 'NSE'); eq_cache[name] = (tok, 'NSE')
-                if sym.endswith("-EQ"): eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+                eq_cache[sym] = (tok, 'NSE')
+                eq_cache[name] = (tok, 'NSE')
+                if sym.endswith("-EQ"): 
+                    eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
+            
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
-            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): options_cache[name.strip()] = group
-            print(f"✅ Scrip Master Cached Successfully!")
-    except Exception as e: print(f"⚠ Scrip Master Error: {e}")
+            
+            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): 
+                options_cache[name.strip()] = group
+                
+            print(f"✅ Scrip Master Cached Successfully! Total Symbols: {len(options_cache)}")
+        else:
+            print(f"⚠ Failed to download Scrip Master. HTTP Status Code: {resp.status_code}")
+            time.sleep(10)
+    except Exception as e: 
+        print(f"❌ Scrip Master Error Exception: {e}")
+        time.sleep(10)
 
 full_scrip_df = pd.DataFrame(); eq_cache = {}; options_cache = {}; morning_oi_dict = {}; baseline_date = None
 
