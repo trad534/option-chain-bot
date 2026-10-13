@@ -90,6 +90,8 @@ except Exception as e:
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
+# 🛡️ Persistent Strike Cache to protect against 0-value blips
+persistent_quotes_cache = {}
 
 def get_memory(key, default=""):
     return script_memory.get(key, default)
@@ -342,7 +344,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -566,10 +568,10 @@ def execute_python_scenario_tracker():
         print(f"❌ Critical Scenario Engine Error: {err}")
 
 # ==========================================
-# FETCH & UPDATE LOOP
+# FETCH & UPDATE LOOP (PERMANENTLY FIXED FOR 0-VALUES)
 # ==========================================
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache
+    global morning_oi_dict, baseline_date, cached_selected_symbol, options_cache, eq_cache, persistent_quotes_cache
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -596,6 +598,7 @@ def fetch_and_update_option_chain(smart_api):
         if cached_selected_symbol and cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Symbol Switched from {cached_selected_symbol} to {clean_symbol} -> Clearing Memory!")
             script_memory.clear()
+            persistent_quotes_cache.clear()
 
         if cached_selected_symbol != clean_symbol:
             print(f"\n⚡ Active Symbol Switched To: {clean_symbol}")
@@ -673,11 +676,20 @@ def fetch_and_update_option_chain(smart_api):
             for i in range(0, len(tokens_list), 40):
                 batch_tokens = tokens_list[i:i+40]
                 if not batch_tokens: continue
-                try:
-                    res = smart_api.getMarketData("FULL", {exch: batch_tokens})
-                    if res and res.get('status') and res.get('data'):
-                        all_fetched_quotes.extend(res['data'].get('fetched', []))
-                except Exception:
+                fetched_success = False
+                for attempt in range(2):  # 🛡️ Retry logic to eliminate 0-value blips
+                    try:
+                        res = smart_api.getMarketData("FULL", {exch: batch_tokens})
+                        if res and res.get('status') and res.get('data'):
+                            batch_fetched = res['data'].get('fetched', [])
+                            if batch_fetched:
+                                all_fetched_quotes.extend(batch_fetched)
+                                fetched_success = True
+                                break
+                    except Exception:
+                        pass
+                    time.sleep(0.3)
+                if not fetched_success:
                     pass
 
         market_open_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
@@ -691,11 +703,25 @@ def fetch_and_update_option_chain(smart_api):
             oi = float(item.get('opnInterest', item.get('oi', 0)))
             net_change = float(item.get('netChange', item.get('change', 0)))
             
-            if is_market_open_passed and tok not in morning_oi_dict:
-                morning_oi_dict[tok] = oi
+            if ltp > 0 or oi > 0:
+                persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': net_change}
 
+        for tok in exchange_tokens_map.get('NFO', []):
+            if tok not in persistent_quotes_cache:
+                persistent_quotes_cache[tok] = {'ltp': 0.0, 'volume': 0.0, 'oi': 0.0, 'net_change': 0.0}
+
+        for tok, q_data in persistent_quotes_cache.items():
+            oi = q_data['oi']
+            if is_market_open_passed and tok not in morning_oi_dict and oi > 0:
+                morning_oi_dict[tok] = oi
             base_oi = morning_oi_dict.get(tok, oi)
-            quotes_dict[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'oi_chg': oi - base_oi, 'net_change': net_change}
+            quotes_dict[tok] = {
+                'ltp': q_data['ltp'], 
+                'volume': q_data['volume'], 
+                'oi': oi, 
+                'oi_chg': oi - base_oi, 
+                'net_change': q_data['net_change']
+            }
 
         exp_dt = datetime.strptime(str(current_expiry).title(), "%d%b%Y") if current_expiry != "N/A" else datetime.now()
         exp_date = exp_dt.replace(hour=15, minute=30, second=0)
@@ -803,7 +829,6 @@ def run_bot_lock_loop():
             current_dt = datetime.now()
             current_date_str = current_dt.strftime('%Y-%m-%d')
             
-            # Auto reconnect / fresh session at 9:00 AM or new day
             if last_session_date != current_date_str or current_dt.strftime('%H:%M') == "09:00":
                 print("🔄 Generating Scheduled / Fresh Angel One session...")
             
@@ -823,7 +848,6 @@ def run_bot_lock_loop():
 
     while True:
         try:
-            # Daily 9:00 AM forced session renewal check
             now_check = datetime.now()
             if now_check.strftime('%H:%M') == "09:00":
                 print("⏰ 9:00 AM Reconnect Triggered...")
@@ -831,7 +855,7 @@ def run_bot_lock_loop():
                 data = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if data and data.get('status'):
                     print("✅ 9:00 AM Session Refreshed Successfully!")
-                time.sleep(60) # Wait a minute to avoid loop spam
+                time.sleep(60)
 
             fetch_and_update_option_chain(smart_api)
         except Exception as _e:
@@ -859,5 +883,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Run the bot loop
     run_bot_lock_loop()
