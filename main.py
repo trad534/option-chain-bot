@@ -268,10 +268,10 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         # Call / Put Winner Matrix Assignments
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
         else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         peWinner = "VOL"
@@ -380,13 +380,13 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         print(f"Error in heavy background calculator loop: {e}")
 
 # ===================================================
-# DASHBOARD WRITING EXECUTOR (INVOKED ON RE-ALIGNED)
+# DASHBOARD WRITING EXECUTOR (FIXED FOR CELLS & HISTORICAL TAB)
 # ===================================================
 def execute_python_scenario_tracker():
     global last_flashed_symbol, multi_symbol_runtime_states, time_travel_db
     try:
         # Read the current dashboard display selection cell
-        active_symbol_name = "Nifty"
+        active_symbol_name = "NIFTY"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
@@ -405,6 +405,28 @@ def execute_python_scenario_tracker():
 
             update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3_TEXT", f"{active_symbol_name} is Neutral"))
             print(f"✨ [DASHBOARD SYNCHRONIZED] Successfully injected historical state onto {active_symbol_name} screen cells!")
+
+        # ⚡ LIVE HISTORICAL SCENARIOS TAB LOGGING SYNC
+        now_dt = datetime.now()
+        is_market_hours = (now_dt.hour > 9 or (now_dt.hour == 9 and now_dt.minute >= 15)) and \
+                          (now_dt.hour < 15 or (now_dt.hour == 15 and now_dt.minute <= 30))
+
+        if active_symbol_name in multi_symbol_runtime_states and is_market_hours:
+            st_data = multi_symbol_runtime_states[active_symbol_name]
+            current_time_clock = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Append row to Live_Historical_Scenarios tab continuously
+            try:
+                historical_log_sheet.append_row([
+                    current_time_clock,
+                    active_symbol_name,
+                    st_data.get("D5_TEXT", ""),
+                    st_data.get("H5_TEXT", ""),
+                    st_data.get("K3_TEXT", "")
+                ])
+                print(f"✅ [HISTORICAL LOGGED] Appended live row for {active_symbol_name} in Live_Historical_Scenarios")
+            except Exception as hist_err:
+                print(f"⚠ Historical tab append error: {hist_err}")
 
         # ⚡ INVESTING DADY FL_LOG FLASH OVERWRITE ENGINE
         if last_flashed_symbol != active_symbol_name:
@@ -649,4 +671,3 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     run_bot_lock_loop()
-
