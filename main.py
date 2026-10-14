@@ -323,7 +323,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
@@ -348,10 +348,11 @@ def initialize_scrip_master(api_client):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
-                sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
-                eq_cache[sym] = (tok, 'NSE'); eq_cache[name] = (tok, 'NSE')
+                sym, name, tok, exch = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip(), str(row['exch_seg']).strip()
+                eq_cache[sym] = (tok, exch)
+                eq_cache[name] = (tok, exch)
             
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
@@ -383,12 +384,23 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    spot_token, spot_exchange = eq_cache.get(symbol_name, ("", "NSE"))
+                    # Robust Spot Price Fetching for ALL symbols
+                    spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
+                    if not spot_token:
+                        match_df = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (full_scrip_df['symbol'].str.upper() == symbol_name)]
+                        if match_df.empty:
+                            match_df = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (full_scrip_df['name'].str.upper() == symbol_name)]
+                        if not match_df.empty:
+                            spot_token = str(match_df['token'].iloc[0]).strip()
+                            spot_exchange = str(match_df['exch_seg'].iloc[0]).strip()
+
                     spot_price = 0.0
-                    if spot_token:
+                    if spot_token and spot_exchange:
                         spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
-                            spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
+                            fetched_list = spot_quote['data'].get('fetched', [])
+                            if fetched_list:
+                                spot_price = float(fetched_list[0].get('ltp', 0))
 
                     if spot_price <= 0:
                         all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -460,7 +472,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Clean Badges Row Dashboard</title>
+    <title>LTP Calculator - Investing Daddy Style</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -485,16 +497,27 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 15px; overflow-x: auto; max-height: 700px; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
-        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; }
+        th, td { border: none !important; padding: 5px 6px; white-space: nowrap; }
+        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; border-bottom: 1px solid #dee2e6 !important; }
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Clean Spot Row with NO red lines, compact box size matching badges */
+        /* Spot Row with Middle Red Line and NO cell grid borders */
         .spot-row td { 
             background: #ffffff !important; 
-            border: 1px solid #dee2e6 !important; 
+            border: none !important; 
+            position: relative;
             padding: 4px 6px !important; 
+        }
+        .spot-row td::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 2px;
+            background-color: #f03e3e;
+            z-index: 2;
         }
         .spot-badge {
             background: #ffffff;
@@ -505,23 +528,25 @@ HTML_TEMPLATE = """
             font-weight: bold;
             font-size: 10px;
             display: inline-block;
+            position: relative;
+            z-index: 3;
         }
         .spot-price-cell {
             background: #d32f2f !important;
             color: #ffffff !important;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 12px;
             text-align: center;
         }
         .spot-tag-small {
             background: #ffffff;
             color: #d32f2f;
-            font-size: 7px;
+            font-size: 8px;
             font-weight: bold;
-            padding: 0px 3px;
-            border-radius: 2px;
+            padding: 1px 4px;
+            border-radius: 3px;
             display: block;
-            margin-bottom: 1px;
+            margin-bottom: 2px;
         }
 
         .itm-ce { background: rgba(255, 0, 0, 0.05); }
@@ -684,7 +709,7 @@ def index():
 def get_symbol_data(symbol):
     sym = symbol.upper()
     if sym in multi_symbol_runtime_states:
-        vault = multi_symbol_runtime_states[sym]
+        vault = multi_symbol_runtime_states[symbol.upper()]
         return jsonify({
             "D5": vault.get("D5_TEXT", "(-----)"),
             "H5": vault.get("H5_TEXT", "(-----)"),
