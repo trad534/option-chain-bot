@@ -460,7 +460,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Spot Middle Line Dashboard</title>
+    <title>LTP Calculator - Clean Middle Line Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -490,11 +490,11 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Spot Row with Middle Red Line across the boxes */
+        /* Spot Row with ONLY middle red line (no top/bottom borders) */
         .spot-row td { 
             background: #ffffff !important; 
-            border-top: 2px solid #f03e3e !important; 
-            border-bottom: 2px solid #f03e3e !important; 
+            border-top: 1px solid #dee2e6 !important; 
+            border-bottom: 1px solid #dee2e6 !important; 
             position: relative;
             padding: 4px; 
         }
@@ -672,7 +672,7 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>
-                                    <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>
+                                    <td class="is_itm_pe ? 'itm-pe' : ''">${row.pe_theta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>
                                 `;
                             }
