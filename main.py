@@ -238,7 +238,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolRawState == "STRONG" and peOiRawState == "STRONG": peWinner = "BOTH"
-        else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+        else: ceWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         # ⚡ 1 MICRON FIXED CRITICAL LOGIC: Fallback variables guaranteed to prevent loop break
         checkCe = "stable strong"
@@ -475,21 +475,20 @@ def fetch_and_update_option_chain(smart_api):
 
 def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, current_expiry_options, strikes):
     try:
-ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
-for idx, st in enumerate(strikes):
-ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
-pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
-ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
-ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
-ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
-peOiArray.append({'strike': st, 'val': float(pe_q['oi']), 'row': 8+idx})
-calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
-except Exception: pass
-### 📦 PART 7: Scrip Master Download Matrix & Infinite Reconnect Threads Block
-```python
+        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        for idx, st in enumerate(strikes):
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
+            ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+            ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
+            ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+            ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+            peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
+            peOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+        calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
+    except Exception: pass
+
 # ====================================================================
 # 📥 DOWNLOAD OpenAPI CONTROLLER MASTER FOR CACHE MAPS
 # ====================================================================
@@ -497,7 +496,7 @@ def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://angelbroking.com"
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
