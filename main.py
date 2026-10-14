@@ -13,7 +13,7 @@ from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
 
-RENDER_URL = "https://onrender.com"
+RENDER_URL = "https://option-chain-bot.onrender.com"
 
 def self_ping():
     while True:
@@ -52,6 +52,9 @@ persistent_quotes_cache = {}
 multi_symbol_runtime_states = {}
 global_run_date = ""
 
+# ====================================================================
+# 🧮 BLACK-SCHOLES OPTIONS GREEKS DERIVATIONS
+# ====================================================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -73,11 +76,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     delta = norm.cdf(d1) if flag == 'CE' else norm.cdf(d1) - 1
     return {'iv': round(sigma * 100, 1), 'delta': round(delta, 2)}
 
+# ====================================================================
+# 🎛️ MASTER 27-SCENARIO & IN-MEMORY WEB GRID ENGINE
+# ====================================================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, time_to_expiry_years):
     global global_run_date, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
-        current_time_str = now_dt.strftime("%H:%M:%S")
+        current_time_str = now_dt.strftime("%I:%M %p").lower()
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
@@ -109,7 +115,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         for idx, row in enumerate(strikes_data):
             strike = row['strike']
             row_idx = 8 + idx
-            if strike == spot_price: row_idx = 18
 
             ce_oi = row['ce_oi']
             ce_vol = row['ce_vol']
@@ -209,11 +214,39 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 'spot_price': spot_price
             })
 
+        # --- 27 SCENARIO LOGIC ENGINE ---
+        def detect_live_state_advanced(top_obj, is_put_side):
+            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
+            if is_put_side: return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
+            else: return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
+
+        ceVolRawState = detect_live_state_advanced(ceVolTop, False)
+        ceOiRawState = detect_live_state_advanced(ceOiTop, False)
+        peVolRawState = detect_live_state_advanced(peVolTop, True)
+        peOiRawState = detect_live_state_advanced(peOiTop, True)
+
+        ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+        peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+
+        checkCe = ceOiRawState if ceWinner == "OI" else ceVolRawState
+        checkPe = peOiRawState if peWinner == "OI" else peVolRawState
+
+        k3Text = f"{symbol_name} is Neutral"
+        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "STRONG" and checkPe == "STRONG": k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "STRONG": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "STRONG" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "STRONG": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "STRONG" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+
         sym_vault["D5_TEXT"] = f"({current_time_str} - Eor OI - {ceOiTop['highest']['strike']})"
         sym_vault["H5_TEXT"] = f"({current_time_str} - Eor VOL - {ceVolTop['highest']['strike']})"
         sym_vault["U5_TEXT"] = f"({current_time_str} - Eos OI - {peOiTop['highest']['strike']})"
         sym_vault["Q5_TEXT"] = f"({current_time_str} - Eos VOL - {peVolTop['highest']['strike']})"
-        sym_vault["K3_TEXT"] = f"{symbol_name} Market Active"
+        sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
 
@@ -342,6 +375,9 @@ def background_market_scanner():
             print(f"Scanner loop error: {e}")
             time.sleep(5)
 
+# ====================================================================
+# 🌐 HTML DASHBOARD UI WITH COLOR HIGHLIGHTS & RED SPOT LINE
+# ====================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -371,7 +407,7 @@ HTML_TEMPLATE = """
         .itm-ce { background: rgba(255, 235, 238, 0.08); }
         .itm-pe { background: rgba(232, 245, 233, 0.08); }
 
-        /* Highlights */
+        /* Color Highlights */
         .highlight-green { background: #2e7d32 !important; color: #ffffff !important; font-weight: bold; }
         .highlight-yellow { background: #fbc02d !important; color: #000000 !important; font-weight: bold; }
         
