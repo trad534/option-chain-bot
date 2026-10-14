@@ -102,7 +102,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (EXACT MATCH)
+# MASTER SCENARIO ENGINE
 # ==========================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, time_to_expiry_years):
     global global_run_date, multi_symbol_runtime_states
@@ -224,40 +224,10 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        def get_full_status_string(top_obj, raw_state, cache_key):
-            if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
-                return "stable strong"
-            strike = top_obj['highest']['strike']
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
-            prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
-
-            if raw_state == "STRONG":
-                if current_weak_hist == "wtt": return "wtt to strong"
-                if current_weak_hist == "wtb": return "wtb to strong"
-                if strike != prev_strike: return "strong"
-                return "stable strong"
-            return raw_state
-
-        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
-        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
-        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, "PE_VOL")
-        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, "PE_OI")
-
-        ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
-        ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
-        peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
-
         ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
         peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
-
-        def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
+        def calculate_independent_cell(top_obj, cache_key, side_label, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong"}
 
@@ -283,13 +253,13 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
             return {'text': output_text, 'status': final_status_text, 'scenarioStatus': final_status_text}
 
-        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
-        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
-        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
-        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
+        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceOiRawState)
+        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceVolRawState)
+        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peVolRawState)
+        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peOiRawState)
 
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
