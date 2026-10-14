@@ -384,7 +384,7 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    # Guaranteed Spot Price Resolution
+                    # Guaranteed Spot Price Resolution using LTP mode (Works for Indices and Stocks both)
                     spot_price = 0.0
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
                     
@@ -397,7 +397,7 @@ def background_market_scanner():
                             spot_exchange = str(match_df['exch_seg'].iloc[0]).strip()
 
                     if spot_token and spot_exchange:
-                        spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                        spot_quote = api.getMarketData("LTP", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
                             fetched_list = spot_quote['data'].get('fetched', [])
                             if fetched_list:
