@@ -83,7 +83,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ====================================================================
-# 🎛️ 27 SCENARIOS MASTER ENGINE (COMPLETE MAPPING)
+# 🎛️ 27 SCENARIOS & FULL GRID ENGINE
 # ====================================================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
     global global_run_date, multi_symbol_runtime_states
@@ -99,7 +99,8 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
             multi_symbol_runtime_states[symbol_name] = {
                 "memory": {},
                 "D5_TEXT": "(-----)", "H5_TEXT": "(-----)", "U5_TEXT": "(-----)", "Q5_TEXT": "(-----)",
-                "K3_TEXT": f"{symbol_name} is Neutral"
+                "K3_TEXT": f"{symbol_name} is Neutral",
+                "grid_rows": []
             }
 
         sym_vault = multi_symbol_runtime_states[symbol_name]
@@ -112,31 +113,35 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
             sym_memory[key] = str(val)
 
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        grid_rows_built = []
 
         for idx, row in enumerate(strikes_data):
             strike = row['strike']
             row_idx = 8 + idx
             if strike == spot_price: row_idx = 18
 
-            ce_oi_raw = str(row['ce_oi']).replace("%", "").strip()
-            ce_vol_raw = str(row['ce_vol']).replace("%", "").strip()
-            pe_vol_raw = str(row['pe_vol']).replace("%", "").strip()
-            pe_oi_raw = str(row['pe_oi']).replace("%", "").strip()
+            ce_oi = row['ce_oi']
+            ce_vol = row['ce_vol']
+            ce_ltp = row['ce_ltp']
+            pe_ltp = row['pe_ltp']
+            pe_vol = row['pe_vol']
+            pe_oi = row['pe_oi']
 
-            if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
-            if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
-            if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
-            if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
+            ceOiArray.append({'strike': strike, 'val': ce_oi, 'row': row_idx})
+            ceVolArray.append({'strike': strike, 'val': ce_vol, 'row': row_idx})
+            peVolArray.append({'strike': strike, 'val': pe_vol, 'row': row_idx})
+            peOiArray.append({'strike': strike, 'val': pe_oi, 'row': row_idx})
 
-            c_oi_val = float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0
-            c_vol_val = float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0
-            p_vol_val = float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0
-            p_oi_val = float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0
-
-            ceOiArray.append({'strike': strike, 'val': c_oi_val, 'row': row_idx})
-            ceVolArray.append({'strike': strike, 'val': c_vol_val, 'row': row_idx})
-            peVolArray.append({'strike': strike, 'val': p_vol_val, 'row': row_idx})
-            peOiArray.append({'strike': strike, 'val': p_oi_val, 'row': row_idx})
+            grid_rows_built.append({
+                'strike': strike,
+                'ce_oi': ce_oi,
+                'ce_vol': ce_vol,
+                'ce_ltp': ce_ltp,
+                'pe_ltp': pe_ltp,
+                'pe_vol': pe_vol,
+                'pe_oi': pe_oi,
+                'is_spot': (strike == spot_price)
+            })
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -199,7 +204,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: ceWinner = "BOTH"
         elif peOiIsStable100 and not peVolIsStable100: ceWinner = "OI"
-        elif peVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
+        elif peVolIsStable100 and not peOiIsStable100: ceWinner = "VOL"
         else: ceWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_mem("WEAK_HIST_CE_OI", ceOiRawState)
@@ -250,10 +255,10 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
 
             if is_shifting:
-                output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val})\n   (shifted {get_mem('SHIFT_TYPE_' + cache_key)})"
+                output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val}) (shifted {get_mem('SHIFT_TYPE_' + cache_key)})"
             else:
-                if display_status == "stable strong": output_text = f"({display_time} - {side_label} - {s_val})\n    (stable strong)"
-                elif "to strong" in display_status: output_text = f"({display_time} - {side_label} - {s_val})\n   ({display_status})"
+                if display_status == "stable strong": output_text = f"({display_time} - {side_label} - {s_val}) (stable strong)"
+                elif "to strong" in display_status: output_text = f"({display_time} - {side_label} - {s_val}) ({display_status})"
                 else: output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val})"
             return {'text': output_text, 'scenarioStatus': scenario_status}
 
@@ -267,9 +272,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
-        # ==========================================================
-        # 🎯 ALL 27 SCENARIOS FULL MAPPING (K3 STATUS)
-        # ==========================================================
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -296,14 +298,14 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else sym_vault["D5_TEXT"]
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else sym_vault["H5_TEXT"]
         sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else sym_vault["U5_TEXT"]
         sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else sym_vault["Q5_TEXT"]
         sym_vault["K3_TEXT"] = k3Text
+        sym_vault["grid_rows"] = grid_rows_built
+        sym_vault["spot_price"] = spot_price
 
     except Exception as e:
         print(f"Error in scenario engine for {symbol_name}: {e}")
@@ -401,13 +403,15 @@ def background_market_scanner():
                         ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
                         pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
                         
-                        ce_q = dash_quotes_dict.get(ce_token, {'oi': 0, 'volume': 0})
-                        pe_q = dash_quotes_dict.get(pe_token, {'oi': 0, 'volume': 0})
+                        ce_q = dash_quotes_dict.get(ce_token, {'oi': 0, 'volume': 0, 'ltp': 0})
+                        pe_q = dash_quotes_dict.get(pe_token, {'oi': 0, 'volume': 0, 'ltp': 0})
 
                         strikes_payload.append({
                             'strike': st,
                             'ce_oi': ce_q['oi'],
                             'ce_vol': ce_q['volume'],
+                            'ce_ltp': ce_q['ltp'],
+                            'pe_ltp': pe_q['ltp'],
                             'pe_vol': pe_q['volume'],
                             'pe_oi': pe_q['oi']
                         })
@@ -420,6 +424,9 @@ def background_market_scanner():
             print(f"Scanner loop error: {e}")
             time.sleep(5)
 
+# ====================================================================
+# 🌐 PROFESSIONAL HTML UI & TABLE GRID (INVESTING DADDY STYLE)
+# ====================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -427,20 +434,32 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <title>LTP Calculator - Live RAM Engine</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #1e1e1e; padding: 15px; border-radius: 8px; }
-        select { padding: 10px; font-size: 16px; background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; }
-        .status-box { display: flex; gap: 15px; margin-top: 20px; }
-        .card { background: #1e1e1e; flex: 1; padding: 15px; border-radius: 8px; border: 1px solid #333; text-align: center; }
-        .k3-banner { background: #2c2c2c; padding: 15px; margin-top: 20px; text-align: center; font-size: 20px; font-weight: bold; border-radius: 8px; color: #00ffcc; }
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #1e1e1e; padding: 10px 15px; border-radius: 8px; }
+        select { padding: 8px; font-size: 16px; background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        .card { background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333; text-align: center; font-size: 13px; }
+        .card h3 { margin: 0 0 5px 0; font-size: 14px; color: #aaa; }
+        .k3-banner { background: #2c2c2c; padding: 12px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #00ffcc; border: 1px solid #00ffcc; }
+        
+        /* Option Chain Table */
+        .table-container { margin-top: 15px; overflow-x: auto; max-height: 600px; }
+        table { width: 100%; border-collapse: collapse; background: #181818; font-size: 12px; text-align: center; }
+        th, td { border: 1px solid #333; padding: 6px 8px; white-space: nowrap; }
+        th { background: #222; color: #ddd; position: sticky; top: 0; z-index: 10; }
+        .strike-col { background: #ff9800; color: #000; font-weight: bold; }
+        .spot-row { border-top: 3px solid #ff4444; border-bottom: 3px solid #ff4444; background: rgba(255, 68, 68, 0.15); }
+        .highlight-yellow { background: #ffeb3b; color: #000; font-weight: bold; }
+        .highlight-green { background: #4caf50; color: #fff; font-weight: bold; }
+        .highlight-red { background: #f44336; color: #fff; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
         <h2>⚡ LTP Calculator (RAM Memory Engine)</h2>
         <div>
-            <label>Select Symbol: </label>
-            <select id="symbolSelect" onchange="switchSymbol()">
+            <label>Symbol: </label>
+            <select id="symbolSelect" onchange="fetchData()">
                 {% for sym in symbols %}
                 <option value="{{ sym }}">{{ sym }}</option>
                 {% endfor %}
@@ -457,8 +476,32 @@ HTML_TEMPLATE = """
         <div class="card"><h3>PE OI (U5)</h3><p id="u5Val">-</p></div>
     </div>
 
+    <div class="table-container">
+        <table id="optionChainTable">
+            <thead>
+                <tr>
+                    <th colspan="3">CALLS (CE)</th>
+                    <th class="strike-col">STRIKE</th>
+                    <th colspan="3">PUTS (PE)</th>
+                </tr>
+                <tr>
+                    <th>OI</th>
+                    <th>Volume</th>
+                    <th>LTP</th>
+                    <th class="strike-col">Price</th>
+                    <th>LTP</th>
+                    <th>Volume</th>
+                    <th>OI</th>
+                </tr>
+            </thead>
+            <tbody id="gridBody">
+                <tr><td colspan="7">Select a symbol to load option chain...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <script>
-        function switchSymbol() {
+        function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
             fetch('/api/data/' + sym)
                 .then(res => res.json())
@@ -468,21 +511,32 @@ HTML_TEMPLATE = """
                     document.getElementById("q5Val").innerText = data.Q5;
                     document.getElementById("u5Val").innerText = data.U5;
                     document.getElementById("k3Display").innerText = data.K3;
+
+                    let tbody = document.getElementById("gridBody");
+                    tbody.innerHTML = "";
+
+                    if (data.grid_rows && data.grid_rows.length > 0) {
+                        data.grid_rows.forEach(row => {
+                            let tr = document.createElement("tr");
+                            if (row.is_spot) tr.classList.add("spot-row");
+
+                            tr.innerHTML = `
+                                <td>${row.ce_oi}</td>
+                                <td>${row.ce_vol}</td>
+                                <td>${row.ce_ltp}</td>
+                                <td class="strike-col">${row.strike}</td>
+                                <td>${row.pe_ltp}</td>
+                                <td>${row.pe_vol}</td>
+                                <td>${row.pe_oi}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
                 });
         }
 
-        setInterval(() => {
-            let sym = document.getElementById("symbolSelect").value;
-            fetch('/api/data/' + sym)
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById("d5Val").innerText = data.D5;
-                    document.getElementById("h5Val").innerText = data.H5;
-                    document.getElementById("q5Val").innerText = data.Q5;
-                    document.getElementById("u5Val").innerText = data.U5;
-                    document.getElementById("k3Display").innerText = data.K3;
-                });
-        }, 1000);
+        setInterval(fetchData, 1000);
+        window.onload = fetchData;
     </script>
 </body>
 </html>
@@ -503,9 +557,11 @@ def get_symbol_data(symbol):
             "H5": vault.get("H5_TEXT", "(-----)"),
             "Q5": vault.get("Q5_TEXT", "(-----)"),
             "U5": vault.get("U5_TEXT", "(-----)"),
-            "K3": vault.get("K3_TEXT", f"{sym} is Neutral")
+            "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
+            "grid_rows": vault.get("grid_rows", []),
+            "spot_price": vault.get("spot_price", 0)
         })
-    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing..."})
+    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": []})
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
