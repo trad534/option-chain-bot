@@ -433,7 +433,7 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE
+# WEB DASHBOARD INTERFACE (FIXED COLUMNS)
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
