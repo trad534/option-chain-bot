@@ -385,8 +385,8 @@ def background_market_scanner():
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                     all_master_strikes = sorted(current_expiry_options['strike'].unique())
-                    
-                    # Guaranteed Spot Price Resolution using LTP mode with Index & Stock matching
+
+                    # GUARANTEED SPOT PRICE RESOLUTION
                     spot_price = 0.0
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
                     
@@ -399,13 +399,16 @@ def background_market_scanner():
                             spot_exchange = str(match_df['exch_seg'].iloc[0]).strip()
 
                     if spot_token and spot_exchange:
-                        spot_quote = api.getMarketData("LTP", {spot_exchange: [spot_token]})
-                        if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
-                            fetched_list = spot_quote['data'].get('fetched', [])
-                            if fetched_list:
-                                spot_price = float(fetched_list[0].get('ltp', 0))
+                        try:
+                            spot_quote = api.getMarketData("LTP", {spot_exchange: [spot_token]})
+                            if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
+                                fetched_list = spot_quote['data'].get('fetched', [])
+                                if fetched_list:
+                                    spot_price = float(fetched_list[0].get('ltp', 0))
+                        except Exception as e:
+                            print(f"Spot fetch exception: {e}")
 
-                    # Fallback: If spot_price is still 0, take middle strike immediately
+                    # GUARANTEED FALLBACK: Middle Strike ko Spot Price bana do agar API se 0 aapse
                     if spot_price <= 0 and all_master_strikes:
                         spot_price = float(all_master_strikes[len(all_master_strikes) // 2])
 
@@ -504,7 +507,6 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Spot Row with Middle Red Line and NO cell grid borders */
         .spot-row td { 
             background: #ffffff !important; 
             border: none !important; 
@@ -643,7 +645,7 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_row) {
                                 tr.classList.add("spot-row");
-                                let activeSpotPrice = row.spot_price || data.spot_price || 'N/A';
+                                let activeSpotPrice = row.spot_price || data.spot_price || '-';
                                 tr.innerHTML = `
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
@@ -674,7 +676,7 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td>
                                     <td class="${ceOiChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td>
                                     <td class="${ceOiClass}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td>
-                                    <td class="'+ceVolClass+'">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>
+                                    <td class="${ceVolClass}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>
                                     <td class="${ceChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td>
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td>
                                     <td class="strike-col">${row.strike}</td>
@@ -734,7 +736,7 @@ if __name__ == "__main__":
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
         session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
         if session_res.get('status'):
-            app_state["smart_api"] = temp_id = temp_api
+            app_state["smart_api"] = temp_api
             print("✅ Angel One Session Established Successfully!")
             initialize_scrip_master(temp_api)
         else:
