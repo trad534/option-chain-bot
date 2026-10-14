@@ -324,7 +324,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
-        sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(-----)"
+        sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
@@ -460,7 +460,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Exact Layout Dashboard</title>
+    <title>LTP Calculator - Spot Middle Line Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -490,12 +490,24 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Spot Row Exact Layout Matching Reference Image */
+        /* Spot Row with Middle Red Line across the boxes */
         .spot-row td { 
             background: #ffffff !important; 
             border-top: 2px solid #f03e3e !important; 
             border-bottom: 2px solid #f03e3e !important; 
+            position: relative;
             padding: 4px; 
+        }
+        /* Continuous red line running through the middle of the spot row cells */
+        .spot-row td::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 2px;
+            background-color: #f03e3e;
+            z-index: 2;
         }
         .spot-badge {
             background: #ffffff;
@@ -506,6 +518,8 @@ HTML_TEMPLATE = """
             font-weight: bold;
             font-size: 10px;
             display: inline-block;
+            position: relative;
+            z-index: 3;
         }
         .spot-price-cell {
             background: #d32f2f !important;
@@ -657,7 +671,7 @@ HTML_TEMPLATE = """
                                     <td class="${peOiClass}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td>
                                     <td class="${peOiClass}">${row.pe_oi_chg}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
-                                    <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
+                                    <td class="is_itm_pe ? 'itm-pe' : ''">${row.pe_delta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>
@@ -681,41 +695,4 @@ def index():
     syms = list(options_cache.keys()) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     return render_template_string(HTML_TEMPLATE, symbols=syms)
 
-@app.route('/api/data/<symbol>')
-def get_symbol_data(symbol):
-    sym = symbol.upper()
-    if sym in multi_symbol_runtime_states:
-        vault = multi_symbol_runtime_states[sym]
-        return jsonify({
-            "D5": vault.get("D5_TEXT", "(-----)"),
-            "H5": vault.get("H5_TEXT", "(-----)"),
-            "Q5": vault.get("Q5_TEXT", "(-----)"),
-            "U5": vault.get("U5_TEXT", "(-----)"),
-            "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
-            "grid_rows": vault.get("grid_rows", []),
-            "spot_price": vault.get("spot_price", 0)
-        })
-    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": [], "spot_price": 0})
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-if __name__ == "__main__":
-    try:
-        temp_api = SmartConnect(api_key=API_KEY)
-        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-        session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
-        if session_res.get('status'):
-            app_state["smart_api"] = temp_api
-            print("✅ Angel One Session Established Successfully!")
-            initialize_scrip_master(temp_api)
-        else:
-            print("❌ Session Error during startup.")
-    except Exception as e:
-        print(f"Init Exception: {e}")
-
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-
-    background_market_scanner()
+@app.row('/api/data/<symbol>') # wait, @app.route
