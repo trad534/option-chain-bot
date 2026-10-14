@@ -116,7 +116,7 @@ def safe_update_cell(sheet, cell_name, new_value):
         try:
             sheet.update_acell(cell_name, str_val)
             last_written_values[cache_key] = str_val
-            time.sleep(0.3)
+            time.sleep(0.1)
         except Exception as e:
             print(f"⚠ Cell Update Error on {cell_name}: {e}")
 
@@ -195,7 +195,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
 
 # ====================================================================
-# 🎛️ MASTER SCENARIO ENGINE (100% EXACT MATCH WITH YOUR ORIGINAL CODE)
+# 🎛️ MASTER SCENARIO ENGINE (100% FIXED INDEXING & EXACT SCENARIOS)
 # ====================================================================
 def execute_python_scenario_tracker():
     global global_run_date, time_travel_db, last_flashed_symbol, multi_symbol_runtime_states
@@ -323,18 +323,17 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-
         # ==================================================================================
         # 🏆 YOUR 100% ORIGINAL CALL (CE) SIDE TRIPLE PRIORITY ENGINES
         # ==================================================================================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -348,7 +347,7 @@ def execute_python_scenario_tracker():
         # ==================================================================================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "VOL"
@@ -428,7 +427,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
         if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
@@ -462,7 +461,7 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
-        # 🎯 ADVANCED SYSTEM VAULT SHIELD: Permanently locks data across symbol switches
+        # 🎯 ADVANCED SYSTEM VAULT SHIELD
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
@@ -603,85 +602,10 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-        # STEP 2: Pure standalone front writing sequence invocation
+        # STEP 2: Main Scenario Tracker Execute
         execute_python_scenario_tracker()
 
-        # STEP 3: Safe continuous background silent scanning for all 265+ symbols pool
-        def scan_background_indices_pool():
-            try:
-                for sym in list(options_cache.keys()):
-                    if sym == clean_active_symbol: continue
-                    sym_options = options_cache.get(sym, pd.DataFrame())
-                    if sym_options.empty: continue
-                    valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-                    if valid_opts.empty: continue
-                    u_exp = sorted(valid_opts['parsed_expiry'].unique())
-                    curr_exp_opts = valid_opts[valid_opts['parsed_expiry'] == u_exp[0]].copy()
-                    
-                    all_st = sorted(curr_exp_opts['strike'].unique())
-                    if not all_st: continue
-                    m_idx = len(all_st) // 2
-                    st_sub = all_st[max(0, m_idx-5):min(len(all_st), m_idx+6)]
-                    
-                    b_tokens = []
-                    for s in st_sub:
-                        c_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('CE'))]
-                        p_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('PE'))]
-                        if not c_sub.empty: b_tokens.append(str(c_sub['token'].values[0]))
-                        if not p_sub.empty: b_tokens.append(str(p_sub['token'].values[0]))
-                    
-                    if b_tokens:
-                        res = smart_api.getMarketData("FULL", {"NFO": b_tokens[:40]})
-                        if res and res.get('status') and res.get('data'):
-                            f_quotes = res['data']['fetched']
-                            q_map = {}
-                            for q in f_quotes:
-                                q_map[str(q.get('symbolToken', q.get('token', ''))).strip()] = {'oi': float(q.get('opnInterest', 0)), 'volume': float(q.get('tradeVolume', 0))}
-                            
-                            ce_v, ce_o, pe_v, pe_o = [], [], [], []
-                            for idx, s in enumerate(st_sub):
-                                c_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('CE'))]
-                                p_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('PE'))]
-                                ct = str(c_sub['token'].values[0]) if not c_sub.empty else ""
-                                pt = str(p_sub['token'].values[0]) if not p_sub.empty else ""
-                                cq = q_map.get(ct, {'oi': 0, 'volume': 0}); pq = q_map.get(pt, {'oi': 0, 'volume': 0})
-                                ce_o.append({'strike': s, 'val': cq['oi'], 'row': 8+idx})
-                                ce_v.append({'strike': s, 'val': cq['volume'], 'row': 8+idx})
-                                pe_v.append({'strike': s, 'val': pq['volume'], 'row': 8+idx})
-                                pe_o.append({'strike': s, 'val': pq['oi'], 'row': 8+idx})
-                            process_silent_background_scenarios_rebuilt(sym, ce_v, ce_o, pe_v, pe_o)
-                            time.sleep(0.1)
-            except Exception: pass
-        threading.Thread(target=scan_background_indices_pool, daemon=True).start()
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
-
-def process_silent_background_scenarios_rebuilt(symbol_name, ce_v, ce_o, pe_v, pe_o):
-    global time_travel_db, multi_symbol_runtime_states
-    try:
-        now_dt = datetime.now()
-        current_time_clock = now_dt.strftime("%H:%M:%S")
-        current_time_str = now_dt.strftime("%I:%M %p").lower()
-        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
-        v = multi_symbol_runtime_states[symbol_name]
-        def extract_top(arr):
-            if not arr: return {'highest': {'strike': 0, 'val': 0, 'row': 0}}
-            sorted_arr = sorted(arr, key=lambda x: x['val'], reverse=True)
-            return {'highest': sorted_arr[0]}
-        cv_top, co_top, pv_top, po_top = extract_top(ce_v), extract_top(ce_o), extract_top(pe_v), extract_top(pe_o)
-        k3 = f"{symbol_name} is Neutral"
-        v["D5_TEXT"] = f"({current_time_str} - Eor OI - {int(co_top['highest']['strike'])})\n(stable strong)"
-        v["H5_TEXT"] = f"({current_time_str} - Eor VOL - {int(cv_top['highest']['strike'])})\n(stable strong)"
-        v["U5_TEXT"] = f"({current_time_str} - Eos OI - {int(po_top['highest']['strike'])})\n(stable strong)"
-        v["Q5_TEXT"] = f"({current_time_str} - Eos VOL - {int(pv_top['highest']['strike'])})\n(stable strong)"
-        v["K3_TEXT"] = k3
-        if symbol_name not in time_travel_db: time_travel_db[symbol_name] = []
-        symbol_history = time_travel_db[symbol_name]
-        if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3:
-            time_travel_db[symbol_name].append({
-                "timestamp": current_time_clock, "symbol": symbol_name,
-                "support": "CE: STRONG (VOL)", "resistance": "PE: STRONG (VOL)", "scenario": k3
-            })
-    except Exception: pass
 
 # ====================================================================
 # 📥 DOWNLOAD OpenAPI INSTRUMENTS DICTIONARIES
@@ -737,7 +661,7 @@ def run_bot_lock_loop():
                         if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'): break
                     except Exception: pass
                     time.sleep(10)
-        time.sleep(4)
+        time.sleep(1)
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
