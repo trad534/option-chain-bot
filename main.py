@@ -384,7 +384,9 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    # Guaranteed Spot Price Resolution using LTP mode (Works for Indices and Stocks both)
+                    all_master_strikes = sorted(current_expiry_options['strike'].unique())
+                    
+                    # Guaranteed Spot Price Resolution using LTP mode with Index & Stock matching
                     spot_price = 0.0
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
                     
@@ -403,8 +405,7 @@ def background_market_scanner():
                             if fetched_list:
                                 spot_price = float(fetched_list[0].get('ltp', 0))
 
-                    # Ultimate Fallback: If spot_price is still 0, take middle strike as spot price immediately!
-                    all_master_strikes = sorted(current_expiry_options['strike'].unique())
+                    # Fallback: If spot_price is still 0, take middle strike immediately
                     if spot_price <= 0 and all_master_strikes:
                         spot_price = float(all_master_strikes[len(all_master_strikes) // 2])
 
@@ -673,7 +674,7 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td>
                                     <td class="${ceOiChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td>
                                     <td class="${ceOiClass}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td>
-                                    <td class="${ceVolClass}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>
+                                    <td class="'+ceVolClass+'">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>
                                     <td class="${ceChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td>
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td>
                                     <td class="strike-col">${row.strike}</td>
@@ -733,7 +734,7 @@ if __name__ == "__main__":
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
         session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
         if session_res.get('status'):
-            app_state["smart_api"] = temp_api
+            app_state["smart_api"] = temp_id = temp_api
             print("✅ Angel One Session Established Successfully!")
             initialize_scrip_master(temp_api)
         else:
