@@ -88,7 +88,6 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
-# Multi-Symbol Separate Isolated Memory Vaults (RAM Repositories)
 script_memory = {}
 global_run_date = ""
 last_written_values = {}
@@ -166,7 +165,6 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
-
 # ====================================================================
 # 🧮 OPTIONS BLACK-SCHOLES GREEKS DERIVATIONS
 # ====================================================================
@@ -200,9 +198,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
-
 # ====================================================================
-# 🎛️ MASTER SCENARIO ENGINE (100% EXACT ORIGINAL LOGIC & ISOLATED MEMORY)
+# 🎛️ MASTER SCENARIO ENGINE (100% ORIGINAL LOGIC PRESERVED)
 # ====================================================================
 def execute_python_scenario_tracker():
     global global_run_date, time_travel_db, last_flashed_symbol, multi_symbol_runtime_states, current_active_symbol_for_memory
@@ -233,7 +230,6 @@ def execute_python_scenario_tracker():
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        # CE Scan: Row 15 to Row 28
         for r in range(15, 29):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -256,7 +252,6 @@ def execute_python_scenario_tracker():
             ceOiArray.append({'strike': strike, 'val': float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0, 'row': r})
             ceVolArray.append({'strike': strike, 'val': float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0, 'row': r})
 
-        # PE Scan: Row 8 to Row 21
         for r in range(8, 22):
             if r == MARKET_ROW: continue
             array_index = r - 8
@@ -332,9 +327,6 @@ def execute_python_scenario_tracker():
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # ==================================================================================
-        # 🏆 YOUR 100% ORIGINAL CALL (CE) SIDE TRIPLE PRIORITY ENGINES
-        # ==================================================================================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
@@ -351,9 +343,6 @@ def execute_python_scenario_tracker():
             if ceVolActiveRow != ceOiActiveRow: ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
             else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # ==================================================================================
-        # 🏆 YOUR 100% ORIGINAL PUT (PE) SIDE TRIPLE PRIORITY ENGINES
-        # ==================================================================================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
@@ -440,9 +429,6 @@ def execute_python_scenario_tracker():
         if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
-        # ====================================================================
-        # 🏆 COMPLETE 27 ORIGINAL SCENARIOS DIRECT MATRIX DEFINED
-        # ====================================================================
         k3Text = f"{active_symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
@@ -470,14 +456,16 @@ def execute_python_scenario_tracker():
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
-        # 🎯 ADVANCED SYSTEM VAULT SHIELD
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
-        vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
-        vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
-        vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
-        vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
+        
+        # 🛡️ RESTORE EXACT RECORDED OUTPUT FROM SYMBOL MEMORY IF ALREADY RECORDED
+        vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else vault.get("D5_TEXT", "(-----)")
+        vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else vault.get("H5_TEXT", "(-----)")
+        vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else vault.get("U5_TEXT", "(-----)")
+        vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else vault.get("Q5_TEXT", "(-----)")
         vault["K3_TEXT"] = k3Text
+
         safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
         safe_update_cell(dashboard_sheet, "H5", vault["H5_TEXT"])
         safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
@@ -494,7 +482,6 @@ def execute_python_scenario_tracker():
                 "scenario": k3Text
             })
 
-        # 🔄 EVENT-DRIVEN HARD FLUSH SHEET OVERWRITE LOCK
         if last_flashed_symbol != active_symbol_name:
             print(f"🔄 Symbol Modifying Event Detected -> Flashing '{active_symbol_name}' Logs System Timeline Tables!")
             historical_log_sheet.clear()
@@ -506,7 +493,6 @@ def execute_python_scenario_tracker():
             last_flashed_symbol = active_symbol_name
 
     except Exception as err: print(f"❌ Dashboard Scenario Core Update Engine Error: {err}")
-
 
 # ====================================================================
 # 🗜️ PARALLEL DISPLAY-DRIVEN BATCH NETWORK CONTROLLER (RATE SAFE)
@@ -527,7 +513,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        # STEP 1: Deep option chain fetching metrics for ONLY front screen display asset
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -611,14 +596,10 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-        # STEP 2: Main Scenario Tracker Execute
         execute_python_scenario_tracker()
 
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
 
-# ====================================================================
-# 📥 DOWNLOAD OpenAPI INSTRUMENTS DICTIONARIES
-# ====================================================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
