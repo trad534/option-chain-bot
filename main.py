@@ -433,44 +433,44 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE (FIXED COLUMNS)
+# WEB DASHBOARD INTERFACE (WHITE BACKGROUND)
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Live RAM Engine</title>
+    <title>LTP Calculator - White Theme Engine</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #0e0e0e; color: #fff; margin: 0; padding: 10px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px 15px; border-radius: 8px; }
-        select { padding: 8px; font-size: 16px; background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; }
+        body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        select { padding: 8px; font-size: 16px; background: #ffffff; color: #000000; border: 1px solid #ced4da; border-radius: 5px; }
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
-        .card { background: #1a1a1a; padding: 10px; border-radius: 8px; border: 1px solid #333; text-align: center; font-size: 12px; white-space: pre-line; }
-        .card h3 { margin: 0 0 5px 0; font-size: 13px; color: #aaa; }
-        .k3-banner { background: #1f2a24; padding: 12px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #00ffcc; border: 1px solid #00ffcc; }
+        .card { background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ced4da; text-align: center; font-size: 12px; white-space: pre-line; color: #212529; }
+        .card h3 { margin: 0 0 5px 0; font-size: 13px; color: #495057; }
+        .k3-banner { background: #e6fcf5; padding: 12px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #0ca678; border: 1px solid #20c997; }
         
         .table-container { margin-top: 15px; overflow-x: auto; max-height: 700px; }
-        table { width: 100%; border-collapse: collapse; background: #121212; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #2a2a2a; padding: 5px 6px; white-space: nowrap; }
-        th { background: #1a1a1a; color: #ddd; position: sticky; top: 0; z-index: 10; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
+        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; }
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         .spot-line-tr td { background: #d32f2f !important; color: #ffffff !important; font-weight: bold; font-size: 12px; border-top: 2px solid #ff5252; border-bottom: 2px solid #ff5252; padding: 6px; text-align: center; }
 
-        .itm-ce { background: rgba(255, 235, 238, 0.08); }
-        .itm-pe { background: rgba(232, 245, 233, 0.08); }
+        .itm-ce { background: rgba(255, 0, 0, 0.05); }
+        .itm-pe { background: rgba(0, 128, 0, 0.05); }
 
         .highlight-green { background: #2e7d32 !important; color: #ffffff !important; font-weight: bold; }
         .highlight-yellow { background: #fbc02d !important; color: #000000 !important; font-weight: bold; }
         
-        .chg-pos { color: #4caf50; }
-        .chg-neg { color: #f44336; }
+        .chg-pos { color: #2b8a3e; font-weight: bold; }
+        .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2>⚡ LTP Calculator (RAM Memory Engine)</h2>
+        <h2>⚡ LTP Calculator (White Theme Engine)</h2>
         <div>
             <label>Symbol: </label>
             <select id="symbolSelect" onchange="fetchData()">
@@ -494,9 +494,9 @@ HTML_TEMPLATE = """
         <table id="optionChainTable">
             <thead>
                 <tr>
-                    <th colspan="10" style="background: #1b263b;">CALLS (CE)</th>
+                    <th colspan="10" style="background: #e7f5ff; color: #1864ab;">CALLS (CE)</th>
                     <th class="strike-col">STRIKE</th>
-                    <th colspan="10" style="background: #2b1b17;">PUTS (PE)</th>
+                    <th colspan="10" style="background: #fff5f5; color: #c92a2a;">PUTS (PE)</th>
                 </tr>
                 <tr>
                     <th>Vega</th>
@@ -523,7 +523,7 @@ HTML_TEMPLATE = """
                 </tr>
             </thead>
             <tbody id="gridBody">
-                <tr><td colspan="21">Select a symbol to load option chain...</td></tr>
+                <tr><td colspan="21">Loading option chain data...</td></tr>
             </tbody>
         </table>
     </div>
@@ -531,7 +531,7 @@ HTML_TEMPLATE = """
     <script>
         function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
-            fetch('/api/data/' + sym)
+            fetch('/api/data/' + sym + '?t=' + new Date().getTime())
                 .then(res => res.json())
                 .then(data => {
                     document.getElementById("d5Val").innerText = data.D5;
