@@ -408,7 +408,7 @@ def background_market_scanner():
                         except Exception as e:
                             print(f"Spot fetch exception: {e}")
 
-                    # GUARANTEED FALLBACK: Middle Strike ko Spot Price bana do agar API se 0 aapse
+                    # GUARANTEED FALLBACK: Middle Strike ko Spot Price bana do agar API se 0 aaye
                     if spot_price <= 0 and all_master_strikes:
                         spot_price = float(all_master_strikes[len(all_master_strikes) // 2])
 
