@@ -199,7 +199,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ====================================================================
-# 🎛️ MASTER SCENARIO ENGINE (100% ORIGINAL LOGIC & STRICT VAULT LOCK)
+# 🎛️ MASTER SCENARIO ENGINE (100% ORIGINAL LOGIC & INSTANT VAULT LOCK)
 # ====================================================================
 def execute_python_scenario_tracker():
     global global_run_date, time_travel_db, last_flashed_symbol, multi_symbol_runtime_states, current_active_symbol_for_memory
@@ -226,6 +226,15 @@ def execute_python_scenario_tracker():
         except Exception: pass
 
         current_active_symbol_for_memory = active_symbol_name
+
+        # Instant Vault Restoration Check on Symbol Switch
+        if active_symbol_name in multi_symbol_runtime_states:
+            vault = multi_symbol_runtime_states[active_symbol_name]
+            if "D5_TEXT" in vault: safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
+            if "H5_TEXT" in vault: safe_update_cell(dashboard_sheet, "H5", vault["H5_TEXT"])
+            if "U5_TEXT" in vault: safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
+            if "Q5_TEXT" in vault: safe_update_cell(dashboard_sheet, "Q5", vault["Q5_TEXT"])
+            if "K3_TEXT" in vault: update_k3_with_color(spreadsheet, dashboard_sheet, "K3", vault["K3_TEXT"])
 
         MARKET_ROW = 18
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
@@ -334,7 +343,7 @@ def execute_python_scenario_tracker():
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -348,7 +357,7 @@ def execute_python_scenario_tracker():
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "VOL"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "VOL"
         else:
@@ -459,22 +468,22 @@ def execute_python_scenario_tracker():
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         
-        # 🛡️ STRICTLY LOCK BOTH CE & PE VAULT STATES TO PREVENT FRESH TIME OVERWRITES ON SYMBOL SWITCH
+        # Save Outputs To Vault Memory
         new_d5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         new_h5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
         new_u5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
         new_q5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
 
-        vault["D5_TEXT"] = new_d5 if new_d5 != "(-----)" else vault.get("D5_TEXT", "(-----)")
-        vault["H5_TEXT"] = new_h5 if new_h5 != "(-----)" else vault.get("H5_TEXT", "(-----)")
-        vault["U5_TEXT"] = new_u5 if new_u5 != "(-----)" else vault.get("U5_TEXT", "(-----)")
-        vault["Q5_TEXT"] = new_q5 if new_q5 != "(-----)" else vault.get("Q5_TEXT", "(-----)")
+        if new_d5 != "(-----)": vault["D5_TEXT"] = new_d5
+        if new_h5 != "(-----)": vault["H5_TEXT"] = new_h5
+        if new_u5 != "(-----)": vault["U5_TEXT"] = new_u5
+        if new_q5 != "(-----)": vault["Q5_TEXT"] = new_q5
         vault["K3_TEXT"] = k3Text
 
-        safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
-        safe_update_cell(dashboard_sheet, "H5", vault["H5_TEXT"])
-        safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
-        safe_update_cell(dashboard_sheet, "Q5", vault["Q5_TEXT"])
+        safe_update_cell(dashboard_sheet, "D5", vault.get("D5_TEXT", "(-----)"))
+        safe_update_cell(dashboard_sheet, "H5", vault.get("H5_TEXT", "(-----)"))
+        safe_update_cell(dashboard_sheet, "U5", vault.get("U5_TEXT", "(-----)"))
+        safe_update_cell(dashboard_sheet, "Q5", vault.get("Q5_TEXT", "(-----)"))
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", vault["K3_TEXT"])
 
         if active_symbol_name not in time_travel_db: time_travel_db[active_symbol_name] = []
