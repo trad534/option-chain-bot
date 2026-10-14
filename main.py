@@ -13,9 +13,6 @@ from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
 
-# ====================================================================
-# 🛡️ SYSTEM TERMINAL LOGS & KEEP-ALIVE SERVER SHIELD
-# ====================================================================
 RENDER_URL = "https://onrender.com"
 
 def self_ping():
@@ -37,29 +34,24 @@ def print(*args, **kwargs):
 
 app = Flask(__name__)
 
-# ====================================================================
-# 🛠️ GLOBAL ENVIRONMENT PARAMETERS & CREDENTIALS
-# ====================================================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
-smart_api = None
+app_state = {
+    "smart_api": None,
+    "baseline_date": None,
+    "morning_oi": {}
+}
+
 full_scrip_df = pd.DataFrame()
 eq_cache = {}
 options_cache = {}
-morning_oi_dict = {}
-baseline_date = None
 persistent_quotes_cache = {}
-
-# In-Memory Vault for All 265+ Symbols (Investing Daddy Architecture)
 multi_symbol_runtime_states = {}
 global_run_date = ""
 
-# ====================================================================
-# 🧮 BLACK-SCHOLES OPTIONS GREEKS DERIVATIONS
-# ====================================================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -91,13 +83,13 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ====================================================================
-# 🎛️ CORE SCENARIO ENGINE FOR ANY SYMBOL IN RAM
+# 🎛️ 27 SCENARIOS MASTER ENGINE (COMPLETE MAPPING)
 # ====================================================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
     global global_run_date, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
-        current_time_clock = now_dt.strftime("%H:%M:%S")
+        current_kolkata_time = now_dt.strftime("%H:%M:%S")
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
@@ -107,8 +99,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
             multi_symbol_runtime_states[symbol_name] = {
                 "memory": {},
                 "D5_TEXT": "(-----)", "H5_TEXT": "(-----)", "U5_TEXT": "(-----)", "Q5_TEXT": "(-----)",
-                "K3_TEXT": f"{symbol_name} is Neutral",
-                "grid_rows": []
+                "K3_TEXT": f"{symbol_name} is Neutral"
             }
 
         sym_vault = multi_symbol_runtime_states[symbol_name]
@@ -120,25 +111,32 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         def set_mem(key, val):
             sym_memory[key] = str(val)
 
-        def remove_mem(key):
-            if key in sym_memory: del sym_memory[key]
-
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
-        
+
         for idx, row in enumerate(strikes_data):
             strike = row['strike']
-            ce_oi = row['ce_oi']
-            ce_vol = row['ce_vol']
-            pe_vol = row['pe_vol']
-            pe_oi = row['pe_oi']
-
             row_idx = 8 + idx
             if strike == spot_price: row_idx = 18
 
-            ceOiArray.append({'strike': strike, 'val': ce_oi, 'row': row_idx})
-            ceVolArray.append({'strike': strike, 'val': ce_vol, 'row': row_idx})
-            peVolArray.append({'strike': strike, 'val': pe_vol, 'row': row_idx})
-            peOiArray.append({'strike': strike, 'val': pe_oi, 'row': row_idx})
+            ce_oi_raw = str(row['ce_oi']).replace("%", "").strip()
+            ce_vol_raw = str(row['ce_vol']).replace("%", "").strip()
+            pe_vol_raw = str(row['pe_vol']).replace("%", "").strip()
+            pe_oi_raw = str(row['pe_oi']).replace("%", "").strip()
+
+            if "strong" in ce_oi_raw.lower(): ce_oi_raw = "100"
+            if "strong" in ce_vol_raw.lower(): ce_vol_raw = "100"
+            if "strong" in pe_vol_raw.lower(): pe_vol_raw = "100"
+            if "strong" in pe_oi_raw.lower(): pe_oi_raw = "100"
+
+            c_oi_val = float(ce_oi_raw) if ce_oi_raw.replace('.','',1).isdigit() else 0
+            c_vol_val = float(ce_vol_raw) if ce_vol_raw.replace('.','',1).isdigit() else 0
+            p_vol_val = float(pe_vol_raw) if pe_vol_raw.replace('.','',1).isdigit() else 0
+            p_oi_val = float(pe_oi_raw) if pe_oi_raw.replace('.','',1).isdigit() else 0
+
+            ceOiArray.append({'strike': strike, 'val': c_oi_val, 'row': row_idx})
+            ceVolArray.append({'strike': strike, 'val': c_vol_val, 'row': row_idx})
+            peVolArray.append({'strike': strike, 'val': p_vol_val, 'row': row_idx})
+            peOiArray.append({'strike': strike, 'val': p_oi_val, 'row': row_idx})
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -193,20 +191,16 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         ceWinner = "VOL"
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
+        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceOiIsStable100 and not ceVolIsStable100: ceWinner = "OI"
         elif ceVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
-        else:
-            ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+        else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         peWinner = "VOL"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
-        elif peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: ceWinner = "BOTH"
         elif peOiIsStable100 and not peVolIsStable100: ceWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100: ceWinner = "VOL"
-        else:
-            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+        elif peVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
+        else: ceWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_mem("WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_mem("WEAK_HIST_CE_VOL", ceVolRawState)
@@ -249,7 +243,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
 
             display_time = get_mem("TIME_" + cache_key)
             if not display_time:
-                display_time = current_time_clock
+                display_time = current_kolkata_time
                 set_mem("TIME_" + cache_key, display_time)
 
             s_val = int(strike) if strike.is_integer() else strike
@@ -270,7 +264,12 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
 
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
+        if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
+        # ==========================================================
+        # 🎯 ALL 27 SCENARIOS FULL MAPPING (K3 STATUS)
+        # ==========================================================
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -281,6 +280,24 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else sym_vault["D5_TEXT"]
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else sym_vault["H5_TEXT"]
@@ -289,11 +306,8 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         sym_vault["K3_TEXT"] = k3Text
 
     except Exception as e:
-        print(f"Error in RAM scenario engine for {symbol_name}: {e}")
+        print(f"Error in scenario engine for {symbol_name}: {e}")
 
-# ====================================================================
-# 🚀 BACKGROUND SCRIP MASTER & LIVE DATA POLL INITIALIZER
-# ====================================================================
 def initialize_scrip_master(api_client):
     global full_scrip_df, eq_cache, options_cache
     try:
@@ -311,7 +325,6 @@ def initialize_scrip_master(api_client):
             for _, row in nse_eq.iterrows():
                 sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
                 eq_cache[sym] = (tok, 'NSE'); eq_cache[name] = (tok, 'NSE')
-                if sym.endswith("-EQ"): eq_cache[sym.replace("-EQ", "")] = (tok, 'NSE')
             
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
@@ -321,18 +334,12 @@ def initialize_scrip_master(api_client):
     except Exception as e: print(f"⚠ Scrip Master Error: {e}")
 
 def background_market_scanner():
-    global smart_api, options_cache, eq_cache, persistent_quotes_cache, morning_oi_dict, baseline_date
     while True:
         try:
-            if not smart_api:
+            api = app_state["smart_api"]
+            if not api:
                 time.sleep(5)
                 continue
-
-            now_dt = datetime.now()
-            current_date_str = now_dt.strftime('%Y-%m-%d')
-            if baseline_date != current_date_str:
-                morning_oi_dict = {}
-                baseline_date = current_date_str
 
             if not options_cache:
                 time.sleep(2)
@@ -341,18 +348,17 @@ def background_market_scanner():
             for symbol_name in list(options_cache.keys())[:30]:
                 try:
                     sym_options = options_cache[symbol_name]
-                    valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
+                    valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(datetime.now().date())].copy()
                     if valid_opts.empty: continue
 
                     unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
-                    current_expiry_dt = unique_expiries_dt[0]
-                    current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
+                    current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == unique_expiries_dt[0]].copy()
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", "NSE"))
                     spot_price = 0.0
                     if spot_token:
-                        spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                        spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
                             spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
 
@@ -375,7 +381,7 @@ def background_market_scanner():
                     all_dash_quotes = []
                     for exch, t_list in exch_map.items():
                         for i in range(0, len(t_list), 40):
-                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                            res = api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
 
                     dash_quotes_dict = {}
@@ -385,9 +391,8 @@ def background_market_scanner():
                         if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi}
 
                     for tok, q_data in persistent_quotes_cache.items():
-                        if tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
-                        base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                        dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi}
+                        if tok not in app_state["morning_oi"] and q_data['oi'] > 0: app_state["morning_oi"][tok] = q_data['oi']
+                        dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi']}
 
                     strikes_payload = []
                     for st in strikes:
@@ -396,8 +401,8 @@ def background_market_scanner():
                         ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
                         pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
                         
-                        ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0})
-                        pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0})
+                        ce_q = dash_quotes_dict.get(ce_token, {'oi': 0, 'volume': 0})
+                        pe_q = dash_quotes_dict.get(pe_token, {'oi': 0, 'volume': 0})
 
                         strikes_payload.append({
                             'strike': st,
@@ -415,9 +420,6 @@ def background_market_scanner():
             print(f"Scanner loop error: {e}")
             time.sleep(5)
 
-# ====================================================================
-# 🌐 FAST WEB DASHBOARD INTERFACE (INVESTING DADDY STYLE)
-# ====================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -509,18 +511,15 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ====================================================================
-# 🏁 MAIN EXECUTION START
-# ====================================================================
 if __name__ == "__main__":
-    global smart_api
     try:
-        smart_api = SmartConnect(api_key=API_KEY)
+        temp_api = SmartConnect(api_key=API_KEY)
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-        session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
+        session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
         if session_res.get('status'):
+            app_state["smart_api"] = temp_api
             print("✅ Angel One Session Established Successfully!")
-            initialize_scrip_master(smart_api)
+            initialize_scrip_master(temp_api)
         else:
             print("❌ Session Error during startup.")
     except Exception as e:
