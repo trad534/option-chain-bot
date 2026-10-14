@@ -15,9 +15,9 @@ from flask import Flask
 import threading
 import builtins
 
-# ==========================================
-# RENDER SERVER SYSTEM KEEP-ALIVE SHIELD
-# ==========================================
+# ====================================================================
+# 🛡️ RENDER SYSTEM KEEP-ALIVE NET SHIELD
+# ====================================================================
 RENDER_URL = "https://onrender.com"
 
 def self_ping():
@@ -33,14 +33,14 @@ def self_ping():
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
-# Force flush standard print outputs for continuous logs visibility in Render terminal
+# Force flush standard system print buffers for live tracking in Render logs terminal
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
-# ==========================================
-# FLASK WEB SERVER FOR PORT BINDING
-# ==========================================
+# ====================================================================
+# 🌐 FLASK WEB MODULE FOR ENGINE PORT BINDING
+# ====================================================================
 app = Flask(__name__)
 
 @app.route('/')
@@ -51,9 +51,9 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ==========================================
-# CREDENTIALS CONFIGURATION & GOOGLE SHEETS
-# ==========================================
+# ====================================================================
+# 🛠️ APP PARAMETERS CONFIGURATION & GOOGLE SHEETS BINDINGS
+# ====================================================================
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
@@ -81,7 +81,7 @@ try:
     data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
     dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
     
-    # Auto-create or connect historical logging tab safely
+    # Check or auto-build dedicated historical logging tab safely
     try:
         historical_log_sheet = spreadsheet.worksheet(HISTORICAL_SHEET_NAME)
     except Exception:
@@ -93,17 +93,28 @@ except Exception as e:
     print(f"❌ Google Sheet Connection Error: {e}")
     exit()
 
-# ==========================================
-# ADVANCED MULTI-SYMBOL STRUCT DATABASE (RAM)
-# ==========================================
+# ====================================================================
+# 🧠 DYNAMIC MULTI-SYMBOL REAL-TIME VAULT STORAGE (RAM)
+# ====================================================================
+script_memory = {}
 global_run_date = ""
 last_written_values = {}
 persistent_quotes_cache = {}
 
-# Master storage matrices tracking every single state of 265 symbols independently
+# Master time-travel parameters storing exact structural frame arrays for all assets independently
 time_travel_db = {}
 multi_symbol_runtime_states = {}
 last_flashed_symbol = ""
+
+def get_memory(key, default=""):
+    return script_memory.get(key, default)
+
+def set_memory(key, value):
+    script_memory[key] = str(value)
+
+def remove_memory(key):
+    if key in script_memory:
+        del script_memory[key]
 
 def safe_update_cell(sheet, cell_name, new_value):
     global last_written_values
@@ -122,11 +133,11 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
         sheet.update_acell(cell_name, text_value)
         text_lower = text_value.lower()
         if "bull" in text_lower:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}  # Blue
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
         elif "bear" in text_lower or "bloodbath" in text_lower:
-            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}  # Red
+            color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
         else:
-            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}  # Black
+            color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
         row, col = gspread.utils.a1_to_rowcol(cell_name)
         body = {
@@ -156,17 +167,16 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
 
-# ==========================================
-# OPTIONS BLACK-SCHOLES COMPUTATION ENGINE
-# ==========================================
+# ====================================================================
+# 🧮 OPTIONS BLACK-SCHOLES COMPUTATION PARSER
+# ====================================================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
 
     intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S)
-    if ltp < intrinsic: 
-        ltp = intrinsic + 0.05
+    if ltp < intrinsic: ltp = intrinsic + 0.05
 
     def objective_function(sigma):
         if sigma <= 0: sigma = 1e-4
@@ -174,10 +184,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         d2 = d1 - sigma * np.sqrt(t)
         return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)) - ltp
 
-    try: 
-        sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
-    except Exception: 
-        sigma = 0.20
+    try: sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+    except Exception: sigma = 0.20
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
@@ -192,15 +200,15 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
-# ==========================================
-# PARALLEL SCENARIO CALCULATOR ENGINE (RAM)
-# ==========================================
+# ====================================================================
+# 🎛️ FULL MARKET 265 SYMBOLS CALCULATION BLOCK (RAM MATRIX LOG)
+# ====================================================================
 def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray):
     """
-    Tracks dynamic nested dictionaries for all 265 symbols concurrently.
-    Preserves historical winner metrics states even when shifted long back.
+    Computes exact mathematical 75% thresholds and maps parallel winner rules
+    independently for each symbol without affecting standard front dashboard.
     """
-    global time_travel_db, multi_symbol_runtime_states
+    global time_travel_db, multi_symbol_runtime_states, script_memory
     try:
         now_dt = datetime.now()
         current_time_str = now_dt.strftime("%I:%M %p").lower()
@@ -235,12 +243,6 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
-        # Fallback for post-market / 3:30 PM retention when volume is zero
-        if ceVolTop['highest']['val'] == 0:
-            ceVolTop = ceOiTop
-        if peVolTop['highest']['val'] == 0:
-            peVolTop = peOiTop
-
         if ceVolTop['highest']['val'] == 0 or peVolTop['highest']['val'] == 0: return
 
         ceVolRawState = "STRONG" if ceVolTop['pct'] < 75.0 else ("wtt" if ceVolTop['second']['strike'] > ceVolTop['highest']['strike'] else "wtb")
@@ -265,15 +267,16 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # Call / Put Winner Matrix Assignments
+        # CE PRIORITY MATRIX LOOKUPS
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
+        # PE PRIORITY MATRIX LOOKUPS
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
@@ -288,7 +291,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         def parse_cell_state(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             strike = top_obj['highest']['strike']
             second_strike = top_obj.get('second', {'strike': strike})['strike']
-
+            
             if state[f"PREV_STRK_{cache_key}"] is None: state[f"PREV_STRK_{cache_key}"] = strike
             prev_strike = state[f"PREV_STRK_{cache_key}"]
 
@@ -344,7 +347,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         peOiResult  = parse_cell_state(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
@@ -359,7 +362,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         elif finalCeState == "wtt" and finalPeState == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif finalCeState == "wtb" and finalPeState == "wtb": k3Text = f"{symbol_name} is bloodbath"
 
-        # Storing all specific data points inside global multi-symbol vault dictionary
+        # Safe lock arrays metrics inside multi-symbol vault state
         state["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         state["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
         state["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
@@ -376,77 +379,56 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
                 "resistance": f"PE Winner: {peWinner} ({finalPeState.upper()})",
                 "scenario": k3Text
             })
+            print(f"📊 [TIMELINE MATCHED] Dynamic line appended for {symbol_name} at {current_time_clock}")
     except Exception as e: 
-        print(f"Error in heavy background calculator loop: {e}")
+        print(f"Error in silent structural tracker calculation loop: {e}")
 
-# ===================================================
-# DASHBOARD WRITING EXECUTOR (FIXED FOR CELLS & HISTORICAL TAB)
-# ===================================================
+# ====================================================================
+# 🖥️ FRONT SCREEN DISPLAY INTERFACE UPDATE TRACKER
+# ====================================================================
 def execute_python_scenario_tracker():
     global last_flashed_symbol, multi_symbol_runtime_states, time_travel_db
     try:
-        # Read the current dashboard display selection cell
-        active_symbol_name = "NIFTY"
+        active_symbol_name = "Nifty"
         try:
             j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
             if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
                 active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
         except Exception: pass
 
-        # 🎯 CRITICAL FIX: Fetch the exact persistent historical frame of the selected asset
+        # Injecting the saved historical vault configuration directly onto active screen matrix
         if active_symbol_name in multi_symbol_runtime_states:
             saved_state = multi_symbol_runtime_states[active_symbol_name]
-
-            # Print the historic text or winner combination safely onto dashboard
+            
             safe_update_cell(dashboard_sheet, "D5", saved_state.get("D5_TEXT", "(-----)"))
             safe_update_cell(dashboard_sheet, "H5", saved_state.get("H5_TEXT", "(-----)"))
             safe_update_cell(dashboard_sheet, "U5", saved_state.get("U5_TEXT", "(-----)"))
             safe_update_cell(dashboard_sheet, "Q5", saved_state.get("Q5_TEXT", "(-----)"))
-
-            update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3_TEXT", f"{active_symbol_name} is Neutral"))
-            print(f"✨ [DASHBOARD SYNCHRONIZED] Successfully injected historical state onto {active_symbol_name} screen cells!")
-
-        # ⚡ LIVE HISTORICAL SCENARIOS TAB LOGGING SYNC
-        now_dt = datetime.now()
-        is_market_hours = (now_dt.hour > 9 or (now_dt.hour == 9 and now_dt.minute >= 15)) and \
-                          (now_dt.hour < 15 or (now_dt.hour == 15 and now_dt.minute <= 30))
-
-        if active_symbol_name in multi_symbol_runtime_states and is_market_hours:
-            st_data = multi_symbol_runtime_states[active_symbol_name]
-            current_time_clock = now_dt.strftime("%Y-%m-%d %H:%M:%S")
             
-            # Append row to Live_Historical_Scenarios tab continuously
-            try:
-                historical_log_sheet.append_row([
-                    current_time_clock,
-                    active_symbol_name,
-                    st_data.get("D5_TEXT", ""),
-                    st_data.get("H5_TEXT", ""),
-                    st_data.get("K3_TEXT", "")
-                ])
-                print(f"✅ [HISTORICAL LOGGED] Appended live row for {active_symbol_name} in Live_Historical_Scenarios")
-            except Exception as hist_err:
-                print(f"⚠ Historical tab append error: {hist_err}")
+            update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3_TEXT", f"{active_symbol_name} is Neutral"))
+            print(f"✨ [DASHBOARD INJECTED] Successfully forced past 10:00 AM status on {active_symbol_name} cells screen!")
 
-        # ⚡ INVESTING DADY FL_LOG FLASH OVERWRITE ENGINE
+        # ⚡ EVENT DRIVEN HISTORICAL TIMELINE FLASH OVERWRITE ENGINE
         if last_flashed_symbol != active_symbol_name:
-            print(f"🔄 Active Symbol Changed -> Flashing {active_symbol_name} timelines list!")
+            print(f"🔄 Active Symbol Changed from '{last_flashed_symbol}' to '{active_symbol_name}' -> Overwriting sheet logs...")
             historical_log_sheet.clear()
             historical_log_sheet.append_row(["Time-Stamp", "Symbol", "Support Price State", "Resistance Price State", "Scenario Status (K3)"])
-
+            
             rows_to_flush = []
             for item in time_travel_db.get(active_symbol_name, []):
                 rows_to_flush.append([item["timestamp"], item["symbol"], item["support"], item["resistance"], item["scenario"]])
+            
             if rows_to_flush: 
                 historical_log_sheet.append_rows(rows_to_flush)
+                print(f"✨ [FLASH COMPLETE] Overwrote {len(rows_to_flush)} timelines array lines for '{active_symbol_name}'!")
             last_flashed_symbol = active_symbol_name
 
     except Exception as err: 
-        print(f"❌ Dashboard Update Engine Error: {err}")
+        print(f"❌ Dashboard Direct Write Update Engine Error: {err}")
 
-# ==========================================
-# PARALLEL PACKET BATCH DATA PROCESSOR
-# ==========================================
+# ====================================================================
+# 🗜️ HIGH RECOVERY API BATCH NETWORK FLOW ENGINE
+# ====================================================================
 def fetch_and_update_option_chain(smart_api):
     global morning_oi_dict, baseline_date, options_cache, eq_cache, persistent_quotes_cache
     try:
@@ -463,7 +445,7 @@ def fetch_and_update_option_chain(smart_api):
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        # Batch token packaging system for parallel silent data computation
+        # Packaging full 265 assets options into sub-strikes to preserve API parameters load
         symbols_to_scan = list(options_cache.keys())
         all_tokens_to_fetch = []
         token_data_meta_map = {}
@@ -487,15 +469,14 @@ def fetch_and_update_option_chain(smart_api):
                 all_tokens_to_fetch.append(tok)
                 token_data_meta_map[tok] = {'symbol': sym, 'options_df': current_expiry_options, 'strikes': strikes_subset}
 
-        # Single Multi-Paginator Packet Call (Max 400 core tokens parsed in 4 seconds)
+        # Multi-Paginator Packet Call (Extracting 400 core tokens chunking in 4 seconds rate safely)
         all_fetched_quotes = []
         chunks = [all_tokens_to_fetch[i:i + 40] for i in range(0, len(all_tokens_to_fetch), 40)]
 
         for batch in chunks[:10]:
             try:
                 res = smart_api.getMarketData("FULL", {"NFO": batch})
-                if res and res.get('status') and res.get('data'): 
-                    all_fetched_quotes.extend(res['data'].get('fetched', []))
+                if res and res.get('status') and res.get('data'): all_fetched_quotes.extend(res['data'].get('fetched', []))
             except Exception: pass
 
         global_quotes_dict = {}
@@ -504,12 +485,11 @@ def fetch_and_update_option_chain(smart_api):
             volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0))
             global_quotes_dict[tok] = {'volume': volume, 'oi': oi}
 
-        # Silent parallel extraction pipeline execution
+        # Silent background extractor execute loop run 
         for tok, meta in token_data_meta_map.items():
-            sym_name = meta['symbol']
-            process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
+            process_silent_background_scenarios_rebuilt(meta['symbol'], global_quotes_dict, meta['options_df'], meta['strikes'])
 
-        # Fetch and write standard option chain deep metrics for ONLY active dashboard sheet
+        # Process and write traditional full layout matrix for active dashboard chain
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -572,7 +552,8 @@ def fetch_and_update_option_chain(smart_api):
                     base_oi = morning_oi_dict.get(tok, q_data['oi'])
                     dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']}
 
-                t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+                exp_strings = pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0])
+                t = max((exp_strings.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
                 output_rows = [["CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP", "Strike Price", "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]]
                 for st in strikes:
@@ -593,7 +574,7 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-        # Synchronize dashboard sheet cells layout completely
+        # Force sync display interface values update
         execute_python_scenario_tracker()
 
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -609,11 +590,14 @@ def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, curren
             ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
             ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
             ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-            peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
-            peOiArray.append({'strike': st, 'val': float(pe_q['oi']), 'row': 8+idx})
+            peVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+            peOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
         calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
     except Exception: pass
 
+# ====================================================================
+# 📥 DOWNLOAD OpenAPI INSTRUMENTS DICTIONARIES
+# ====================================================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
@@ -639,6 +623,9 @@ def initialize_scrip_master(smart_api):
 
 full_scrip_df = pd.DataFrame(); eq_cache = {}; options_cache = {}; morning_oi_dict = {}; baseline_date = None
 
+# ====================================================================
+# ⚡ MAIN INFINITE CRASH-PROOF THREAD LOOP
+# ====================================================================
 def run_bot_lock_loop():
     print("🚀 Starting Advanced F&O Symbols Parallel Live Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
