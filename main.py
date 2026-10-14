@@ -232,12 +232,12 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 13: continue
 
-            strike_val = row_data
+            strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            ce_oi_val = row_data if len(row_data) > 7 else "0"
-            ce_vol_val = row_data if len(row_data) > 8 else "0"
+            ce_oi_val = row_data[7] if len(row_data) > 7 else "0"
+            ce_vol_val = row_data[8] if len(row_data) > 8 else "0"
             ce_oi_raw = str(ce_oi_val).replace("%", "").strip() if ce_oi_val else "0"
             ce_vol_raw = str(ce_vol_val).replace("%", "").strip() if ce_vol_val else "0"
 
@@ -255,12 +255,12 @@ def execute_python_scenario_tracker():
             row_data = range_values[array_index]
             if len(row_data) <= 19: continue
 
-            strike_val = row_data
+            strike_val = row_data[13]
             strike = float(strike_val) if strike_val not in [None, "", "NAN"] else 0
             if not strike: continue
 
-            pe_vol_val = row_data if len(row_data) > 18 else "0"
-            pe_oi_val = row_data if len(row_data) > 19 else "0"
+            pe_vol_val = row_data[18] if len(row_data) > 18 else "0"
+            pe_oi_val = row_data[19] if len(row_data) > 19 else "0"
             pe_vol_raw = str(pe_vol_val).replace("%", "").strip() if pe_vol_val else "0"
             pe_oi_raw = str(pe_oi_val).replace("%", "").strip() if pe_oi_val else "0"
 
@@ -277,8 +277,8 @@ def execute_python_scenario_tracker():
             if len(filtered) == 0:
                 return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered.sort(key=lambda x: x['val'], reverse=True)
-            highest = filtered
-            second = filtered if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
+            highest = filtered[0]
+            second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
             return {'highest': highest, 'second': second, 'pct': pct}
 
@@ -329,12 +329,12 @@ def execute_python_scenario_tracker():
         # ==================================================================================
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -348,12 +348,12 @@ def execute_python_scenario_tracker():
         # ==================================================================================
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "VOL"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "OI"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']): peWinner = "VOL"
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
@@ -425,81 +425,81 @@ def execute_python_scenario_tracker():
         ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
         ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
         peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
+        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
+
+        checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
+        if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
+
+        # ====================================================================
+        # 🏆 COMPLETE 27 ORIGINAL SCENARIOS DIRECT MATRIX DEFINED
+        # ====================================================================
+        k3Text = f"{active_symbol_name} is Neutral"
+        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
+        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
+
+        # 🎯 ADVANCED SYSTEM VAULT SHIELD: Permanently locks data across symbol switches
+        if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
+        vault = multi_symbol_runtime_states[active_symbol_name]
+        vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
+        vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
+        vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
+        vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
+        vault["K3_TEXT"] = k3Text
+        safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
+        safe_update_cell(dashboard_sheet, "H5", vault["H5_TEXT"])
+        safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
+        safe_update_cell(dashboard_sheet, "Q5", vault["Q5_TEXT"])
+        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", vault["K3_TEXT"])
+
+        if active_symbol_name not in time_travel_db: time_travel_db[active_symbol_name] = []
+        symbol_history = time_travel_db[active_symbol_name]
+        if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3Text:
+            time_travel_db[active_symbol_name].append({
+                "timestamp": current_time_clock, "symbol": active_symbol_name,
+                "support": f"CE: {str(checkCe).upper()} ({ceWinner})",
+                "resistance": f"PE: {str(checkPe).upper()} ({peWinner})",
+                "scenario": k3Text
+            })
+
+        # 🔄 EVENT-DRIVEN HARD FLUSH SHEET OVERWRITE LOCK
+        if last_flashed_symbol != active_symbol_name:
+            print(f"🔄 Symbol Modifying Event Detected -> Flashing '{active_symbol_name}' Logs System Timeline Tables!")
+            historical_log_sheet.clear()
+            historical_log_sheet.append_row(["Time-Stamp", "Symbol", "Support Price State", "Resistance Price State", "Scenario Status (K3)"])
+            rows_to_flush = []
+            for item in time_travel_db.get(active_symbol_name, []):
+                rows_to_flush.append([item["timestamp"], item["symbol"], item["support"], item["resistance"], item["scenario"]])
+            if rows_to_flush: historical_log_sheet.append_rows(rows_to_flush)
+            last_flashed_symbol = active_symbol_name
+
+    except Exception as err: print(f"❌ Dashboard Scenario Core Update Engine Error: {err}")
 
 
-peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
-checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
-if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
-if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
-# ====================================================================
-# 🏆 COMPLETE 27 ORIGINAL SCENARIOS DIRECT MATRIX DEFINED
-# ====================================================================
-k3Text = f"{active_symbol_name} is Neutral"
-if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
-elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
-elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is Neutral"
-elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
-elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
-elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
-elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
-elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
-elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
-elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
-elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
-elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
-elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
-
-
-# 🎯 ADVANCED SYSTEM VAULT SHIELD: Permanently locks data across symbol switches
-if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
-vault = multi_symbol_runtime_states[active_symbol_name]
-vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
-vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
-vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
-vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
-vault["K3_TEXT"] = k3Text
-safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
-safe_update_cell(dashboard_sheet, "H5", vault["H5_TEXT"])
-safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
-safe_update_cell(dashboard_sheet, "Q5", vault["Q5_TEXT"])
-update_k3_with_color(spreadsheet, dashboard_sheet, "K3", vault["K3_TEXT"])
-if active_symbol_name not in time_travel_db: time_travel_db[active_symbol_name] = []
-symbol_history = time_travel_db[active_symbol_name]
-if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3Text:
-time_travel_db[active_symbol_name].append({
-"timestamp": current_time_clock, "symbol": active_symbol_name,
-"support": f"CE: {str(checkCe).upper()} ({ceWinner})",
-"resistance": f"PE: {str(checkPe).upper()} ({peWinner})",
-"scenario": k3Text
-})
-# 🔄 EVENT-DRIVEN HARD FLUSH SHEET OVERWRITE LOCK
-if last_flashed_symbol != active_symbol_name:
-print(f"🔄 Symbol Modifying Event Detected -> Flashing '{active_symbol_name}' Logs System Timeline Tables!")
-historical_log_sheet.clear()
-historical_log_sheet.append_row(["Time-Stamp", "Symbol", "Support Price State", "Resistance Price State", "Scenario Status (K3)"])
-rows_to_flush = []
-for item in time_travel_db.get(active_symbol_name, []):
-rows_to_flush.append([item["timestamp"], item["symbol"], item["support"], item["resistance"], item["scenario"]])
-if rows_to_flush: historical_log_sheet.append_rows(rows_to_flush)
-last_flashed_symbol = active_symbol_name
-except Exception as err: print(f"❌ Dashboard Scenario Core Update Engine Error: {err}")
-
-
-### 📦 PART 6: Display-Driven Option Chain Data Network Flow Controller (Throttling Protected)
-```python
 # ====================================================================
 # 🗜️ PARALLEL DISPLAY-DRIVEN BATCH NETWORK CONTROLLER (RATE SAFE)
 # ====================================================================
@@ -529,8 +529,8 @@ def fetch_and_update_option_chain(smart_api):
                 active_expiries = expiry_strings_sorted[:4]
                 while len(active_expiries) < 4: active_expiries.append(active_expiries[-1] if active_expiries else "N/A")
 
-                current_expiry = active_expiries
-                current_expiry_dt = unique_expiries_dt
+                current_expiry = active_expiries[0]
+                current_expiry_dt = unique_expiries_dt[0]
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
@@ -606,8 +606,7 @@ def fetch_and_update_option_chain(smart_api):
         # STEP 2: Pure standalone front writing sequence invocation
         execute_python_scenario_tracker()
 
-
-# STEP 3: Safe continuous background silent scanning for remaining index pool
+        # STEP 3: Safe continuous background silent scanning for remaining index pool
         def scan_background_indices_pool():
             try:
                 for sym in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
@@ -640,52 +639,49 @@ def fetch_and_update_option_chain(smart_api):
                             
                             ce_v, ce_o, pe_v, pe_o = [], [], [], []
                             for idx, s in enumerate(st_sub):
-
-
                                 c_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('CE'))]
-p_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('PE'))]
-ct = str(c_sub['token'].values[0]) if not c_sub.empty else ""
-pt = str(p_sub['token'].values[0]) if not p_sub.empty else ""
-cq = q_map.get(ct, {'oi': 0, 'volume': 0}); pq = q_map.get(pt, {'oi': 0, 'volume': 0})
-ce_o.append({'strike': s, 'val': cq['oi'], 'row': 8+idx})
-ce_v.append({'strike': s, 'val': cq['volume'], 'row': 8+idx})
-pe_v.append({'strike': s, 'val': pq['volume'], 'row': 8+idx})
-pe_o.append({'strike': s, 'val': pq['oi'], 'row': 8+idx})
-process_silent_background_scenarios_rebuilt(sym, ce_v, ce_o, pe_v, pe_o)
-time.sleep(0.3)
-except Exception: pass
-threading.Thread(target=scan_background_indices_pool, daemon=True).start()
-except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
-def process_silent_background_scenarios_rebuilt(symbol_name, ce_v, ce_o, pe_v, pe_o):
-global time_travel_db, multi_symbol_runtime_states
-try:
-now_dt = datetime.now()
-current_time_clock = now_dt.strftime("%H:%M:%S")
-current_time_str = now_dt.strftime("%I:%M %p").lower()
-if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
-v = multi_symbol_runtime_states[symbol_name]
-def extract_top(arr):
-if not arr: return {'highest': {'strike': 0, 'val': 0, 'row': 0}}
-sorted_arr = sorted(arr, key=lambda x: x['val'], reverse=True)
-return {'highest': sorted_arr[0]}
-cv_top, co_top, pv_top, po_top = extract_top(ce_v), extract_top(ce_o), extract_top(pe_v), extract_top(pe_o)
-k3 = f"{symbol_name} is Neutral"
-v["D5_TEXT"] = f"({current_time_str} - Eor OI - {int(co_top['highest']['strike'])})\n(stable strong)"
-v["H5_TEXT"] = f"({current_time_str} - Eor VOL - {int(cv_top['highest']['strike'])})\n(stable strong)"
-v["U5_TEXT"] = f"({current_time_str} - Eos OI - {int(po_top['highest']['strike'])})\n(stable strong)"
-v["Q5_TEXT"] = f"({current_time_str} - Eos VOL - {int(pv_top['highest']['strike'])})\n(stable strong)"
-v["K3_TEXT"] = k3
-if symbol_name not in time_travel_db: time_travel_db[symbol_name] = []
-symbol_history = time_travel_db[symbol_name]
-if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3:
-time_travel_db[symbol_name].append({
-"timestamp": current_time_clock, "symbol": symbol_name,
-"support": "CE: STRONG (VOL)", "resistance": "PE: STRONG (VOL)", "scenario": k3
-})
-except Exception: pass
+                                p_sub = curr_exp_opts[(curr_exp_opts['strike'] == s) & (curr_exp_opts['symbol'].str.upper().str.endswith('PE'))]
+                                ct = str(c_sub['token'].values[0]) if not c_sub.empty else ""
+                                pt = str(p_sub['token'].values[0]) if not p_sub.empty else ""
+                                cq = q_map.get(ct, {'oi': 0, 'volume': 0}); pq = q_map.get(pt, {'oi': 0, 'volume': 0})
+                                ce_o.append({'strike': s, 'val': cq['oi'], 'row': 8+idx})
+                                ce_v.append({'strike': s, 'val': cq['volume'], 'row': 8+idx})
+                                pe_v.append({'strike': s, 'val': pq['volume'], 'row': 8+idx})
+                                pe_o.append({'strike': s, 'val': pq['oi'], 'row': 8+idx})
+                            process_silent_background_scenarios_rebuilt(sym, ce_v, ce_o, pe_v, pe_o)
+                            time.sleep(0.3)
+            except Exception: pass
+        threading.Thread(target=scan_background_indices_pool, daemon=True).start()
+    except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
 
-### 📦 PART 7: Angel One Session Management & Multi-Thread Execution Bindings
-```python
+def process_silent_background_scenarios_rebuilt(symbol_name, ce_v, ce_o, pe_v, pe_o):
+    global time_travel_db, multi_symbol_runtime_states
+    try:
+        now_dt = datetime.now()
+        current_time_clock = now_dt.strftime("%H:%M:%S")
+        current_time_str = now_dt.strftime("%I:%M %p").lower()
+        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
+        v = multi_symbol_runtime_states[symbol_name]
+        def extract_top(arr):
+            if not arr: return {'highest': {'strike': 0, 'val': 0, 'row': 0}}
+            sorted_arr = sorted(arr, key=lambda x: x['val'], reverse=True)
+            return {'highest': sorted_arr[0]}
+        cv_top, co_top, pv_top, po_top = extract_top(ce_v), extract_top(ce_o), extract_top(pe_v), extract_top(pe_o)
+        k3 = f"{symbol_name} is Neutral"
+        v["D5_TEXT"] = f"({current_time_str} - Eor OI - {int(co_top['highest']['strike'])})\n(stable strong)"
+        v["H5_TEXT"] = f"({current_time_str} - Eor VOL - {int(cv_top['highest']['strike'])})\n(stable strong)"
+        v["U5_TEXT"] = f"({current_time_str} - Eos OI - {int(po_top['highest']['strike'])})\n(stable strong)"
+        v["Q5_TEXT"] = f"({current_time_str} - Eos VOL - {int(pv_top['highest']['strike'])})\n(stable strong)"
+        v["K3_TEXT"] = k3
+        if symbol_name not in time_travel_db: time_travel_db[symbol_name] = []
+        symbol_history = time_travel_db[symbol_name]
+        if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3:
+            time_travel_db[symbol_name].append({
+                "timestamp": current_time_clock, "symbol": symbol_name,
+                "support": "CE: STRONG (VOL)", "resistance": "PE: STRONG (VOL)", "scenario": k3
+            })
+    except Exception: pass
+
 # ====================================================================
 # 📥 DOWNLOAD OpenAPI INSTRUMENTS DICTIONARIES
 # ====================================================================
@@ -693,7 +689,7 @@ def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://angelbroking.com"
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
@@ -746,4 +742,3 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     run_bot_lock_loop()
-
