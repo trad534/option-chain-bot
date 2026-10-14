@@ -293,7 +293,6 @@ def execute_python_scenario_tracker():
                 active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip().upper()
         except Exception: pass
 
-        # Force synchronous update layout onto the main screen boxes
         if active_symbol_name in multi_symbol_runtime_states:
             saved_state = multi_symbol_runtime_states[active_symbol_name]
             
@@ -305,7 +304,6 @@ def execute_python_scenario_tracker():
             update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3_TEXT", f"{active_symbol_name} is Neutral"))
             print(f"✨ [DASHBOARD INJECTED] Real-time physical update complete on front screen for '{active_symbol_name}'!")
 
-        # Overwrite full timelines tracking lines inside logger tab sheet instantly
         if last_flashed_symbol != active_symbol_name:
             print(f"🔄 Symbol Modifying Detected from '{last_flashed_symbol}' to '{active_symbol_name}' -> Triggering Flush Engine!")
             historical_log_sheet.clear()
@@ -340,7 +338,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        # Build full network cache packet layout maps to balance limits
         symbols_to_scan = list(options_cache.keys())
         all_tokens_to_fetch = []
         token_data_meta_map = {}
@@ -367,7 +364,6 @@ def fetch_and_update_option_chain(smart_api):
         all_fetched_quotes = []
         chunks = [all_tokens_to_fetch[i:i + 40] for i in range(0, len(all_tokens_to_fetch), 40)]
 
-        # Limits the first 400 core tokens to strictly guard rate limits parameters
         for batch in chunks[:10]:
             try:
                 res = smart_api.getMarketData("FULL", {"NFO": batch})
@@ -384,7 +380,6 @@ def fetch_and_update_option_chain(smart_api):
             sym_name = meta['symbol']
             process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
 
-        # Print direct layout deep values for standard front dashboard
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -398,7 +393,6 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_dt = unique_expiries_dt[0]
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 
-                # Slices fix applied cleanly:
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_token, spot_exchange = eq_cache.get(clean_active_symbol, ("", "NSE"))
@@ -471,36 +465,34 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-        # Dashboard refresh loop sync
         execute_python_scenario_tracker()
 
-except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
-def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, current_expiry_options, strikes):
-try:
-ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
-for idx, st in enumerate(strikes):
-ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
-pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
-ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
-ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
-ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
-peOiArray.append({'strike': st, 'val': float(pe_q['oi']), 'row': 8+idx})
-calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
-except Exception: pass
+    except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
 
-### 📦 PART 7: OpenAPI Master List Indexer & Crash-Proof Connection Thread Loop
-```python
+def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, current_expiry_options, strikes):
+    try:
+        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        for idx, st in enumerate(strikes):
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
+            ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+            ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
+            ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+            ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+            peVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+            peOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+        calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
+    except Exception: pass
+
 # ====================================================================
-# 📥 DOWNLOAD CONTROL OPENAPI SCHEME LIST
+# 📥 DOWNLOAD OpenAPI CONTROLLER MASTER FOR CACHE MAPS
 # ====================================================================
 def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://angelbroking.com"
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
