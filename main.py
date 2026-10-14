@@ -323,7 +323,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" else "(-----)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
@@ -384,7 +384,6 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    # Robust Spot Price Fetching for ALL symbols
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
                     if not spot_token:
                         match_df = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (full_scrip_df['symbol'].str.upper() == symbol_name)]
@@ -472,7 +471,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Investing Daddy Style</title>
+    <title>LTP Calculator - Spot Price Fixed</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -641,12 +640,13 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_row) {
                                 tr.classList.add("spot-row");
+                                let activeSpotPrice = row.spot_price || data.spot_price || '-';
                                 tr.innerHTML = `
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
                                     <td><span class="spot-badge">${row.ce_vol_badge}</span></td>
                                     <td>-</td><td>-</td>
-                                    <td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td>
+                                    <td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${activeSpotPrice}</td>
                                     <td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.pe_vol_badge}</span></td>
                                     <td><span class="spot-badge">${row.pe_oi_badge}</span></td>
@@ -709,7 +709,7 @@ def index():
 def get_symbol_data(symbol):
     sym = symbol.upper()
     if sym in multi_symbol_runtime_states:
-        vault = multi_symbol_runtime_states[symbol.upper()]
+        vault = multi_symbol_runtime_states[sym]
         return jsonify({
             "D5": vault.get("D5_TEXT", "(-----)"),
             "H5": vault.get("H5_TEXT", "(-----)"),
