@@ -83,7 +83,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ====================================================================
-# 🎛️ 27 SCENARIOS & FULL GRID ENGINE
+# 🎛️ 27 SCENARIOS & FULL GRID ENGINE (FIXED JSON SERIALIZATION)
 # ====================================================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
     global global_run_date, multi_symbol_runtime_states
@@ -140,7 +140,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
                 'pe_ltp': pe_ltp,
                 'pe_vol': pe_vol,
                 'pe_oi': pe_oi,
-                'is_spot': (strike == spot_price)
+                'is_spot': bool(strike == spot_price)
             })
 
         def extract_top_two(data_array):
@@ -424,9 +424,6 @@ def background_market_scanner():
             print(f"Scanner loop error: {e}")
             time.sleep(5)
 
-# ====================================================================
-# 🌐 PROFESSIONAL HTML UI & TABLE GRID (INVESTING DADDY STYLE)
-# ====================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -442,16 +439,12 @@ HTML_TEMPLATE = """
         .card h3 { margin: 0 0 5px 0; font-size: 14px; color: #aaa; }
         .k3-banner { background: #2c2c2c; padding: 12px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #00ffcc; border: 1px solid #00ffcc; }
         
-        /* Option Chain Table */
         .table-container { margin-top: 15px; overflow-x: auto; max-height: 600px; }
         table { width: 100%; border-collapse: collapse; background: #181818; font-size: 12px; text-align: center; }
         th, td { border: 1px solid #333; padding: 6px 8px; white-space: nowrap; }
         th { background: #222; color: #ddd; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff9800; color: #000; font-weight: bold; }
         .spot-row { border-top: 3px solid #ff4444; border-bottom: 3px solid #ff4444; background: rgba(255, 68, 68, 0.15); }
-        .highlight-yellow { background: #ffeb3b; color: #000; font-weight: bold; }
-        .highlight-green { background: #4caf50; color: #fff; font-weight: bold; }
-        .highlight-red { background: #f44336; color: #fff; font-weight: bold; }
     </style>
 </head>
 <body>
