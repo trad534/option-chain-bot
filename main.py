@@ -460,7 +460,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Column Badges Dashboard</title>
+    <title>LTP Calculator - Exact Layout Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -490,19 +490,19 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Spot Row Styling with Badges in respective columns */
+        /* Spot Row Exact Layout Matching Reference Image */
         .spot-row td { 
-            background: #fff5f5 !important; 
-            border-top: 2px dashed #ff5252 !important; 
-            border-bottom: 2px dashed #ff5252 !important; 
+            background: #ffffff !important; 
+            border-top: 2px solid #f03e3e !important; 
+            border-bottom: 2px solid #f03e3e !important; 
             padding: 4px; 
         }
         .spot-badge {
             background: #ffffff;
             color: #000000;
             border: 2px solid #333333;
-            border-radius: 4px;
-            padding: 2px 6px;
+            border-radius: 6px;
+            padding: 3px 8px;
             font-weight: bold;
             font-size: 10px;
             display: inline-block;
@@ -511,6 +511,18 @@ HTML_TEMPLATE = """
             background: #d32f2f !important;
             color: #ffffff !important;
             font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+        }
+        .spot-tag-small {
+            background: #ffffff;
+            color: #d32f2f;
+            font-size: 8px;
+            font-weight: bold;
+            padding: 1px 4px;
+            border-radius: 3px;
+            display: block;
+            margin-bottom: 2px;
         }
 
         .itm-ce { background: rgba(255, 0, 0, 0.05); }
@@ -610,7 +622,7 @@ HTML_TEMPLATE = """
                                     <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
                                     <td><span class="spot-badge">${row.ce_vol_badge}</span></td>
                                     <td>-</td><td>-</td>
-                                    <td class="strike-col spot-price-cell">${row.spot_price}</td>
+                                    <td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td>
                                     <td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.pe_vol_badge}</span></td>
                                     <td><span class="spot-badge">${row.pe_oi_badge}</span></td>
