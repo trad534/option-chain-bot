@@ -384,7 +384,7 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    # Universal Spot Price Resolution
+                    # Guaranteed Spot Price Resolution
                     spot_price = 0.0
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
                     
@@ -403,12 +403,11 @@ def background_market_scanner():
                             if fetched_list:
                                 spot_price = float(fetched_list[0].get('ltp', 0))
 
-                    if spot_price <= 0:
-                        all_strikes_list = sorted(current_expiry_options['strike'].unique())
-                        if all_strikes_list:
-                            spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
-
+                    # Ultimate Fallback: If spot_price is still 0, take middle strike as spot price immediately!
                     all_master_strikes = sorted(current_expiry_options['strike'].unique())
+                    if spot_price <= 0 and all_master_strikes:
+                        spot_price = float(all_master_strikes[len(all_master_strikes) // 2])
+
                     closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price)) if all_master_strikes else 0
                     strikes = all_master_strikes[max(0, closest_idx - 15):min(len(all_master_strikes), closest_idx + 16)]
 
