@@ -498,7 +498,6 @@ HTML_TEMPLATE = """
             position: relative;
             padding: 4px; 
         }
-        /* Continuous red line running through the middle of the spot row cells */
         .spot-row td::after {
             content: "";
             position: absolute;
@@ -671,7 +670,7 @@ HTML_TEMPLATE = """
                                     <td class="${peOiClass}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td>
                                     <td class="${peOiClass}">${row.pe_oi_chg}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
-                                    <td class="is_itm_pe ? 'itm-pe' : ''">${row.pe_delta}</td>
+                                    <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>
@@ -695,4 +694,41 @@ def index():
     syms = list(options_cache.keys()) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     return render_template_string(HTML_TEMPLATE, symbols=syms)
 
-@app.row('/api/data/<symbol>') # wait, @app.route
+@app.route('/api/data/<symbol>')
+def get_symbol_data(symbol):
+    sym = symbol.upper()
+    if sym in multi_symbol_runtime_states:
+        vault = multi_symbol_runtime_states[sym]
+        return jsonify({
+            "D5": vault.get("D5_TEXT", "(-----)"),
+            "H5": vault.get("H5_TEXT", "(-----)"),
+            "Q5": vault.get("Q5_TEXT", "(-----)"),
+            "U5": vault.get("U5_TEXT", "(-----)"),
+            "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
+            "grid_rows": vault.get("grid_rows", []),
+            "spot_price": vault.get("spot_price", 0)
+        })
+    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": [], "spot_price": 0})
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+if __name__ == "__main__":
+    try:
+        temp_api = SmartConnect(api_key=API_KEY)
+        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+        session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
+        if session_res.get('status'):
+            app_state["smart_api"] = temp_api
+            print("✅ Angel One Session Established Successfully!")
+            initialize_scrip_master(temp_api)
+        else:
+            print("❌ Session Error during startup.")
+    except Exception as e:
+        print(f"Init Exception: {e}")
+
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    background_market_scanner()
