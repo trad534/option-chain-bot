@@ -125,7 +125,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
 
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
         
-        # strikes_data contains rows corresponding to the 21 strikes (10 up, spot, 10 down)
         for idx, row in enumerate(strikes_data):
             strike = row['strike']
             ce_oi = row['ce_oi']
@@ -133,9 +132,8 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
             pe_vol = row['pe_vol']
             pe_oi = row['pe_oi']
 
-            # Row index mapping (approximate simulation of rows 8 to 28)
             row_idx = 8 + idx
-            if strike == spot_price: row_idx = 18 # Imaginary line row index
+            if strike == spot_price: row_idx = 18
 
             ceOiArray.append({'strike': strike, 'val': ce_oi, 'row': row_idx})
             ceVolArray.append({'strike': strike, 'val': ce_vol, 'row': row_idx})
@@ -206,7 +204,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size):
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
         elif peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
         elif peOiIsStable100 and not peVolIsStable100: ceWinner = "OI"
-        elif peVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
+        elif peVolIsStable100 and not peOiIsStable100: ceWinner = "VOL"
         else:
             peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -340,8 +338,7 @@ def background_market_scanner():
                 time.sleep(2)
                 continue
 
-            # Loop through active cached symbols in background RAM
-            for symbol_name in list(options_cache.keys())[:30]: # Polling top symbols for speed
+            for symbol_name in list(options_cache.keys())[:30]:
                 try:
                     sym_options = options_cache[symbol_name]
                     valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -529,9 +526,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Init Exception: {e}")
 
-    # Start Flask Web Dashboard Thread
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Start Background RAM Market Polling Engine
     background_market_scanner()
