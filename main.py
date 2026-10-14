@@ -195,8 +195,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # ====================================================================
 def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray):
     """
-    FIXED ENGINE: No more blanks! Absolute states are derived on every tick,
-    recording neutral and strong timelines seamlessly inside time_travel_db.
+    FIXED ENGINE: Full neutral state tracing is captured absolutely on every tick.
     """
     global time_travel_db, multi_symbol_runtime_states
     try:
@@ -247,7 +246,6 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         checkCe = "stable strong" if ceVolRawState == "STRONG" else ceVolRawState.lower()
         checkPe = "stable strong" if peVolRawState == "STRONG" else peVolRawState.lower()
 
-        # Absolute 27 Scenarios Direct Resolution
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -259,7 +257,6 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
 
-        # Structural box texts parsed down accurately
         ce_s_val = int(ceVolTop['highest']['strike'])
         pe_s_val = int(peVolTop['highest']['strike'])
 
@@ -272,7 +269,6 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         if symbol_name not in time_travel_db: time_travel_db[symbol_name] = []
         symbol_history = time_travel_db[symbol_name]
 
-        # Critical fix: Blanks eliminated. All columns always logged into timeline records list
         if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3Text:
             time_travel_db[symbol_name].append({
                 "timestamp": current_time_clock, "symbol": symbol_name,
@@ -283,7 +279,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
             print(f"📊 [TIMELINE CAPTURED] {symbol_name} appended successfully -> {k3Text} at {current_time_clock}")
     except Exception as e: print(f"Error inside calculator sequence loop: {e}")
 # ====================================================================
-# 🖥️ CELL INTERFACE MONITOR & SYNCHRONOUS INJECTOR
+# 🖥® CELL INTERFACE MONITOR & SYNCHRONOUS INJECTOR
 # ====================================================================
 def execute_python_scenario_tracker():
     global last_flashed_symbol, multi_symbol_runtime_states, time_travel_db
@@ -295,7 +291,6 @@ def execute_python_scenario_tracker():
                 active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip()
         except Exception: pass
 
-        # Force synchronous cell loading of the target selected symbol parameters
         if active_symbol_name in multi_symbol_runtime_states:
             saved_state = multi_symbol_runtime_states[active_symbol_name]
             
@@ -305,9 +300,8 @@ def execute_python_scenario_tracker():
             safe_update_cell(dashboard_sheet, "Q5", saved_state.get("Q5_TEXT", "(-----)"))
             
             update_k3_with_color(spreadsheet, dashboard_sheet, "K3", saved_state.get("K3_TEXT", f"{active_symbol_name} is Neutral"))
-            print(f"✨ [DASHBOARD OVERWRITTEN] Active display successfully forced to show {active_symbol_name} matrix states!")
+            print(f"✨ [DASHBOARD OVERWRITTEN] Active display forced to show {active_symbol_name} matrix states!")
 
-        # Overwrite full timelines data lines onto sheets instantly when J4 modifies
         if last_flashed_symbol != active_symbol_name:
             print(f"🔄 Symbol Modifying Detected from '{last_flashed_symbol}' to '{active_symbol_name}'!")
             historical_log_sheet.clear()
@@ -342,7 +336,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        # Target packet token assembly configuration loop across all F&O stocks
         symbols_to_scan = list(options_cache.keys())
         all_tokens_to_fetch = []
         token_data_meta_map = {}
@@ -366,7 +359,6 @@ def fetch_and_update_option_chain(smart_api):
                 all_tokens_to_fetch.append(tok)
                 token_data_meta_map[tok] = {'symbol': sym, 'options_df': current_expiry_options, 'strikes': strikes_subset}
 
-        # Multi-Paginator Packet Processing Block (Limits first 400 core tokens)
         all_fetched_quotes = []
         chunks = [all_tokens_to_fetch[i:i + 40] for i in range(0, len(all_tokens_to_fetch), 40)]
 
@@ -382,11 +374,10 @@ def fetch_and_update_option_chain(smart_api):
             volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0))
             global_quotes_dict[tok] = {'volume': volume, 'oi': oi}
 
-        # Silent extractor calculation pipelines
         for tok, meta in token_data_meta_map.items():
-            process_silent_background_scenarios_rebuilt(meta['symbol'], global_quotes_dict, meta['options_df'], meta['strikes'])
+            sym_name = meta['symbol']
+            process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
 
-        # Print direct matrix data for front screen active selected instrument
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -470,7 +461,6 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
-        # Dashboard refresh lock execution alignment
         execute_python_scenario_tracker()
 
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
@@ -479,18 +469,19 @@ def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, curren
     try:
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
         for idx, st in enumerate(strikes):
-            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
-            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
-            ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-            pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-            ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
-            ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
-            ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-            peVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-            peOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
-        calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
-    except Exception: pass
-
+ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
+pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
+ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
+ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
+peOiArray.append({'strike': st, 'val': float(pe_q['oi']), 'row': 8+idx})
+calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
+except Exception: pass
+### 📦 PART 7: Scrip Master Download Matrix & Infinite Reconnect Threads Block
+```python
 # ====================================================================
 # 📥 DOWNLOAD OpenAPI CONTROLLER MASTER FOR CACHE MAPS
 # ====================================================================
@@ -498,7 +489,7 @@ def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        url = "https://angelbroking.com"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
