@@ -124,6 +124,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             }
 
         sym_vault = multi_symbol_runtime_states[symbol_name]
+        sym_vault["spot_price"] = spot_price
 
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
         raw_rows = []
@@ -327,7 +328,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
-        sym_vault["spot_price"] = spot_price
 
     except Exception as e:
         print(f"Error in scenario engine for {symbol_name}: {e}")
@@ -704,7 +704,7 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    syms = list(options_cache.keys()) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    syms = sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     return render_template_string(HTML_TEMPLATE, symbols=syms)
 
 @app.route('/api/data/<symbol>')
