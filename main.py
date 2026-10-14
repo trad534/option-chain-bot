@@ -267,16 +267,16 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
         # CE PRIORITY MATRIX LOOKUPS
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         # PE PRIORITY MATRIX LOOKUPS
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']): peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
         else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -575,25 +575,25 @@ def fetch_and_update_option_chain(smart_api):
                     except Exception: pass
 
         # Synchronize dashboard engine completely
-execute_python_scenario_tracker()
-except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
+        execute_python_scenario_tracker()
+    except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
+
 def process_silent_background_scenarios_rebuilt(symbol_name, quotes_dict, current_expiry_options, strikes):
-try:
-ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
-for idx, st in enumerate(strikes):
-ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
-pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
-ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
-ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
-ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
-peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
-peOiArray.append({'strike': st, 'val': float(pe_q['oi']), 'row': 8+idx})
-calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
-except Exception: pass
-### 📦 PART 8: Angel One Session Management & Multi-Thread Execution Bindings
-```python
+    try:
+        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        for idx, st in enumerate(strikes):
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].astype(str).str.upper().str.endswith('PE'))]
+            ce_tok = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_tok = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+            ce_q = quotes_dict.get(ce_tok, {'oi': 0, 'volume': 0}); pe_q = quotes_dict.get(pe_tok, {'oi': 0, 'volume': 0})
+            ceOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+            ceVolArray.append({'strike': st, 'val': float(ce_q['volume']), 'row': 8+idx})
+            peVolArray.append({'strike': st, 'val': float(pe_q['volume']), 'row': 8+idx})
+            peOiArray.append({'strike': st, 'val': float(ce_q['oi']), 'row': 8+idx})
+        calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray)
+    except Exception: pass
+
 # ====================================================================
 # 📥 DOWNLOAD OpenAPI INSTRUMENTS DICTIONARIES
 # ====================================================================
@@ -601,7 +601,7 @@ def initialize_scrip_master(smart_api):
     global full_scrip_df, eq_cache, options_cache
     try:
         print("📥 Downloading Angel One Scrip Master JSON...")
-        url = "https://angelbroking.com"
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=25)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
