@@ -334,7 +334,7 @@ def execute_python_scenario_tracker():
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -428,7 +428,7 @@ def execute_python_scenario_tracker():
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        checkPe = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
         if ceWinner == "BOTH": checkCe = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": checkPe = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
@@ -606,10 +606,10 @@ def fetch_and_update_option_chain(smart_api):
         # STEP 2: Pure standalone front writing sequence invocation
         execute_python_scenario_tracker()
 
-        # STEP 3: Safe continuous background silent scanning for remaining index pool
+        # STEP 3: Safe continuous background silent scanning for all 265+ symbols pool
         def scan_background_indices_pool():
             try:
-                for sym in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                for sym in list(options_cache.keys()):
                     if sym == clean_active_symbol: continue
                     sym_options = options_cache.get(sym, pd.DataFrame())
                     if sym_options.empty: continue
@@ -619,6 +619,7 @@ def fetch_and_update_option_chain(smart_api):
                     curr_exp_opts = valid_opts[valid_opts['parsed_expiry'] == u_exp[0]].copy()
                     
                     all_st = sorted(curr_exp_opts['strike'].unique())
+                    if not all_st: continue
                     m_idx = len(all_st) // 2
                     st_sub = all_st[max(0, m_idx-5):min(len(all_st), m_idx+6)]
                     
@@ -649,7 +650,7 @@ def fetch_and_update_option_chain(smart_api):
                                 pe_v.append({'strike': s, 'val': pq['volume'], 'row': 8+idx})
                                 pe_o.append({'strike': s, 'val': pq['oi'], 'row': 8+idx})
                             process_silent_background_scenarios_rebuilt(sym, ce_v, ce_o, pe_v, pe_o)
-                            time.sleep(0.3)
+                            time.sleep(0.1)
             except Exception: pass
         threading.Thread(target=scan_background_indices_pool, daemon=True).start()
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
