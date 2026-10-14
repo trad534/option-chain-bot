@@ -274,7 +274,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peOiStatusText)
 
         checkCe = ceOiResult['status'] if ceWinner == "OI" else ceVolResult['status']
-        checkPe = peOiResult['status'] if peWinner == "OI" else peVolResult['status']
+        checkPe = peOiResult['status'] if ceWinner == "OI" else peVolResult['status']
 
         k3Text = f"{symbol_name} is Neutral"
         if "wtt" in checkCe and "wtb" in checkPe: k3Text = f"{symbol_name} is 8th scenario both side Risky"
@@ -294,10 +294,14 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         highest_pe_oi_strike = peOiTop['highest']['strike']
         second_pe_oi_strike = peOiTop['second']['strike'] if peOiTop['pct'] >= 75.0 else None
 
-        # Clean slim line text with short states & percentages
-        ce_line_info = f"{ceOiStatusText.upper()} ({ceOiPctVal}%)"
-        pe_line_info = f"{peOiStatusText.upper()} ({peOiPctVal}%)"
-        spot_line_text = f"CE: {ce_line_info} | SPOT: {spot_price} | PE: {pe_line_info}"
+        # Clean single-line spot text format requested by user:
+        # ----wtb 89%------wtt 80%-------1063----
+        ce_oi_str = f"{ceOiRawState.upper()} {ceOiPctVal}%"
+        ce_vol_str = f"{ceVolRawState.upper()} {ceVolPctVal}%"
+        pe_oi_str = f"{peOiRawState.upper()} {peOiPctVal}%"
+        pe_vol_str = f"{peVolRawState.upper()} {peVolPctVal}%"
+        
+        spot_line_text = f"--- {ce_oi_str} --- {ce_vol_str} --- {spot_price} --- {pe_vol_str} --- {pe_oi_str} ---"
 
         grid_rows_built = []
         spot_inserted = False
@@ -319,11 +323,17 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         if not spot_inserted and spot_price > 0:
             grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
 
-        # Winner specific outputs (Non-winners get "(-----)")
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(-----)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" or peWinner == "VOL" else "(-----)" # fixed standard assignment
+        
+        # Proper winner assignments for D5, H5, Q5, U5
+        sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
+        sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
+        sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(-----)"
+
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
@@ -452,14 +462,14 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE (WHITE CARD STYLE)
+# WEB DASHBOARD INTERFACE (SINGLE LINE SPOT)
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Professional White Dashboard</title>
+    <title>LTP Calculator - Clean Line Engine</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -489,14 +499,14 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Clean Slim Spot Line */
+        /* Transparent Single Line Spot Row */
         .spot-line-tr td { 
-            background: #ffe3e3 !important; 
-            color: #c92a2a !important; 
+            background: transparent !important; 
+            color: #d32f2f !important; 
             font-weight: bold; 
             font-size: 11px; 
-            border-top: 2px dashed #f03e3e; 
-            border-bottom: 2px dashed #f03e3e; 
+            border-top: 2px dashed #f03e3e !important; 
+            border-bottom: none !important; 
             padding: 4px; 
             text-align: center; 
         }
@@ -593,7 +603,7 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_line) {
                                 tr.classList.add("spot-line-tr");
-                                tr.innerHTML = `<td colspan="21">🔴 ${row.line_text} 🔴</td>`;
+                                tr.innerHTML = `<td colspan="21">${row.line_text}</td>`;
                             } else {
                                 let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
