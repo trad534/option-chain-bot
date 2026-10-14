@@ -199,7 +199,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ====================================================================
-# 🎛️ MASTER SCENARIO ENGINE (100% ORIGINAL LOGIC PRESERVED)
+# 🎛️ MASTER SCENARIO ENGINE (100% ORIGINAL LOGIC & STRICT VAULT LOCK)
 # ====================================================================
 def execute_python_scenario_tracker():
     global global_run_date, time_travel_db, last_flashed_symbol, multi_symbol_runtime_states, current_active_symbol_for_memory
@@ -334,7 +334,7 @@ def execute_python_scenario_tracker():
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -459,7 +459,7 @@ def execute_python_scenario_tracker():
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         
-        # 🛡️ STRICTLY PRESERVE EXACT RECORDED TIMESTAMPS & OUTPUTS FOR BOTH CE & PE SIDES
+        # 🛡️ STRICTLY LOCK BOTH CE & PE VAULT STATES TO PREVENT FRESH TIME OVERWRITES ON SYMBOL SWITCH
         new_d5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
         new_h5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
         new_u5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
