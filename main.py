@@ -102,7 +102,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE (INVESTING DADDY PATTERN)
+# MASTER SCENARIO ENGINE
 # ==========================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, time_to_expiry_years):
     global global_run_date, multi_symbol_runtime_states
@@ -281,6 +281,13 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         highest_pe_oi_strike = peOiTop['highest']['strike']
         second_pe_oi_strike = peOiTop['second']['strike'] if peOiTop['pct'] >= 75.0 else None
 
+        # Format line text with OI & Vol percentages on both sides
+        ce_oi_status_line = f"CE OI: {ceOiRawState.upper()} ({ceOiPctVal}%)"
+        ce_vol_status_line = f"CE Vol: {ceVolRawState.upper()} ({ceVolPctVal}%)"
+        pe_oi_status_line = f"PE OI: {peOiRawState.upper()} ({peOiPctVal}%)"
+        pe_vol_status_line = f"PE Vol: {peVolRawState.upper()} ({peVolPctVal}%)"
+        spot_line_text = f"🔴 {ce_oi_status_line} | {ce_vol_status_line} || MAGICAL SPOT: {spot_price} || {pe_vol_status_line} | {pe_oi_status_line} 🔴"
+
         grid_rows_built = []
         spot_inserted = False
 
@@ -292,7 +299,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             r['pe_oi_color'] = 'green' if st == highest_pe_oi_strike else ('yellow' if st == second_pe_oi_strike else '')
 
             if not spot_inserted and spot_price > 0 and st >= spot_price:
-                spot_line_text = f"🔴 MAGICAL SPOT LINE - SPOT PRICE: {spot_price} 🔴"
                 grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
                 spot_inserted = True
 
@@ -300,7 +306,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             grid_rows_built.append(r)
 
         if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': f"🔴 MAGICAL SPOT LINE - SPOT PRICE: {spot_price} 🔴"})
+            grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(--- OI Winner Only ---)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(--- Vol Winner Only ---)"
@@ -434,14 +440,14 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE (INVESTING DADDY WHITE THEME)
+# WEB DASHBOARD INTERFACE
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Investing Daddy Style</title>
+    <title>LTP Calculator - Clean Line Engine</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -457,7 +463,7 @@ HTML_TEMPLATE = """
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; }
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
-        .spot-line-tr td { background: #d32f2f !important; color: #ffffff !important; font-weight: bold; font-size: 12px; border-top: 2px solid #ff5252; border-bottom: 2px solid #ff5252; padding: 6px; text-align: center; }
+        .spot-line-tr td { background: #d32f2f !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border-top: 2px solid #ff5252; border-bottom: 2px solid #ff5252; padding: 5px; text-align: center; }
 
         .itm-ce { background: rgba(255, 0, 0, 0.05); }
         .itm-pe { background: rgba(0, 128, 0, 0.05); }
@@ -472,7 +478,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="header">
-        <h2>⚡ LTP Calculator (Investing Daddy Dashboard)</h2>
+        <h2>⚡ LTP Calculator (Clean Line Dashboard)</h2>
         <div>
             <label>Symbol: </label>
             <select id="symbolSelect" onchange="fetchData()">
