@@ -232,11 +232,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return "stable strong"
-            strike = top_obj['highest']['strike']
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
-            prev_strike = float(prev_strike_str) if prev_strike_str else strike
             current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
-
             if raw_state == "stable strong":
                 if current_weak_hist == "wtt": return "wtt to strong"
                 if current_weak_hist == "wtb": return "wtb to strong"
@@ -256,15 +252,12 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         def calculate_independent_cell(top_obj, cache_key, side_label, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
                 return {'text': "(-----)", 'status': "stable strong"}
-
             strike = top_obj['highest']['strike']
             s_val = int(strike) if strike.is_integer() else strike
-
             display_time = get_memory("TIME_" + cache_key)
             if not display_time:
                 display_time = current_time_str
                 set_memory("TIME_" + cache_key, display_time)
-
             output_text = f"({display_time} - {side_label} - {s_val})\n    ({final_status_text})"
             return {'text': output_text, 'status': final_status_text}
 
@@ -294,15 +287,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         highest_pe_oi_strike = peOiTop['highest']['strike']
         second_pe_oi_strike = peOiTop['second']['strike'] if peOiTop['pct'] >= 75.0 else None
 
-        # Clean single-line spot text format requested by user:
-        # ----wtb 89%------wtt 80%-------1063----
-        ce_oi_str = f"{ceOiRawState.upper()} {ceOiPctVal}%"
-        ce_vol_str = f"{ceVolRawState.upper()} {ceVolPctVal}%"
-        pe_oi_str = f"{peOiRawState.upper()} {peOiPctVal}%"
-        pe_vol_str = f"{peVolRawState.upper()} {peVolPctVal}%"
-        
-        spot_line_text = f"--- {ce_oi_str} --- {ce_vol_str} --- {spot_price} --- {pe_vol_str} --- {pe_oi_str} ---"
-
         grid_rows_built = []
         spot_inserted = False
 
@@ -314,26 +298,33 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             r['pe_oi_color'] = 'green' if st == highest_pe_oi_strike else ('yellow' if st == second_pe_oi_strike else '')
 
             if not spot_inserted and spot_price > 0 and st >= spot_price:
-                grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
+                grid_rows_built.append({
+                    'is_spot_row': True,
+                    'spot_price': spot_price,
+                    'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
+                    'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
+                    'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
+                    'pe_oi_badge': f"{peOiRawState.upper()} {peOiPctVal}%"
+                })
                 spot_inserted = True
 
             r['is_spot_line'] = False
             grid_rows_built.append(r)
 
         if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
+            grid_rows_built.append({
+                'is_spot_row': True,
+                'spot_price': spot_price,
+                'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
+                'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
+                'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
+                'pe_oi_badge': f"{peOiRawState.upper()} {peOiPctVal}%"
+            })
 
-        sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
-        sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
-        sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(-----)"
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" or peWinner == "VOL" else "(-----)" # fixed standard assignment
-        
-        # Proper winner assignments for D5, H5, Q5, U5
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(-----)"
-
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
@@ -462,14 +453,14 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE (SINGLE LINE SPOT)
+# WEB DASHBOARD INTERFACE
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Clean Line Engine</title>
+    <title>LTP Calculator - Column Badges Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -499,16 +490,27 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Transparent Single Line Spot Row */
-        .spot-line-tr td { 
-            background: transparent !important; 
-            color: #d32f2f !important; 
-            font-weight: bold; 
-            font-size: 11px; 
-            border-top: 2px dashed #f03e3e !important; 
-            border-bottom: none !important; 
+        /* Spot Row Styling with Badges in respective columns */
+        .spot-row td { 
+            background: #fff5f5 !important; 
+            border-top: 2px dashed #ff5252 !important; 
+            border-bottom: 2px dashed #ff5252 !important; 
             padding: 4px; 
-            text-align: center; 
+        }
+        .spot-badge {
+            background: #ffffff;
+            color: #000000;
+            border: 2px solid #333333;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-weight: bold;
+            font-size: 10px;
+            display: inline-block;
+        }
+        .spot-price-cell {
+            background: #d32f2f !important;
+            color: #ffffff !important;
+            font-weight: bold;
         }
 
         .itm-ce { background: rgba(255, 0, 0, 0.05); }
@@ -601,9 +603,19 @@ HTML_TEMPLATE = """
                         data.grid_rows.forEach(row => {
                             let tr = document.createElement("tr");
 
-                            if (row.is_spot_line) {
-                                tr.classList.add("spot-line-tr");
-                                tr.innerHTML = `<td colspan="21">${row.line_text}</td>`;
+                            if (row.is_spot_row) {
+                                tr.classList.add("spot-row");
+                                tr.innerHTML = `
+                                    <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                                    <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
+                                    <td><span class="spot-badge">${row.ce_vol_badge}</span></td>
+                                    <td>-</td><td>-</td>
+                                    <td class="strike-col spot-price-cell">${row.spot_price}</td>
+                                    <td>-</td><td>-</td>
+                                    <td><span class="spot-badge">${row.pe_vol_badge}</span></td>
+                                    <td><span class="spot-badge">${row.pe_oi_badge}</span></td>
+                                    <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                                `;
                             } else {
                                 let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
