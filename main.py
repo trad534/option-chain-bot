@@ -642,7 +642,7 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_row) {
                                 tr.classList.add("spot-row");
-                                let activeSpotPrice = row.spot_price || data.spot_price || '-';
+                                let activeSpotPrice = row.spot_price || data.spot_price || 'N/A';
                                 tr.innerHTML = `
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
