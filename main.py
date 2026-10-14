@@ -334,7 +334,7 @@ def execute_python_scenario_tracker():
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -459,11 +459,16 @@ def execute_python_scenario_tracker():
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         
-        # 🛡️ RESTORE EXACT RECORDED OUTPUT FROM SYMBOL MEMORY IF ALREADY RECORDED
-        vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else vault.get("D5_TEXT", "(-----)")
-        vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else vault.get("H5_TEXT", "(-----)")
-        vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else vault.get("U5_TEXT", "(-----)")
-        vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else vault.get("Q5_TEXT", "(-----)")
+        # 🛡️ STRICTLY PRESERVE EXACT RECORDED TIMESTAMPS & OUTPUTS FOR BOTH CE & PE SIDES
+        new_d5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
+        new_h5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
+        new_u5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
+        new_q5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
+
+        vault["D5_TEXT"] = new_d5 if new_d5 != "(-----)" else vault.get("D5_TEXT", "(-----)")
+        vault["H5_TEXT"] = new_h5 if new_h5 != "(-----)" else vault.get("H5_TEXT", "(-----)")
+        vault["U5_TEXT"] = new_u5 if new_u5 != "(-----)" else vault.get("U5_TEXT", "(-----)")
+        vault["Q5_TEXT"] = new_q5 if new_q5 != "(-----)" else vault.get("Q5_TEXT", "(-----)")
         vault["K3_TEXT"] = k3Text
 
         safe_update_cell(dashboard_sheet, "D5", vault["D5_TEXT"])
