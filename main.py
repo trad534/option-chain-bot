@@ -300,7 +300,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             if not spot_inserted and spot_price > 0 and st >= spot_price:
                 grid_rows_built.append({
                     'is_spot_row': True,
-                    'spot_price': spot_price,
+                    'spot_price': round(spot_price, 2),
                     'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
                     'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
                     'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
@@ -314,7 +314,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         if not spot_inserted and spot_price > 0:
             grid_rows_built.append({
                 'is_spot_row': True,
-                'spot_price': spot_price,
+                'spot_price': round(spot_price, 2),
                 'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
                 'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
                 'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
@@ -460,7 +460,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Clean Middle Line Dashboard</title>
+    <title>LTP Calculator - Clean Badges Row Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -490,23 +490,11 @@ HTML_TEMPLATE = """
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
-        /* Spot Row with ONLY middle red line (no top/bottom borders) */
+        /* Clean Spot Row with NO red lines, compact box size matching badges */
         .spot-row td { 
             background: #ffffff !important; 
-            border-top: 1px solid #dee2e6 !important; 
-            border-bottom: 1px solid #dee2e6 !important; 
-            position: relative;
-            padding: 4px; 
-        }
-        .spot-row td::after {
-            content: "";
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 50%;
-            height: 2px;
-            background-color: #f03e3e;
-            z-index: 2;
+            border: 1px solid #dee2e6 !important; 
+            padding: 4px 6px !important; 
         }
         .spot-badge {
             background: #ffffff;
@@ -517,25 +505,23 @@ HTML_TEMPLATE = """
             font-weight: bold;
             font-size: 10px;
             display: inline-block;
-            position: relative;
-            z-index: 3;
         }
         .spot-price-cell {
             background: #d32f2f !important;
             color: #ffffff !important;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 11px;
             text-align: center;
         }
         .spot-tag-small {
             background: #ffffff;
             color: #d32f2f;
-            font-size: 8px;
+            font-size: 7px;
             font-weight: bold;
-            padding: 1px 4px;
-            border-radius: 3px;
+            padding: 0px 3px;
+            border-radius: 2px;
             display: block;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
 
         .itm-ce { background: rgba(255, 0, 0, 0.05); }
@@ -672,7 +658,7 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>
-                                    <td class="is_itm_pe ? 'itm-pe' : ''">${row.pe_theta}</td>
+                                    <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>
                                 `;
                             }
