@@ -209,20 +209,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 'spot_price': spot_price
             })
 
-        # Scenario detection logic (Investing Daddy rules)
-        def detect_live_state_advanced(top_obj, is_put_side):
-            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
-            if is_put_side: return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
-            else: return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
-
-        ceVolRawState = detect_live_state_advanced(ceVolTop, False)
-        ceOiRawState = detect_live_state_advanced(ceOiTop, False)
-        peVolRawState = detect_live_state_advanced(peVolTop, True)
-        peOiRawState = detect_live_state_advanced(peOiTop, True)
-
-        ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
-        peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
-
         sym_vault["D5_TEXT"] = f"({current_time_str} - Eor OI - {ceOiTop['highest']['strike']})"
         sym_vault["H5_TEXT"] = f"({current_time_str} - Eor VOL - {ceVolTop['highest']['strike']})"
         sym_vault["U5_TEXT"] = f"({current_time_str} - Eos OI - {peOiTop['highest']['strike']})"
@@ -470,7 +456,8 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_line) {
                                 tr.classList.add("spot-line-tr");
-                                tr.innerHTML = `<td colspan="17">🔴 IMAGINARY SPOT LINE - SPOT PRICE: ${row.spot_price} 🔴</td>`;
+                                let spotVal = row.spot_price || data.spot_price || "Live Spot";
+                                tr.innerHTML = `<td colspan="17">🔴 IMAGINARY SPOT LINE - SPOT PRICE: ${spotVal} 🔴</td>`;
                             } else {
                                 let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
