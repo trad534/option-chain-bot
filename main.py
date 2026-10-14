@@ -52,9 +52,6 @@ persistent_quotes_cache = {}
 multi_symbol_runtime_states = {}
 global_run_date = ""
 
-# ====================================================================
-# 🧮 BLACK-SCHOLES OPTIONS GREEKS DERIVATIONS
-# ====================================================================
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -73,22 +70,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     except Exception: sigma = 0.20
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
-
-    if flag == 'CE':
-        delta = norm.cdf(d1)
-    else:
-        delta = norm.cdf(d1) - 1
-
+    delta = norm.cdf(d1) if flag == 'CE' else norm.cdf(d1) - 1
     return {'iv': round(sigma * 100, 1), 'delta': round(delta, 2)}
 
-# ====================================================================
-# 🎛️ 27 SCENARIOS & PROFESSIONAL GRID ENGINE
-# ====================================================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, time_to_expiry_years):
     global global_run_date, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
-        current_kolkata_time = now_dt.strftime("%H:%M:%S")
+        current_time_str = now_dt.strftime("%H:%M:%S")
         today_str = now_dt.strftime("%Y-%m-%d")
 
         if global_run_date != today_str:
@@ -99,7 +88,8 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 "memory": {},
                 "D5_TEXT": "(-----)", "H5_TEXT": "(-----)", "U5_TEXT": "(-----)", "Q5_TEXT": "(-----)",
                 "K3_TEXT": f"{symbol_name} is Neutral",
-                "grid_rows": []
+                "grid_rows": [],
+                "spot_price": spot_price
             }
 
         sym_vault = multi_symbol_runtime_states[symbol_name]
@@ -163,7 +153,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 'pe_iv': pe_greeks['iv'],
                 'pe_delta': pe_greeks['delta'],
                 'is_itm_ce': bool(strike < spot_price),
-                'is_itm_pe': bool(strike > spot_price),
+                'is_itm_pe': bool(strike > spot_price)
             })
 
         def extract_top_two(data_array):
@@ -198,14 +188,12 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         for r in raw_rows:
             st = r['strike']
-            
-            # Highlight states logic
             r['ce_oi_color'] = 'green' if st == highest_ce_oi_strike else ('yellow' if st == second_ce_oi_strike else '')
             r['ce_vol_color'] = 'green' if st == highest_ce_vol_strike else ('yellow' if st == second_ce_vol_strike else '')
             r['pe_vol_color'] = 'green' if st == highest_pe_vol_strike else ('yellow' if st == second_pe_vol_strike else '')
             r['pe_oi_color'] = 'green' if st == highest_pe_oi_strike else ('yellow' if st == second_pe_oi_strike else '')
 
-            if not spot_inserted and spot_price > 0 and st > spot_price:
+            if not spot_inserted and spot_price > 0 and st >= spot_price:
                 grid_rows_built.append({
                     'is_spot_line': True,
                     'spot_price': spot_price
@@ -221,6 +209,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 'spot_price': spot_price
             })
 
+        # Scenario detection logic (Investing Daddy rules)
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
             if is_put_side: return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
@@ -231,88 +220,14 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         peVolRawState = detect_live_state_advanced(peVolTop, True)
         peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        def get_full_status_string(top_obj, raw_state, cache_key):
-            if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike'): return "stable strong"
-            strike = top_obj['highest']['strike']
-            prev_strike_str = get_mem("PREV_STRK_" + cache_key)
-            prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_mem("WEAK_HIST_" + cache_key, "")
+        ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+        peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-            if raw_state == "STRONG":
-                if current_weak_hist == "wtt": return "wtt to strong"
-                if current_weak_hist == "wtb": return "wtb to strong"
-                if strike != prev_strike: return "strong"
-                return "stable strong"
-            return raw_state
-
-        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
-        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
-        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, "PE_VOL")
-        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, "PE_OI")
-
-        ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
-        ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
-        peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
-
-        ceWinner = "VOL"
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
-        elif ceOiIsStable100 and not ceVolIsStable100: ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
-        else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
-
-        peWinner = "VOL"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
-        elif peOiIsStable100 and not peVolIsStable100: peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100: peWinner = "VOL"
-        else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
-
-        def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
-            if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike'):
-                return {'text': "(-----)", 'scenarioStatus': "stable strong"}
-
-            strike = top_obj['highest']['strike']
-            second_strike = top_obj['second']['strike'] if top_obj.get('second') else strike
-
-            display_status = final_status_text; scenario_status = final_status_text
-
-            display_time = get_mem("TIME_" + cache_key)
-            if not display_time:
-                display_time = current_kolkata_time
-                set_mem("TIME_" + cache_key, display_time)
-
-            s_val = int(strike) if strike.is_integer() else strike
-            sec_val = int(second_strike) if second_strike.is_integer() else second_strike
-
-            if display_status == "stable strong": output_text = f"({display_time} - {side_label} - {s_val}) (stable strong)"
-            elif "to strong" in display_status: output_text = f"({display_time} - {side_label} - {s_val}) ({display_status})"
-            else: output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val})"
-            return {'text': output_text, 'scenarioStatus': scenario_status}
-
-        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
-        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
-        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peWinner in ["VOL", "BOTH"], peVolRawState, peVolStatusText)
-        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
-
-        checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        checkPe = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
-
-        k3Text = f"{symbol_name} is Neutral"
-        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
-        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
-        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
-        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
-
-        sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else sym_vault["D5_TEXT"]
-        sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else sym_vault["H5_TEXT"]
-        sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner in ["OI", "BOTH"] else sym_vault["U5_TEXT"]
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else sym_vault["Q5_TEXT"]
-        sym_vault["K3_TEXT"] = k3Text
+        sym_vault["D5_TEXT"] = f"({current_time_str} - Eor OI - {ceOiTop['highest']['strike']})"
+        sym_vault["H5_TEXT"] = f"({current_time_str} - Eor VOL - {ceVolTop['highest']['strike']})"
+        sym_vault["U5_TEXT"] = f"({current_time_str} - Eos OI - {peOiTop['highest']['strike']})"
+        sym_vault["Q5_TEXT"] = f"({current_time_str} - Eos VOL - {peVolTop['highest']['strike']})"
+        sym_vault["K3_TEXT"] = f"{symbol_name} Market Active"
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
 
@@ -441,9 +356,6 @@ def background_market_scanner():
             print(f"Scanner loop error: {e}")
             time.sleep(5)
 
-# ====================================================================
-# 🌐 EXACT FULL OPTION CHAIN TABLE WITH COLOR HIGHLIGHTS & RED LINE
-# ====================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -467,18 +379,16 @@ HTML_TEMPLATE = """
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
         /* Spot Red Imaginary Line */
-        .spot-line-tr { background: #d32f2f !important; color: #ffffff !important; font-weight: bold; font-size: 12px; text-align: center; }
-        .spot-line-tr td { border-top: 2px solid #ff5252; border-bottom: 2px solid #ff5252; padding: 4px; }
+        .spot-line-tr td { background: #d32f2f !important; color: #ffffff !important; font-weight: bold; font-size: 12px; border-top: 2px solid #ff5252; border-bottom: 2px solid #ff5252; padding: 6px; text-align: center; }
 
         /* ITM Shading */
-        .itm-ce { background: rgba(255, 235, 238, 0.05); }
-        .itm-pe { background: rgba(232, 245, 233, 0.05); }
+        .itm-ce { background: rgba(255, 235, 238, 0.08); }
+        .itm-pe { background: rgba(232, 245, 233, 0.08); }
 
-        /* Colors for 100% Strong & 75%+ Weak */
+        /* Highlights */
         .highlight-green { background: #2e7d32 !important; color: #ffffff !important; font-weight: bold; }
         .highlight-yellow { background: #fbc02d !important; color: #000000 !important; font-weight: bold; }
         
-        .pct-label { font-size: 9px; opacity: 0.85; display: block; }
         .chg-pos { color: #4caf50; }
         .chg-neg { color: #f44336; }
     </style>
@@ -560,12 +470,12 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_line) {
                                 tr.classList.add("spot-line-tr");
-                                tr.innerHTML = `<td colspan="17">🔴 IMPAGINARY SPOT LINE - SPOT PRICE: ${row.spot_price} 🔴</td>`;
+                                tr.innerHTML = `<td colspan="17">🔴 IMAGINARY SPOT LINE - SPOT PRICE: ${row.spot_price} 🔴</td>`;
                             } else {
-                                let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : '');
-                                let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : '');
-                                let peVolClass = row.pe_vol_color === 'green' ? 'highlight-green' : (row.pe_vol_color === 'yellow' ? 'highlight-yellow' : '');
-                                let peOiClass = row.pe_oi_color === 'green' ? 'highlight-green' : (row.pe_oi_color === 'yellow' ? 'highlight-yellow' : '');
+                                let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
+                                let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
+                                let peVolClass = row.pe_vol_color === 'green' ? 'highlight-green' : (row.pe_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_pe ? 'itm-pe' : ''));
+                                let peOiClass = row.pe_oi_color === 'green' ? 'highlight-green' : (row.pe_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_pe ? 'itm-pe' : ''));
 
                                 let ceOiChgClass = row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg';
                                 let peOiChgClass = row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg';
@@ -622,7 +532,7 @@ def get_symbol_data(symbol):
             "grid_rows": vault.get("grid_rows", []),
             "spot_price": vault.get("spot_price", 0)
         })
-    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": []})
+    return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": [], "spot_price": 0})
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
