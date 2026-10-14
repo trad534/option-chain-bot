@@ -323,7 +323,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
@@ -348,7 +348,7 @@ def initialize_scrip_master(api_client):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO'])) & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
                 sym, name, tok, exch = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip(), str(row['exch_seg']).strip()
                 eq_cache[sym] = (tok, exch)
@@ -384,16 +384,18 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
+                    # Universal Spot Price Resolution
+                    spot_price = 0.0
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
+                    
                     if not spot_token:
-                        match_df = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (full_scrip_df['symbol'].str.upper() == symbol_name)]
+                        match_df = full_scrip_df[(full_scrip_df['symbol'].str.upper() == symbol_name)]
                         if match_df.empty:
-                            match_df = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE'])) & (full_scrip_df['name'].str.upper() == symbol_name)]
+                            match_df = full_scrip_df[(full_scrip_df['name'].str.upper() == symbol_name)]
                         if not match_df.empty:
                             spot_token = str(match_df['token'].iloc[0]).strip()
                             spot_exchange = str(match_df['exch_seg'].iloc[0]).strip()
 
-                    spot_price = 0.0
                     if spot_token and spot_exchange:
                         spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
@@ -403,10 +405,11 @@ def background_market_scanner():
 
                     if spot_price <= 0:
                         all_strikes_list = sorted(current_expiry_options['strike'].unique())
-                        spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
+                        if all_strikes_list:
+                            spot_price = float(all_strikes_list[len(all_strikes_list) // 2])
 
                     all_master_strikes = sorted(current_expiry_options['strike'].unique())
-                    closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
+                    closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price)) if all_master_strikes else 0
                     strikes = all_master_strikes[max(0, closest_idx - 15):min(len(all_master_strikes), closest_idx + 16)]
 
                     filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
@@ -471,7 +474,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Spot Price Fixed</title>
+    <title>LTP Calculator - Guaranteed Spot Price</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
