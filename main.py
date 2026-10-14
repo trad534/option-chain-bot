@@ -102,7 +102,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 # ==========================================
-# MASTER SCENARIO ENGINE
+# MASTER SCENARIO ENGINE (INVESTING DADDY PATTERN)
 # ==========================================
 def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, time_to_expiry_years):
     global global_run_date, multi_symbol_runtime_states
@@ -213,23 +213,25 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0:
-                return "STRONG"
+                return "STRONG", round(top_obj['pct'], 1)
             if is_put_side:
-                return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
+                st = "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
+                return st, round(top_obj['pct'], 1)
             else:
-                return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
+                st = "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
+                return st, round(top_obj['pct'], 1)
 
-        ceVolRawState = detect_live_state_advanced(ceVolTop, False)
-        ceOiRawState = detect_live_state_advanced(ceOiTop, True)
-        peVolRawState = detect_live_state_advanced(peVolTop, True)
-        peOiRawState = detect_live_state_advanced(peOiTop, True)
+        ceVolRawState, ceVolPctVal = detect_live_state_advanced(ceVolTop, False)
+        ceOiRawState, ceOiPctVal = detect_live_state_advanced(ceOiTop, True)
+        peVolRawState, peVolPctVal = detect_live_state_advanced(peVolTop, True)
+        peOiRawState, peOiPctVal = detect_live_state_advanced(peOiTop, True)
 
         ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
         peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        def calculate_independent_cell(top_obj, cache_key, side_label, final_status_text):
+        def calculate_independent_cell(top_obj, cache_key, side_label, final_status_text, pct_val):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
-                return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong"}
+                return {'text': "(-----)", 'scenarioStatus': "stable strong"}
 
             strike = top_obj['highest']['strike']
             second_strike = strike
@@ -243,20 +245,18 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
 
-            if final_status_text == "stable strong":
-                output_text = f"({display_time} - {side_label} - {s_val})\n    (stable strong)"
-            elif "to strong" in final_status_text:
-                output_text = f"({display_time} - {side_label} - {s_val})\n   ({final_status_text})"
+            if final_status_text == "STRONG":
+                output_text = f"({display_time} - {side_label} - {s_val})\n(STRONG {pct_val}%)"
             else:
                 weak_dir = "weak towards top" if final_status_text == "wtt" else "weak towards bottom"
-                output_text = f"({display_time} - {side_label}-{s_val}-{final_status_text}-{sec_val})\n({weak_dir})"
+                output_text = f"({display_time} - {side_label}-{s_val}-{final_status_text}-{sec_val})\n({weak_dir} {pct_val}%)"
 
-            return {'text': output_text, 'status': final_status_text, 'scenarioStatus': final_status_text}
+            return {'text': output_text, 'scenarioStatus': final_status_text}
 
-        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceOiRawState)
-        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceVolRawState)
-        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peVolRawState)
-        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peOiRawState)
+        ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceOiRawState, ceOiPctVal)
+        ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceVolRawState, ceVolPctVal)
+        peVolResult = calculate_independent_cell(peVolTop, "PE_VOL", "Eos VOL", peVolRawState, peVolPctVal)
+        peOiResult  = calculate_independent_cell(peOiTop, "PE_OI", "Eos OI", peOiRawState, peOiPctVal)
 
         checkCe = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         checkPe = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
@@ -264,11 +264,11 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
-        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "STRONG" and checkPe == "STRONG": k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "STRONG": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "STRONG" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "STRONG": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "STRONG" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
 
@@ -292,19 +292,20 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             r['pe_oi_color'] = 'green' if st == highest_pe_oi_strike else ('yellow' if st == second_pe_oi_strike else '')
 
             if not spot_inserted and spot_price > 0 and st >= spot_price:
-                grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price})
+                spot_line_text = f"🔴 MAGICAL SPOT LINE - SPOT PRICE: {spot_price} 🔴"
+                grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': spot_line_text})
                 spot_inserted = True
 
             r['is_spot_line'] = False
             grid_rows_built.append(r)
 
         if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price})
+            grid_rows_built.append({'is_spot_line': True, 'spot_price': spot_price, 'line_text': f"🔴 MAGICAL SPOT LINE - SPOT PRICE: {spot_price} 🔴"})
 
-        sym_vault["D5_TEXT"] = ceOiResult['text']
-        sym_vault["H5_TEXT"] = ceVolResult['text']
-        sym_vault["U5_TEXT"] = peOiResult['text']
-        sym_vault["Q5_TEXT"] = peVolResult['text']
+        sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(--- OI Winner Only ---)"
+        sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(--- Vol Winner Only ---)"
+        sym_vault["U5_TEXT"] = peOiResult['text'] if peWinner == "OI" else "(--- OI Winner Only ---)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(--- Vol Winner Only ---)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
         sym_vault["spot_price"] = spot_price
@@ -433,20 +434,20 @@ def background_market_scanner():
             time.sleep(5)
 
 # ==========================================
-# WEB DASHBOARD INTERFACE (WHITE BACKGROUND)
+# WEB DASHBOARD INTERFACE (INVESTING DADDY WHITE THEME)
 # ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - White Theme Engine</title>
+    <title>LTP Calculator - Investing Daddy Style</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
         select { padding: 8px; font-size: 16px; background: #ffffff; color: #000000; border: 1px solid #ced4da; border-radius: 5px; }
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
-        .card { background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ced4da; text-align: center; font-size: 12px; white-space: pre-line; color: #212529; }
+        .card { background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ced4da; text-align: center; font-size: 12px; white-space: pre-line; color: #212529; font-weight: bold; }
         .card h3 { margin: 0 0 5px 0; font-size: 13px; color: #495057; }
         .k3-banner { background: #e6fcf5; padding: 12px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #0ca678; border: 1px solid #20c997; }
         
@@ -466,11 +467,12 @@ HTML_TEMPLATE = """
         
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
+        .pct-sub { font-size: 10px; color: #555; display: block; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2>⚡ LTP Calculator (White Theme Engine)</h2>
+        <h2>⚡ LTP Calculator (Investing Daddy Dashboard)</h2>
         <div>
             <label>Symbol: </label>
             <select id="symbolSelect" onchange="fetchData()">
@@ -549,8 +551,7 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_line) {
                                 tr.classList.add("spot-line-tr");
-                                let spotVal = row.spot_price || data.spot_price || "Live Spot";
-                                tr.innerHTML = `<td colspan="21">🔴 IMAGINARY SPOT LINE - SPOT PRICE: ${spotVal} 🔴</td>`;
+                                tr.innerHTML = `<td colspan="21">${row.line_text}</td>`;
                             } else {
                                 let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
@@ -569,15 +570,15 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td>
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td>
                                     <td class="${ceOiChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td>
-                                    <td class="${ceOiClass}">${row.ce_oi}</td>
-                                    <td class="${ceVolClass}">${row.ce_vol}</td>
+                                    <td class="${ceOiClass}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td>
+                                    <td class="${ceVolClass}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>
                                     <td class="${ceChgClass} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td>
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td>
                                     <td class="strike-col">${row.strike}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td>
                                     <td class="${peChgClass} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td>
-                                    <td class="${peVolClass}">${row.pe_vol}</td>
-                                    <td class="${peOiClass}">${row.pe_oi}</td>
+                                    <td class="${peVolClass}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td>
+                                    <td class="${peOiClass}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td>
                                     <td class="${peOiClass}">${row.pe_oi_chg}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
