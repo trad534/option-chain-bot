@@ -46,6 +46,7 @@ def home():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
 # ====================================================================
 # 🛠️ GLOBAL ENVIRONMENT PARAMETERS & SHEET POINTERS BINDING
 # ====================================================================
@@ -157,6 +158,7 @@ def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
         spreadsheet_obj.batch_update(body)
     except Exception as e:
         print(f"⚠ K3 Color Formatting Error: {e}")
+
 # ====================================================================
 # 🧮 OPTIONS BLACK-SCHOLES GREEKS DERIVATIONS
 # ====================================================================
@@ -194,9 +196,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 # 🎛️ FULL MARKET 265 PARALLEL SCAN ENGINE MATRIX
 # ====================================================================
 def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiArray, peVolArray, peOiArray):
-    """
-    FIXED ENGINE: Full neutral state tracing is captured absolutely on every tick.
-    """
     global time_travel_db, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
@@ -278,6 +277,7 @@ def calculate_standalone_market_metrics(symbol_name, strikes, ceVolArray, ceOiAr
             })
             print(f"📊 [TIMELINE CAPTURED] {symbol_name} appended successfully -> {k3Text} at {current_time_clock}")
     except Exception as e: print(f"Error inside calculator sequence loop: {e}")
+
 # ====================================================================
 # 🖥️ CELL INTERFACE MONITOR & SYNCHRONOUS INJECTOR
 # ====================================================================
@@ -317,6 +317,7 @@ def execute_python_scenario_tracker():
             last_flashed_symbol = active_symbol_name
 
     except Exception as err: print(f"❌ Dashboard Writing Core Exception Error: {err}")
+
 # ====================================================================
 # 🗜️ PARALLEL LIVE OPENAPI DATA PIPELINE EXTRACTION
 # ====================================================================
@@ -329,55 +330,15 @@ def fetch_and_update_option_chain(smart_api):
         if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
         if not options_cache: initialize_scrip_master(smart_api); return
 
+        # ⚡ STEP 1: READ ACTIVE SYMBOL FROM J4 CELL FIRST
         raw_selected_symbol = "NIFTY"
         try:
             val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-            if val and val not in ["NONE", "NAN", "0"]: raw_selected_symbol = val
+            if val and val not in ["NONE", "NAN", "0", ""]: raw_selected_symbol = val
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        symbols_to_scan = list(options_cache.keys())
-        all_tokens_to_fetch = []
-        token_data_meta_map = {}
-
-        for sym in symbols_to_scan:
-            sym_options = options_cache.get(sym, pd.DataFrame())
-            if sym_options.empty: continue
-            valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-            if valid_opts.empty: continue
-
-            unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
-            current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == unique_expiries_dt[0]].copy()
-
-            all_strikes = sorted(current_expiry_options['strike'].unique())
-            mid_idx = len(all_strikes) // 2
-            strikes_subset = all_strikes[max(0, mid_idx-5):min(len(all_strikes), mid_idx+6)]
-
-            filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes_subset)]
-            for _, row in filtered_opts.iterrows():
-                tok = str(row['token']).strip()
-                all_tokens_to_fetch.append(tok)
-                token_data_meta_map[tok] = {'symbol': sym, 'options_df': current_expiry_options, 'strikes': strikes_subset}
-
-        all_fetched_quotes = []
-        chunks = [all_tokens_to_fetch[i:i + 40] for i in range(0, len(all_tokens_to_fetch), 40)]
-
-        for batch in chunks[:10]:
-            try:
-                res = smart_api.getMarketData("FULL", {"NFO": batch})
-                if res and res.get('status') and res.get('data'): all_fetched_quotes.extend(res['data'].get('fetched', []))
-            except Exception: pass
-
-        global_quotes_dict = {}
-        for item in all_fetched_quotes:
-            tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-            volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0))
-            global_quotes_dict[tok] = {'volume': volume, 'oi': oi}
-
-        for tok, meta in token_data_meta_map.items():
-            sym_name = meta['symbol']
-            process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
-
+        # 🚀 STEP 2: IMMEDIATE FETCH & RENDER FOR ACTIVE SYMBOL (FAST 4 SEC UPDATE)
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -423,9 +384,9 @@ def fetch_and_update_option_chain(smart_api):
 
                 all_dash_quotes = []
                 for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 40):
+                    for i in range(0, len(t_list), 25): # Optimized chunking 25
                         try:
-                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+25]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
 
@@ -461,7 +422,51 @@ def fetch_and_update_option_chain(smart_api):
                     try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
                     except Exception: pass
 
+        # 🖥️ STEP 3: FORCE UPDATE FRONT DASHBOARD DISPLAY CELLS
         execute_python_scenario_tracker()
+
+        # 🧠 STEP 4: BACKGROUND SCAN FOR OTHER SYMBOLS IN MEMORY
+        symbols_to_scan = list(options_cache.keys())
+        all_tokens_to_fetch = []
+        token_data_meta_map = {}
+
+        for sym in symbols_to_scan:
+            sym_options = options_cache.get(sym, pd.DataFrame())
+            if sym_options.empty: continue
+            valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
+            if valid_opts.empty: continue
+
+            unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
+            current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == unique_expiries_dt[0]].copy()
+
+            all_strikes = sorted(current_expiry_options['strike'].unique())
+            mid_idx = len(all_strikes) // 2
+            strikes_subset = all_strikes[max(0, mid_idx-5):min(len(all_strikes), mid_idx+6)]
+
+            filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes_subset)]
+            for _, row in filtered_opts.iterrows():
+                tok = str(row['token']).strip()
+                all_tokens_to_fetch.append(tok)
+                token_data_meta_map[tok] = {'symbol': sym, 'options_df': current_expiry_options, 'strikes': strikes_subset}
+
+        all_fetched_quotes = []
+        chunks = [all_tokens_to_fetch[i:i + 25] for i in range(0, len(all_tokens_to_fetch), 25)]
+
+        for batch in chunks[:8]: # Light background batching to avoid API Timeout
+            try:
+                res = smart_api.getMarketData("FULL", {"NFO": batch})
+                if res and res.get('status') and res.get('data'): all_fetched_quotes.extend(res['data'].get('fetched', []))
+            except Exception: pass
+
+        global_quotes_dict = {}
+        for item in all_fetched_quotes:
+            tok = str(item.get('symbolToken', item.get('token', ''))).strip()
+            volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0))
+            global_quotes_dict[tok] = {'volume': volume, 'oi': oi}
+
+        for tok, meta in token_data_meta_map.items():
+            sym_name = meta['symbol']
+            process_silent_background_scenarios_rebuilt(sym_name, global_quotes_dict, meta['options_df'], meta['strikes'])
 
     except Exception as ex: print(f"❌ Exception in fetch loop: {str(ex)}")
 
