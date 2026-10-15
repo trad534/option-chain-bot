@@ -629,12 +629,12 @@ def initialize_scrip_master(api_client):
 
 
 # ==========================================
-# UNLIMITED MULTI-SEGMENT LIVE MARKET SCANNER
+# FIXED WORKER: REAL-TIME MARKET SCANNER
 # ==========================================
 def background_market_scanner():
     """
-    पृष्ठभूमि (Background) स्कैनर जो बिना किसी संख्यात्मक सीमा (No [:30] Limit) के
-    सभी F&O और MCX सिंबल्स की लाइव ऑप्शन चेन को लगातार प्रोसेस करता है।
+    बिना किसी २० स्टॉक्स की लिमिट के सभी सिंबल्स को प्रोसेस करने वाला 
+    और लिस्ट इंडेक्स बग से सुरक्षित लाइव मार्केट स्कैनर इंजन।
     """
     while True:
         try:
@@ -643,50 +643,43 @@ def background_market_scanner():
                 time.sleep(3)
                 continue
 
-            # पूरे मार्केट के सभी लोडेड सिंबल्स को बिना किसी लिमिट के लगातार स्कैन करना
             for symbol_name in list(options_cache.keys()):
                 try:
                     sym_options = options_cache[symbol_name]
                     now_dt = datetime.now()
-                    
-                    # वैध (सक्रिय) एक्सपायरी ऑप्शंस को फ़िल्टर करना
                     valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
                     if valid_opts.empty: 
                         continue
 
-                    # 🎯 FIX 1: निकटतम सिंगल डेट लॉक करना (Bypasses list lookup crash)
+                    # 🎯 FIX 1: लिस्ट के बजाय केवल पहला (Current Nearest) एक्सपायरी एलिमेंट लॉक करें
                     unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
                     current_expiry_dt = unique_expiries_dt[0]
                     current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                     
-                    # ऑप्शन ग्रीक्स के गणितीय सूत्र के लिए समय का निर्धारण
                     time_to_expiry_days = max((current_expiry_dt - pd.Timestamp(now_dt.date())).days, 1)
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     
-                    # 🎯 FIX 2: Fixed .iloc property object lookup slicing
-                    lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+                    # 🎯 FIX 2: पांडास सीरीज स्लाइसिंग [.iloc -> .iloc[0]] फिक्स किया गया
+                    if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty:
+                        lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
+                    else:
+                        lot_size = 1
 
-                    # लाइव स्पॉट मूल्य फ़ेचिंग (Smart Segment Segment Routing)
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", "NSE"))
                     spot_price = 0.0
-                    
                     if spot_token:
-                        # सूचकांकों, F&O स्टॉक्स या कमोडिटीज का फुल टिकर फेच करना
                         spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
                             spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
 
-                    # यदि लाइव API से स्पॉट 0 आए, तो चेन के बीच की स्ट्राइक को बेस मानें
                     if spot_price <= 0:
                         all_strikes_list = sorted(current_expiry_options['strike'].unique())
                         spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                    # ATM के ऊपर की 15 और नीचे की 15 (कुल 31) सक्रिय स्ट्राइक प्राइस को लॉक करना
                     all_master_strikes = sorted(current_expiry_options['strike'].unique())
                     closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
                     strikes = all_master_strikes[max(0, closest_idx - 15):min(len(all_master_strikes), closest_idx + 16)]
 
-                    # सिलेक्टेड एक्टिव स्ट्राइक्स के टोकन्स का एक्सचेंज सेगमेंट मैप बनाना
                     filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
                     exch_map = {}
                     for _, row in filtered_opts.iterrows():
@@ -695,20 +688,13 @@ def background_market_scanner():
                             exch_map[exch] = []
                         exch_map[exch].append(tok)
 
-                    # लाइव कोड्स को स्टोर करने के लिए खाली लिस्ट
                     all_dash_quotes = []
-
-
-
-
-                    # ⚡ API बैचिंग: रेट-लिमिट से बचने के लिए 40-40 टोकन्स के टुकड़ों में कॉल फेच करना
                     for exch, t_list in exch_map.items():
                         for i in range(0, len(t_list), 40):
                             res = api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data') and res['data'].get('fetched'): 
                                 all_dash_quotes.extend(res['data']['fetched'])
 
-                    # लाइव टिकर कोड्स को व्यवस्थित और परसिस्टेंट कैशे में स्टोर करना
                     dash_quotes_dict = {}
                     for item in all_dash_quotes:
                         tok = str(item.get('symbolToken', item.get('token', ''))).strip()
@@ -716,50 +702,42 @@ def background_market_scanner():
                         volume = float(item.get('tradeVolume', 0))
                         oi = float(item.get('opnInterest', 0))
                         net_change = float(item.get('netChange', item.get('change', 0)))
-                        
                         if ltp > 0 or oi > 0: 
                             persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': net_change}
 
-                    # सुबह का बेस ओपन इंटरेस्ट सेट करना और लाइव OI चेंज डिकोड करना
                     for tok, q_data in persistent_quotes_cache.items():
                         if tok not in app_state["morning_oi"] and q_data['oi'] > 0: 
                             app_state["morning_oi"][tok] = q_data['oi']
-                        
                         base_oi = app_state["morning_oi"].get(tok, q_data['oi'])
                         dash_quotes_dict[tok] = {
                             'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 
                             'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']
                         }
 
-                    # प्रत्येक एक्टिव स्ट्राइक प्राइस के लिए कॉल (CE) और पुट (PE) डेटा पेलोड सिंक करना
                     strikes_payload = []
                     for st in strikes:
                         ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
                         pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
-                        
                         ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
                         pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-                        
                         ce_q = dash_quotes_dict.get(ce_token, {'oi': 0, 'volume': 0, 'ltp': 0, 'oi_chg': 0, 'net_change': 0})
                         pe_q = dash_quotes_dict.get(pe_token, {'oi': 0, 'volume': 0, 'ltp': 0, 'oi_chg': 0, 'net_change': 0})
 
                         strikes_payload.append({
-                            'strike': st,
-                            'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'ce_ltp': ce_q['ltp'],
+                            'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'ce_ltp': ce_q['ltp'],
                             'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'],
                             'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_vol': pe_q['volume'],
                             'pe_oi': pe_q['oi'], 'pe_oi_chg': pe_q['oi_chg']
                         })
-
-                    # मास्टर 27-सिनेरियो डिसीजन इंजन को लाइव ट्रिगर करना
                     process_symbol_scenario(symbol_name, strikes_payload, spot_price, lot_size, time_to_expiry_years)
-                
                 except Exception as inner_e:
                     print(f"Error scanning {symbol_name}: {inner_e}")
-            time.sleep(1) # प्रत्येक सिंबल चक्र के बाद 1 सेकंड का रेस्ट
+            time.sleep(1)
         except Exception as e:
             print(f"Scanner loop critical error: {e}")
             time.sleep(5)
+
+                    
 
 
 
