@@ -216,7 +216,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # Winner Logic as per your Apps Script
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
@@ -233,7 +232,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and peVolTop['second']['strike'] < peVolTop['highest']['strike']: ceWinner = "OI" # handled
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
@@ -254,7 +252,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             secondStrike = topObj['second']['strike'] if topObj['second']['val'] > 0 else strike
             prevStrikeStr = get_memory("PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
-            if not prevStrikeStr: set_memory("PREV_STRK_" + cacheKey, str(strike)); prev_strike = strike
+            if not prevStrikeStr: set_memory("PREV_STRK_" + cacheKey, str(strike)); prevStrike = strike
 
             displayStatus = finalStatusText; scenarioStatus = finalStatusText
             isShifting = False
@@ -265,8 +263,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 if strike == shiftFrom or (lastTarget > 0 and secondStrike != lastTarget):
                     set_memory("IS_SHIFTED_" + cacheKey, "false")
                     set_memory("PREV_STRK_" + cacheKey, str(strike))
-                    remove_memory = lambda k: script_memory.pop(f"{active_symbol_name}_{k}", None)
-                    remove_memory("SHIFT_TARGET_" + cacheKey)
+                    script_memory.pop(f"{active_symbol_name}_SHIFT_TARGET_" + cacheKey, None)
 
             if strike != prevStrike and prevStrike > 0 and finalStatusText in ["wtb", "wtt"]:
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
@@ -277,7 +274,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             if get_memory("IS_SHIFTED_" + cacheKey) == "true":
                 if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
-                    set_memory("IS_SHIFTED_" + cache_key if 'cache_key' in locals() else "IS_SHIFTED_" + cacheKey, "false")
+                    set_memory("IS_SHIFTED_" + cacheKey, "false")
                     set_memory("PREV_STRK_" + cacheKey, str(strike))
                     scenarioStatus = finalStatusText
                 else:
@@ -330,7 +327,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkCe = finalCeState.lower().strip()
         checkPe = finalPeState.lower().strip()
 
-        # Complete 27 Scenarios Mapping from your Apps Script
         k3Text = f"{active_symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
@@ -357,6 +353,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif "wtb to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif "wtb to strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif "wtt to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif "wtt to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
+        elif "wtb to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is Bloodbath "
 
         finalD5 = "(-----)"; finalH5 = "(-----)"; finalU5 = "(-----)"; finalQ5 = "(-----)"
         if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
@@ -372,7 +370,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["D5_TEXT"] = finalD5; vault["H5_TEXT"] = finalH5; vault["U5_TEXT"] = finalU5; vault["Q5_TEXT"] = finalQ5
         vault["K3_TEXT"] = k3Text; vault["lot_size"] = lot_size; vault["spot_price"] = spot_price
 
-        # Grid rows generation
+        def get_top_two_strikes(arr):
+            valid = [x for x in arr if x['val'] > 0]
+            valid.sort(key=lambda x: x['val'], reverse=True)
+            t1 = valid[0]['strike'] if len(valid) > 0 else 0
+            t2 = valid[1]['strike'] if len(valid) > 1 else 0
+            return t1, t2
+
+        c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
+        c_vol_1, c_vol_2 = get_top_two_strikes(ceVolArray)
+        p_vol_1, p_vol_2 = get_top_two_strikes(peVolArray)
+        p_oi_1, p_oi_2 = get_top_two_strikes(peOiArray)
+
         max_ce_oi = ceOiTop['highest']['val'] or 1
         max_ce_vol = ceVolTop['highest']['val'] or 1
         max_pe_vol = peVolTop['highest']['val'] or 1
@@ -387,6 +396,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_pct'] = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
             r_copy['pe_vol_pct'] = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
             r_copy['pe_oi_pct'] = round((r_dict['pe_oi'] / max_pe_oi) * 100, 2)
+
+            r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '')
+            r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
+            r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
+            r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
 
             if not spot_inserted and spot_price > 0 and st >= spot_price:
                 grid_rows_built.append({'is_spot_row': True, 'spot_price': spot_price, 'ce_oi_badge': finalD5, 'ce_vol_badge': finalH5, 'pe_vol_badge': finalQ5, 'pe_oi_badge': finalU5})
@@ -569,6 +583,16 @@ HTML_TEMPLATE = """
         .spot-badge { background: #ffffff; color: #000000; border: 2px solid #495057; border-radius: 6px; padding: 3px 8px; font-weight: bold; font-size: 10px; display: inline-block; position: relative; z-index: 3; }
         .spot-price-cell { background: #7950f2 !important; color: #ffffff !important; font-weight: bold; font-size: 13px; text-align: center; z-index: 4; border: 2px solid #f03e3e !important; }
         .spot-tag-small { background: #ffffff; color: #7950f2; font-size: 8px; font-weight: bold; padding: 1px 4px; border-radius: 3px; display: block; margin-bottom: 2px; }
+        .itm-ce { background: rgba(240, 62, 62, 0.06); }
+        .itm-pe { background: rgba(43, 138, 62, 0.06); }
+        .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
+        .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
+        .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
+        .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
+        .bg-75 { background: #ffd43b !important; color: #000000 !important; font-weight: bold; }
+        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
+        .chg-pos { color: #2b8a3e; font-weight: bold; }
+        .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -586,6 +610,27 @@ HTML_TEMPLATE = """
         <div class="card"><h3>CE Vol (H5)</h3><p id="h5Val">-</p></div>
         <div class="card"><h3>PE Vol (Q5)</h3><p id="q5Val">-</p></div>
         <div class="card"><h3>PE OI (U5)</h3><p id="u5Val">-</p></div>
+    </div>
+    <div class="table-container">
+        <table id="optionChainTable">
+            <thead>
+                <tr>
+                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 13px;">CALLS (CE)</th>
+                    <th class="strike-col">STRIKE</th>
+                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
+                </tr>
+                <tr>
+                    <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
+                    <th>OI Chg</th><th>OI</th><th>Vol</th><th>Change</th><th>LTP</th>
+                    <th class="strike-col">Price</th>
+                    <th>LTP</th><th>Change</th><th>Vol</th><th>OI</th><th>OI Chg</th>
+                    <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
+                </tr>
+            </thead>
+            <tbody id="gridBody">
+                <tr><td colspan="21" style="padding: 20px; font-size: 14px; color: #666;">Syncing option chain matrix...</td></tr>
+            </tbody>
+        </table>
     </div>
     <script>
         let allExpiriesData = {};
@@ -625,6 +670,19 @@ HTML_TEMPLATE = """
                 document.getElementById("q5Val").innerText = data.Q5;
                 document.getElementById("u5Val").innerText = data.U5;
                 document.getElementById("k3Display").innerText = data.K3;
+                let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
+                if (data.grid_rows && data.grid_rows.length > 0) {
+                    data.grid_rows.forEach(row => {
+                        let tr = document.createElement("tr");
+                        if (row.is_spot_row) {
+                            tr.classList.add("spot-row");
+                            tr.innerHTML = `<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td><span class="spot-badge">${row.ce_oi_badge}</span></td><td><span class="spot-badge">${row.ce_vol_badge}</span></td><td>-</td><td>-</td><td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td><td>-</td><td>-</td><td><span class="spot-badge">${row.pe_vol_badge}</span></td><td><span class="spot-badge">${row.pe_oi_badge}</span></td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>`;
+                        } else {
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                        }
+                        tbody.appendChild(tr);
+                    });
+                }
             });
         }
         setInterval(fetchData, 1000); window.onload = initApp;
@@ -655,7 +713,16 @@ def set_symbol_api(symbol, expiry):
 def get_symbol_runtime_data(symbol):
     sym = symbol.upper()
     vault = multi_symbol_runtime_states.get(sym, {})
-    return jsonify({"lot_size": vault.get("lot_size", 1), "D5": vault.get("D5_TEXT", "(-----)"), "H5": vault.get("H5_TEXT", "(-----)"), "Q5": vault.get("Q5_TEXT", "(-----)"), "U5": vault.get("U5_TEXT", "(-----)"), "K3": vault.get("K3_TEXT", f"{sym} is Neutral"), "spot_price": vault.get("spot_price", 0)})
+    return jsonify({
+        "lot_size": vault.get("lot_size", 1),
+        "D5": vault.get("D5_TEXT", "(-----)"),
+        "H5": vault.get("H5_TEXT", "(-----)"),
+        "Q5": vault.get("Q5_TEXT", "(-----)"),
+        "U5": vault.get("U5_TEXT", "(-----)"),
+        "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
+        "grid_rows": vault.get("grid_rows", []),
+        "spot_price": vault.get("spot_price", 0)
+    })
 
 def run_bot_lock_loop():
     print("🚀 Starting Engine...")
