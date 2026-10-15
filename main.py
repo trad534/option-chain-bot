@@ -387,7 +387,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
-        grid_rows_built = []
+                grid_rows_built = []
         spot_inserted = False
         for r_dict in raw_rows:
             st = r_dict['strike']
@@ -403,12 +403,27 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
 
             if not spot_inserted and spot_price > 0 and st >= spot_price:
-                grid_rows_built.append({'is_spot_row': True, 'spot_price': spot_price, 'ce_oi_badge': finalD5, 'ce_vol_badge': finalH5, 'pe_vol_badge': finalQ5, 'pe_oi_badge': finalU5})
+                grid_rows_built.append({
+                    'is_spot_row': True, 
+                    'spot_price': spot_price, 
+                    'ce_oi_badge': finalD5, 
+                    'ce_vol_badge': finalH5, 
+                    'pe_vol_badge': finalQ5, 
+                    'pe_oi_badge': finalU5
+                })
                 spot_inserted = True
             grid_rows_built.append(r_copy)
 
         if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({'is_spot_row': True, 'spot_price': spot_price, 'ce_oi_badge': finalD5, 'ce_vol_badge': finalH5, 'pe_vol_badge': finalQ5, 'pe_oi_badge': finalU5})
+            grid_rows_built.append({
+                'is_spot_row': True, 
+                'spot_price': spot_price, 
+                'ce_oi_badge': finalD5, 
+                'ce_vol_badge': finalH5, 
+                'pe_vol_badge': finalQ5, 
+                'pe_oi_badge': finalU5
+            })
+
 
         vault["grid_rows"] = grid_rows_built
         safe_update_cell(dashboard_sheet, "D5", finalD5)
