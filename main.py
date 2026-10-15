@@ -337,7 +337,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner in ["OI", "BOTH"], peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
@@ -400,8 +400,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_ce_vol = ceVolTop['highest']['val'] or 1
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
-
-        print(f"🎯 FINAL RESOLVED SPOT PRICE FOR RENDERING: {spot_price}")
 
         grid_rows_built = []
         spot_inserted = False
@@ -511,11 +509,14 @@ def fetch_and_update_option_chain(smart_api):
                             if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
                                 s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
-                    except Exception: pass
+                    except Exception as e:
+                        print(f"⚠ Future Spot Fetch Error: {e}")
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
+
+                print(f"🎯 FINAL RESOLVED SPOT PRICE FOR RENDERING: {spot_price}")
 
                 safe_update_cell(data_sheet, "K9", spot_price)
                 safe_update_cell(data_sheet, "L9", str(current_expiry))
