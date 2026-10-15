@@ -72,6 +72,7 @@ full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
 current_active_symbol_for_memory = "NIFTY"
+last_session_date = None  # Track daily session reset
 
 def get_memory(key, default=""):
     global current_active_symbol_for_memory
@@ -489,7 +490,8 @@ def fetch_and_update_option_chain(smart_api):
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
                         if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
-                            spot_price = float(q_res['data']['fetched'][0].get('ltp', 0))
+                            s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                            if s_val > 0: spot_price = s_val
                     except Exception: pass
 
                 if spot_price <= 0:
@@ -499,7 +501,8 @@ def fetch_and_update_option_chain(smart_api):
                             fut_tok = str(fut_sub['token'].values[0])
                             fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
                             if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
-                                spot_price = float(fut_quote['data']['fetched'][0].get('ltp', 0))
+                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
                     except Exception: pass
 
                 if spot_price <= 0:
@@ -533,7 +536,10 @@ def fetch_and_update_option_chain(smart_api):
                 for item in all_dash_quotes:
                     tok = str(item.get('symbolToken', item.get('token', ''))).strip()
                     ltp = float(item.get('ltp', 0)); volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0)); change = float(item.get('netChange', 0))
-                    if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
+                    
+                    # 🎯 FILTER FALSE / ZERO TICKS: Only cache if LTP > 0 or OI > 0 to prevent bad/false data propagation
+                    if ltp > 0 or oi > 0:
+                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
 
                 for tok, q_data in persistent_quotes_cache.items():
                     if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
@@ -550,6 +556,7 @@ def fetch_and_update_option_chain(smart_api):
                     pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
                     ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
                     pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+                    
                     ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
                     pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
 
@@ -613,7 +620,6 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
-        /* 🎯 SOFT LIGHT GREEN (CE) & LIGHT RED/PINK (PE) BACKGROUND TINTS */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
@@ -776,20 +782,36 @@ def get_symbol_runtime_data(symbol):
     })
 
 def run_bot_lock_loop():
+    global last_session_date
     print("🚀 Starting Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
+    
     while True:
         try:
-            totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-            if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'): initialize_scrip_master(smart_api); break
-            time.sleep(5)
-        except Exception: time.sleep(5)
-    while True:
-        try:
+            now_dt = datetime.now()
+            today_date_str = now_dt.strftime("%Y-%m-%d")
+            
+            # 🎯 DAILY RECONNECT / SESSION RE-GENERATE AT/AFTER 9:00 AM EACH DAY
+            if last_session_date != today_date_str and now_dt.hour >= 9:
+                print(f"🔄 Daily Session Refresh for {today_date_str}...")
+                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                if session_res and session_res.get('status'):
+                    last_session_date = today_date_str
+                    initialize_scrip_master(smart_api)
+                    print("✅ Daily Session Renewed Successfully!")
+            
+            # If not initialized yet
+            if not options_cache:
+                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'):
+                    last_session_date = today_date_str
+                    initialize_scrip_master(smart_api)
+            
             fetch_and_update_option_chain(smart_api)
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"⚠ Loop Error: {err}")
         time.sleep(1)
 
 if __name__ == "__main__":
