@@ -639,28 +639,28 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1.5px solid #000000; }
         .controls-group { display: flex; gap: 15px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
-        select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; border: 1px solid #000000; }
+        select { padding: 8px; font-size: 16px; background: #ffffff; border: 1.5px solid #000000; border-radius: 5px; }
         
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1.5px solid #000000; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
-        .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
-        .card-pe { background: #ffebee; border-color: #ef9a9a; }
+        .card-ce { background: #e8f5e9; }
+        .card-pe { background: #ffebee; }
         
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1.5px solid #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
 
-        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
-        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
+        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1.5px solid #000000; }
+        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 2px solid #000000; border-radius: 6px; position: relative; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
-        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
+        th, td { border: 1px solid #000000; padding: 6px 7px; white-space: nowrap; position: relative; }
+        th { background: #f8f9fa; color: #000000; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #000000; }
+        .strike-col { background: #ff922b !important; color: #000000 !important; font-weight: bold; font-size: 12px; border: 1px solid #000000 !important; }
         
-        /* Red Line Overlap Style */
-        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 1px; }
+        /* Red Line Overlap Style with Proper Distance/Spacing */
+        .spot-row td { background: #ffffff !important; padding: 4px 0px !important; height: 16px; }
         .spot-row td::after { 
             content: ""; 
             position: absolute; 
@@ -680,8 +680,8 @@ HTML_TEMPLATE = """
             text-align: center; 
             z-index: 4; 
             padding: 2px 2px !important;
-            border-left: 2px solid #dee2e6 !important;
-            border-right: 2px solid #dee2e6 !important;
+            border-left: 2px solid #000000 !important;
+            border-right: 2px solid #000000 !important;
         }
         
         .spot-tag-red { 
@@ -693,7 +693,7 @@ HTML_TEMPLATE = """
             border-radius: 10px; 
             display: inline-block; 
             margin-bottom: 1px;
-            letter-spacing: 0.5px;
+            border: 1px solid #000000;
         }
         .spot-value-green {
             color: #2e7d32;
@@ -702,7 +702,7 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* 2nd Photo Style Exact Floating Badge Directly On Top of Red Line */
+        /* Floating Badge Exactly On Red Line with Good Margin */
         .spot-badge-overlay {
             position: absolute;
             left: 50%;
@@ -710,22 +710,23 @@ HTML_TEMPLATE = """
             transform: translate(-50%, -50%);
             z-index: 8;
             pointer-events: none;
+            margin-top: -1px;
         }
         .state-badge-pill {
             background: #ffffff;
-            border: 2px solid #222222;
+            border: 1.5px solid #000000;
             border-radius: 12px;
-            padding: 1px 7px;
+            padding: 2px 8px;
             display: inline-flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.25);
             font-size: 10px;
             white-space: nowrap;
         }
-        .state-wtt { color: #2e7d32; border-color: #2e7d32; }
-        .state-wtb { color: #c62828; border-color: #c62828; }
-        .state-strong { color: #2e7d32; border-color: #222222; }
+        .state-wtt { color: #2e7d32; }
+        .state-wtb { color: #c62828; }
+        .state-strong { color: #2e7d32; }
 
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
@@ -734,7 +735,7 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
-        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
+        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 3px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
