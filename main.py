@@ -458,8 +458,6 @@ def fetch_and_update_option_chain(smart_api):
         except Exception: pass
         clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
 
-        print(f"🔍 DEBUG: Active Symbol is -> {clean_active_symbol}")
-
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
@@ -482,13 +480,12 @@ def fetch_and_update_option_chain(smart_api):
                 if target_tok:
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
-                        print(f"🔍 DEBUG Index Quote Response for {clean_active_symbol}: {q_res}")
                         if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
-                    except Exception as e:
-                        print(f"⚠ Index Quote Error: {e}")
+                    except Exception: pass
                 
+                # FIX: Stock equity spot price fallback lookup directly from full_scrip_df
                 if spot_price <= 0:
                     try:
                         eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')].copy()
@@ -498,7 +495,6 @@ def fetch_and_update_option_chain(smart_api):
                             eq_tok = str(target_row['token'])
                             eq_exch = str(target_row['exch_seg'])
                             eq_quote = smart_api.getMarketData("FULL", {eq_exch: [eq_tok]})
-                            print(f"🔍 DEBUG Equity Quote Response for {clean_active_symbol}: {eq_quote}")
                             if eq_quote and eq_quote.get('status') and eq_quote.get('data') and eq_quote['data'].get('fetched'):
                                 s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
@@ -511,19 +507,14 @@ def fetch_and_update_option_chain(smart_api):
                         if not fut_sub.empty:
                             fut_tok = str(fut_sub['token'].values[0])
                             fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
-                            print(f"🔍 DEBUG Future Quote Response for {clean_active_symbol}: {fut_quote}")
                             if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
                                 s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
-                    except Exception as e:
-                        print(f"⚠ Future Spot Fetch Error: {e}")
+                    except Exception: pass
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
-                    print(f"⚠ Fallback Strike Midpoint Used as Spot: {spot_price}")
-
-                print(f"🎯 FINAL RESOLVED SPOT PRICE for {clean_active_symbol}: {spot_price}")
 
                 safe_update_cell(data_sheet, "K9", spot_price)
                 safe_update_cell(data_sheet, "L9", str(current_expiry))
