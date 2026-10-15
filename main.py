@@ -415,7 +415,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 step_size = 100
 
-        # 🎯 EXACT SPOT POSITIONING FIX: Use exact spot price for display and nearest strike alignment
+        # 🎯 FIX FOR SPOT PRICE DISPLAY & EXACT ROW INSERTION
         grid_rows_built = []
         spot_inserted = False
         for r_dict in raw_rows:
@@ -495,7 +495,6 @@ def fetch_and_update_option_chain(smart_api):
 
                 spot_price = 0.0
                 
-                # 🎯 ROBUST SPOT PRICE FETCHER FOR STOCKS (MARUTI, RELIANCE, ETC.) & INDICES
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
@@ -507,12 +506,10 @@ def fetch_and_update_option_chain(smart_api):
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
                 
-                # If not index, fetch equity cash (NSE EQ) or Futures token
                 if spot_price <= 0:
                     try:
                         eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')].copy()
                         if not eq_sub.empty:
-                            # Prefer exact symbol match or -EQ suffix
                             exact_match = eq_sub[eq_sub['symbol'].str.upper().isin([clean_active_symbol, clean_active_symbol + "-EQ"])]
                             target_row = exact_match.iloc[0] if not exact_match.empty else eq_sub.iloc[0]
                             eq_tok = str(target_row['token'])
