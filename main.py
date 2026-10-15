@@ -696,13 +696,13 @@ HTML_TEMPLATE = """
             letter-spacing: 0.5px;
         }
         .spot-value-green {
-            color: #2e7d32;
+            color: & #2e7d32;
             font-weight: 800;
             font-size: 13px;
             display: block;
         }
 
-        /* Container for Red Line Badges with Exact 14px Gap */
+        /* Container for Red Line Badges with Exact 16px Gap */
         .spot-badges-wrapper {
             position: absolute;
             left: 50%;
@@ -712,7 +712,7 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 14px; /* Red line badges ke beech exact 14px distance */
+            gap: 16px; /* Red line badges ke beech exact 16px distance (OI aur Volume ke theek beech alignment ke liye) */
             pointer-events: none;
             width: max-content;
         }
