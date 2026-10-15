@@ -404,7 +404,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         grid_rows_built = []
         spot_inserted = False
         
-        # Spot price ke sabse qareeb wali strike ka index find karke exact wahan spot insert karenge
+        # Spot price ke bilkul exact qareeb wali strike ka index dhundhna
         strikes_list = [r['strike'] for r in raw_rows]
         spot_insert_idx = 0
         if strikes_list:
