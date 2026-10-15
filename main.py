@@ -415,7 +415,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 step_size = 100
 
-        # 🎯 FIX FOR SPOT PRICE DISPLAY & EXACT ROW INSERTION
+        # 🎯 SPOT PRICE INSERTION & RENDERING FIX
         grid_rows_built = []
         spot_inserted = False
         for r_dict in raw_rows:
