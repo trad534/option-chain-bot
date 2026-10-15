@@ -421,11 +421,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 return {"state": state_type, "pct": pct, "show_badge": True}
             return {"state": "", "pct": 0, "show_badge": False}
 
+        spot_row_ce_oi_badge = get_state_badge_info(spot_price, ceOiTop, ceOiRawState)
+        spot_row_ce_vol_badge = get_state_badge_info(spot_price, ceVolTop, ceVolRawState)
+        spot_row_pe_vol_badge = get_state_badge_info(spot_price, peVolTop, peVolRawState)
+        spot_row_pe_oi_badge = get_state_badge_info(spot_price, peOiTop, peOiRawState)
+
         for idx, r_dict in enumerate(raw_rows):
             if not spot_inserted and idx == spot_insert_idx:
                 grid_rows_built.append({
                     'is_spot_row': True, 
-                    'spot_price': round(spot_price, 2)
+                    'spot_price': round(spot_price, 2),
+                    'ce_oi_badge': spot_row_ce_oi_badge,
+                    'ce_vol_badge': spot_row_ce_vol_badge,
+                    'pe_vol_badge': spot_row_pe_vol_badge,
+                    'pe_oi_badge': spot_row_pe_oi_badge
                 })
                 spot_inserted = True
 
@@ -451,7 +460,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if not spot_inserted:
             grid_rows_built.append({
                 'is_spot_row': True, 
-                'spot_price': round(spot_price, 2)
+                'spot_price': round(spot_price, 2),
+                'ce_oi_badge': spot_row_ce_oi_badge,
+                'ce_vol_badge': spot_row_ce_vol_badge,
+                'pe_vol_badge': spot_row_pe_vol_badge,
+                'pe_oi_badge': spot_row_pe_oi_badge
             })
 
         vault["grid_rows"] = grid_rows_built
@@ -657,21 +670,31 @@ HTML_TEMPLATE = """
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* Red Imaginary Spot Line */
-        .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
-        .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
+        /* Red Imaginary Line Exact Overlap */
+        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 18px; }
+        .spot-row td::after { 
+            content: ""; 
+            position: absolute; 
+            left: 0; 
+            right: 0; 
+            top: 50%; 
+            height: 3px; 
+            background-color: #f03e3e; 
+            z-index: 2; 
+            transform: translateY(-50%);
+        }
         
-        /* Center Spot Cell - Red Line Removed from center block */
+        /* Spot Center Price Box */
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { 
             background: #ffffff !important; 
             text-align: center; 
             z-index: 4; 
-            padding: 4px 2px !important;
+            padding: 2px 2px !important;
             border-left: 2px solid #dee2e6 !important;
             border-right: 2px solid #dee2e6 !important;
         }
@@ -684,7 +707,7 @@ HTML_TEMPLATE = """
             padding: 1px 6px; 
             border-radius: 10px; 
             display: inline-block; 
-            margin-bottom: 2px;
+            margin-bottom: 1px;
             letter-spacing: 0.5px;
         }
         .spot-value-green {
@@ -694,31 +717,32 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* Photo 2 Jaisa Crisp Floating Badge (Red Line Ke Above Cell Layout) */
-        .badge-cell-wrapper {
+        /* Floating Pill Badge Positioned Exactly On Top Of Red Line (Photo 2 Style) */
+        .overlay-pill-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            width: 100%;
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
-            position: relative;
-            z-index: 5;
         }
-        .state-badge {
+        .state-badge-pill {
             background: #ffffff;
-            border: 2px solid #222;
-            border-radius: 14px;
-            padding: 2px 10px;
+            border: 2px solid #333333;
+            border-radius: 12px;
+            padding: 1px 8px;
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            margin-top: 3px;
-            margin-bottom: 2px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             font-size: 10px;
+            white-space: nowrap;
         }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
-        .state-strong { color: #2e7d32; border-color: #222222; }
+        .state-strong { color: #2e7d32; border-color: #333333; }
 
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
@@ -798,16 +822,20 @@ HTML_TEMPLATE = """
             fetch('/api/set-symbol/' + sym + (exp ? '/' + exp : ''), {method: 'POST'}).then(() => fetchData());
         }
 
+        function createPillBadgeHtml(badgeObj) {
+            if (!badgeObj || !badgeObj.show_badge) return "";
+            let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
+            let pctColor = badgeObj.state === 'WTB' ? '#c62828' : '#2e7d32';
+            return `<div class="overlay-pill-container"><div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div></div>`;
+        }
+
         function renderCellWithBadge(val, pctVal, badgeObj) {
-            let html = `<div class="badge-cell-wrapper"><div>${val}</div>`;
+            let html = `<div>${val}</div>`;
             if (badgeObj && badgeObj.show_badge) {
-                let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
-                let pctColor = badgeObj.state === 'WTB' ? '#c62828' : '#2e7d32';
-                html += `<div class="state-badge ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:700; color:${pctColor};">${badgeObj.pct}%</span></div>`;
+                html += createPillBadgeHtml(badgeObj);
             } else {
                 html += `<span class="pct-sub">(${pctVal}%)</span>`;
             }
-            html += `</div>`;
             return html;
         }
 
@@ -828,7 +856,12 @@ HTML_TEMPLATE = """
                         if (row.is_spot_row) {
                             tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                            let ceOiSpotPill = createPillBadgeHtml(row.ce_oi_badge);
+                            let ceVolSpotPill = createPillBadgeHtml(row.ce_vol_badge);
+                            let peVolSpotPill = createPillBadgeHtml(row.pe_vol_badge);
+                            let peOiSpotPill = createPillBadgeHtml(row.pe_oi_badge);
+
+                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td>${ceOiSpotPill}</td><td>${ceVolSpotPill}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td>${peVolSpotPill}</td><td>${peOiSpotPill}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
                             let ceOiHtml = renderCellWithBadge(row.ce_oi, row.ce_oi_pct, row.ce_oi_badge);
                             let ceVolHtml = renderCellWithBadge(row.ce_vol, row.ce_vol_pct, row.ce_vol_badge);
