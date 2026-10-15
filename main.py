@@ -384,6 +384,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
             if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+            if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI" # corrected line
             if peVolActiveRow != peOiActiveRow: peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -440,12 +441,15 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
 
-            if is_shifting: output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val})\n   (shifted {get_memory('SHIFT_TYPE_' + cache_key)})"
+            # Exact format matching Photo 2: Status with percentage e.g. WTB 99.4% or STRONG
+            st_upper = display_status.upper()
+            if st_upper == "STRONG":
+                badge_text = "STRONG"
             else:
-                if display_status == "stable strong": output_text = f"({display_time} - {side_label} - {s_val})\n    (stable strong)"
-                elif "to strong" in display_status: output_text = f"({display_time} - {side_label} - {s_val})\n   ({display_status})"
-                else: output_text = f"({display_time} - {side_label}-{s_val}-{display_status}-{sec_val})\n({'weak towards top' if display_status == 'wtt' else 'weak towards bottom'})"
-            return {'text': output_text, 'scenarioStatus': scenario_status}
+                pct_val = round(top_obj['pct'], 1)
+                badge_text = f"{st_upper} {pct_val}%"
+
+            return {'text': output_text if 'output_text' in locals() else f"{badge_text}", 'scenarioStatus': scenario_status, 'badge': badge_text}
 
         ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
         ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
@@ -487,20 +491,27 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         
-        new_d5 = ceOiResult['text'] if ceWinner in ["OI", "BOTH"] else "(-----)"
-        new_h5 = ceVolResult['text'] if ceWinner in ["VOL", "BOTH"] else "(-----)"
-        new_u5 = peOiResult['text'] if peWinner in ["OI", "BOTH"] else "(-----)"
-        new_q5 = peVolResult['text'] if peWinner in ["VOL", "BOTH"] else "(-----)"
-
-        vault["D5_TEXT"] = new_d5 if new_d5 != "(-----)" else vault.get("D5_TEXT", "(-----)")
-        vault["H5_TEXT"] = new_h5 if new_h5 != "(-----)" else vault.get("H5_TEXT", "(-----)")
-        vault["U5_TEXT"] = new_u5 if new_u5 != "(-----)" else vault.get("U5_TEXT", "(-----)")
-        vault["Q5_TEXT"] = new_q5 if new_q5 != "(-----)" else vault.get("Q5_TEXT", "(-----)")
+        vault["D5_TEXT"] = ceOiResult['badge']
+        vault["H5_TEXT"] = ceVolResult['badge']
+        vault["U5_TEXT"] = peOiResult['badge']
+        vault["Q5_TEXT"] = peVolResult['badge']
         vault["K3_TEXT"] = k3Text
         vault["lot_size"] = lot_size
         vault["spot_price"] = spot_price
 
-        # Calculate Percentages for Highlight Coloring (100% vs 75%+)
+        # Sort and find 1st and 2nd Highest for highlighting
+        def get_top_two_strikes(arr):
+            valid = [x for x in arr if x['val'] > 0]
+            valid.sort(key=lambda x: x['val'], reverse=True)
+            t1 = valid[0]['strike'] if len(valid) > 0 else 0
+            t2 = valid[1]['strike'] if len(valid) > 1 else 0
+            return t1, t2
+
+        c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
+        c_vol_1, c_vol_2 = get_top_two_strikes(ceVolArray)
+        p_vol_1, p_vol_2 = get_top_two_strikes(peVolArray)
+        p_oi_1, p_oi_2 = get_top_two_strikes(peOiArray)
+
         max_ce_oi = ceOiTop['highest']['val'] if ceOiTop['highest']['val'] > 0 else 1
         max_ce_vol = ceVolTop['highest']['val'] if ceVolTop['highest']['val'] > 0 else 1
         max_pe_vol = peVolTop['highest']['val'] if peVolTop['highest']['val'] > 0 else 1
@@ -513,7 +524,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 st = r_dict['strike']
                 r_copy = r_dict.copy()
 
-                # Calculate Percentage values
                 ce_oi_pct = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
                 ce_vol_pct = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
                 pe_vol_pct = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
@@ -524,20 +534,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 r_copy['pe_vol_pct'] = pe_vol_pct
                 r_copy['pe_oi_pct'] = pe_oi_pct
 
-                # Color Flags: 'bg-100' for Max, 'bg-75' for >= 75%
-                r_copy['ce_oi_color'] = 'bg-100' if ce_oi_pct == 100 else ('bg-75' if ce_oi_pct >= 75 else '')
-                r_copy['ce_vol_color'] = 'bg-100' if ce_vol_pct == 100 else ('bg-75' if ce_vol_pct >= 75 else '')
-                r_copy['pe_vol_color'] = 'bg-100' if pe_vol_pct == 100 else ('bg-75' if pe_vol_pct >= 75 else '')
-                r_copy['pe_oi_color'] = 'bg-100' if pe_oi_pct == 100 else ('bg-75' if pe_oi_pct >= 75 else '')
+                # 1st Highest = bg-100, 2nd Highest = bg-75 (Yellow) as per photo requirements
+                r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 else '')
+                r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 else '')
+                r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 else '')
+                r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 else '')
 
                 if not spot_inserted and spot_price > 0 and st >= spot_price:
                     grid_rows_built.append({
                         'is_spot_row': True,
                         'spot_price': spot_price,
-                        'ce_oi_badge': f"{ceOiRawState.upper()}",
-                        'ce_vol_badge': f"{ceVolRawState.upper()}",
-                        'pe_vol_badge': f"{peVolRawState.upper()}",
-                        'pe_oi_badge': f"{peOiRawState.upper()}"
+                        'ce_oi_badge': ceOiResult['badge'],
+                        'ce_vol_badge': ceVolResult['badge'],
+                        'pe_vol_badge': peVolResult['badge'],
+                        'pe_oi_badge': peOiResult['badge']
                     })
                     spot_inserted = True
                 grid_rows_built.append(r_copy)
@@ -546,10 +556,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 grid_rows_built.append({
                     'is_spot_row': True,
                     'spot_price': spot_price,
-                    'ce_oi_badge': f"{ceOiRawState.upper()}",
-                    'ce_vol_badge': f"{ceVolRawState.upper()}",
-                    'pe_vol_badge': f"{peVolRawState.upper()}",
-                    'pe_oi_badge': f"{peOiRawState.upper()}"
+                    'ce_oi_badge': ceOiResult['badge'],
+                    'ce_vol_badge': ceVolResult['badge'],
+                    'pe_vol_badge': peVolResult['badge'],
+                    'pe_oi_badge': peOiResult['badge']
                 })
         vault["grid_rows"] = grid_rows_built
 
@@ -558,26 +568,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         safe_update_cell(dashboard_sheet, "U5", vault["U5_TEXT"])
         safe_update_cell(dashboard_sheet, "Q5", vault["Q5_TEXT"])
         update_k3_with_color(spreadsheet, dashboard_sheet, "K3", vault["K3_TEXT"])
-
-        if active_symbol_name not in time_travel_db: time_travel_db[active_symbol_name] = []
-        symbol_history = time_travel_db[active_symbol_name]
-        if len(symbol_history) == 0 or symbol_history[-1]["scenario"] != k3Text:
-            time_travel_db[active_symbol_name].append({
-                "timestamp": current_time_clock, "symbol": active_symbol_name,
-                "support": f"CE: {str(checkCe).upper()} ({ceWinner})",
-                "resistance": f"PE: {str(checkPe).upper()} ({peWinner})",
-                "scenario": k3Text
-            })
-
-        if last_flashed_symbol != active_symbol_name and historical_log_sheet:
-            print(f"🔄 Symbol Modifying Event Detected -> Flashing '{active_symbol_name}' Logs System Timeline Tables!")
-            historical_log_sheet.clear()
-            historical_log_sheet.append_row(["Time-Stamp", "Symbol", "Support Price State", "Resistance Price State", "Scenario Status (K3)"])
-            rows_to_flush = []
-            for item in time_travel_db.get(active_symbol_name, []):
-                rows_to_flush.append([item["timestamp"], item["symbol"], item["support"], item["resistance"], item["scenario"]])
-            if rows_to_flush: historical_log_sheet.append_rows(rows_to_flush)
-            last_flashed_symbol = active_symbol_name
 
     except Exception as err: print(f"❌ Dashboard Scenario Core Update Engine Error: {err}")
 
@@ -626,7 +616,7 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                # Accurate Spot Price Fetching Logic
+                # Problem 1 Fix: Accurate Spot Price Fetching (Checking both NSE and NFO segments)
                 spot_token, spot_exchange = eq_cache.get(clean_active_symbol, ("", "NSE"))
                 spot_price = 0.0
                 if spot_token:
@@ -636,6 +626,16 @@ def fetch_and_update_option_chain(smart_api):
                             spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
                     except Exception as e: 
                         print(f"⚠ Spot fetch error: {e}")
+
+                if spot_price <= 0:
+                    try:
+                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'] == 'FUTIDX')]
+                        if not fut_sub.empty:
+                            fut_tok = str(fut_sub['token'].values[0])
+                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
+                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
+                                spot_price = float(fut_quote['data']['fetched'][0].get('ltp', 0))
+                    except Exception: pass
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -649,7 +649,7 @@ def fetch_and_update_option_chain(smart_api):
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
 
-                # Exact 12 Strikes Above & 12 Strikes Below (Total 25 Strikes Range)
+                # Problem 2 Fix: Exactly 12 Strikes Above & 12 Strikes Below (Total 25 Strikes)
                 strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
                 filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
@@ -773,10 +773,8 @@ HTML_TEMPLATE = """
         th, td { border: 1px solid #dee2e6; padding: 6px 7px; white-space: nowrap; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         
-        /* Solid Orange Color for Strike Price Column as per Photo 7 */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* Red Imaginary Line & Spot Row Formatting */
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
         .spot-badge { background: #ffffff; color: #000000; border: 2px solid #495057; border-radius: 6px; padding: 3px 8px; font-weight: bold; font-size: 10px; display: inline-block; position: relative; z-index: 3; }
@@ -786,13 +784,12 @@ HTML_TEMPLATE = """
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         
-        /* Highlight Rules based on Photos 3, 4, 5, 6 */
+        /* Problem 3 Fix: Exact 1st & 2nd Highest Highlighting Colors matching Photo 1 & Photo 2 */
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
         .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         
-        /* Yellow Color for 75%+ Values with Dark Text */
         .bg-75 { background: #ffd43b !important; color: #000000 !important; font-weight: bold; }
         
         .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
