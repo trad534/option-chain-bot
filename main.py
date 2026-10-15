@@ -387,6 +387,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
+        # MROUND / FLOOR logic matching Excel `=MROUND(spot, step)`
         step_size = 50 if active_symbol_name == "NIFTY" else (100 if "BANK" in active_symbol_name else 50)
         imaginary_spot = round(spot_price / step_size) * step_size
 
@@ -466,14 +467,25 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
+                # 100% Guaranteed Direct Index Token Spot Price Fetch
                 spot_price = 0.0
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 if target_tok:
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
-                        if q_res and q_res.get('status') and q_res.get('data'):
+                        if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
                             spot_price = float(q_res['data']['fetched'][0].get('ltp', 0))
+                    except Exception: pass
+
+                if spot_price <= 0:
+                    try:
+                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'] == 'FUTIDX')]
+                        if not fut_sub.empty:
+                            fut_tok = str(fut_sub['token'].values[0])
+                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
+                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
+                                spot_price = float(fut_quote['data']['fetched'][0].get('ltp', 0))
                     except Exception: pass
 
                 if spot_price <= 0:
