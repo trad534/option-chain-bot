@@ -353,8 +353,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif "wtb to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
         elif "wtb to strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif "wtt to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm bloodbath"
-        elif "wtt to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
-        elif "wtb to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is Bloodbath "
+        elif "wtt to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun High Momentum"
+        elif "wtb to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is Bloodbath High Momentum"
 
         finalD5 = "(-----)"; finalH5 = "(-----)"; finalU5 = "(-----)"; finalQ5 = "(-----)"
         if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
@@ -423,33 +423,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 'pe_vol_badge': finalQ5, 
                 'pe_oi_badge': finalU5
             })
-   
-                spot_inserted = True
-            grid_rows_built.append(r_copy)
-
-        if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({
-                'is_spot_row': True, 
-                'spot_price': spot_price, 
-                'ce_oi_badge': finalD5, 
-                'ce_vol_badge': finalH5, 
-                'pe_vol_badge': finalQ5, 
-                'pe_oi_badge': finalU5
-            })
-
-                spot_inserted = True
-            grid_rows_built.append(r_copy)
-
-        if not spot_inserted and spot_price > 0:
-            grid_rows_built.append({
-                'is_spot_row': True, 
-                'spot_price': spot_price, 
-                'ce_oi_badge': finalD5, 
-                'ce_vol_badge': finalH5, 
-                'pe_vol_badge': finalQ5, 
-                'pe_oi_badge': finalU5
-            })
-
 
         vault["grid_rows"] = grid_rows_built
         safe_update_cell(dashboard_sheet, "D5", finalD5)
