@@ -403,7 +403,23 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         grid_rows_built = []
         spot_inserted = False
-        for r_dict in raw_rows:
+        
+        # Spot price ke sabse qareeb wali strike ka index find karke exact wahan spot insert karenge
+        strikes_list = [r['strike'] for r in raw_rows]
+        spot_insert_idx = 0
+        if strikes_list:
+            spot_insert_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price))
+            if spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
+                spot_insert_idx += 1
+
+        for idx, r_dict in enumerate(raw_rows):
+            if not spot_inserted and idx == spot_insert_idx:
+                grid_rows_built.append({
+                    'is_spot_row': True, 
+                    'spot_price': round(spot_price, 2)
+                })
+                spot_inserted = True
+
             st = r_dict['strike']
             r_copy = r_dict.copy()
             r_copy['ce_oi_pct'] = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
@@ -416,12 +432,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
 
-            if not spot_inserted and st >= spot_price:
-                grid_rows_built.append({
-                    'is_spot_row': True, 
-                    'spot_price': round(spot_price, 2)
-                })
-                spot_inserted = True
             grid_rows_built.append(r_copy)
 
         if not spot_inserted:
