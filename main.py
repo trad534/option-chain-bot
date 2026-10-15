@@ -411,6 +411,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
                 spot_insert_idx += 1
 
+        # Helper function to generate WTT/WTB/STRONG Badge payload
+        def get_state_badge_info(st, top_obj, raw_state):
+            pct = round(top_obj['pct'], 2)
+            if st == top_obj['highest']['strike']:
+                if raw_state in ["wtt", "wtb"]:
+                    state_type = raw_state.upper()
+                    return {"state": state_type, "pct": pct, "show_badge": True}
+                else:
+                    return {"state": "STRONG", "pct": pct, "show_badge": True}
+            elif st == top_obj['second']['strike'] and top_obj['pct'] >= 75.0:
+                state_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
+                return {"state": state_type, "pct": pct, "show_badge": True}
+            return {"state": "", "pct": 0, "show_badge": False}
+
         for idx, r_dict in enumerate(raw_rows):
             if not spot_inserted and idx == spot_insert_idx:
                 grid_rows_built.append({
@@ -430,6 +444,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
+
+            # Injecting State Badges
+            r_copy['ce_oi_badge'] = get_state_badge_info(st, ceOiTop, ceOiRawState)
+            r_copy['ce_vol_badge'] = get_state_badge_info(st, ceVolTop, ceVolRawState)
+            r_copy['pe_vol_badge'] = get_state_badge_info(st, peVolTop, peVolRawState)
+            r_copy['pe_oi_badge'] = get_state_badge_info(st, peOiTop, peOiRawState)
 
             grid_rows_built.append(r_copy)
 
@@ -650,7 +670,7 @@ HTML_TEMPLATE = """
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
         
-        /* Spot Center Cell - Red Line Removed from Spot Cell specifically */
+        /* Spot Center Cell */
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { 
             background: #ffffff !important; 
@@ -661,7 +681,6 @@ HTML_TEMPLATE = """
             border-right: 2px solid #dee2e6 !important;
         }
         
-        /* 2nd Photo Style Spot Red Badge and Green Bold Text */
         .spot-tag-red { 
             background: #e53935; 
             color: #ffffff; 
@@ -679,6 +698,20 @@ HTML_TEMPLATE = """
             font-size: 13px;
             display: block;
         }
+
+        /* Photo Jaisa State Pill Badge Style (WTT / WTB / STRONG) */
+        .state-badge {
+            background: #ffffff;
+            border: 1.5px solid #333;
+            border-radius: 12px;
+            padding: 2px 8px;
+            display: inline-block;
+            margin-top: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .state-wtt { color: #2e7d32; border-color: #2e7d32; }
+        .state-wtb { color: #c62828; border-color: #c62828; }
+        .state-strong { color: #2e7d32; border-color: #333; }
 
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
@@ -757,6 +790,18 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/set-symbol/' + sym + (exp ? '/' + exp : ''), {method: 'POST'}).then(() => fetchData());
         }
+
+        function renderCellWithBadge(val, pctVal, badgeObj) {
+            let html = `<div>${val}</div>`;
+            if (badgeObj && badgeObj.show_badge) {
+                let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
+                html += `<div class="state-badge ${cls}"><b>${badgeObj.state}</b> <span style="font-size: 9px;">${badgeObj.pct}%</span></div>`;
+            } else {
+                html += `<span class="pct-sub">(${pctVal}%)</span>`;
+            }
+            return html;
+        }
+
         function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
             if(!sym) return;
@@ -776,7 +821,12 @@ HTML_TEMPLATE = """
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            let ceOiHtml = renderCellWithBadge(row.ce_oi, row.ce_oi_pct, row.ce_oi_badge);
+                            let ceVolHtml = renderCellWithBadge(row.ce_vol, row.ce_vol_pct, row.ce_vol_badge);
+                            let peVolHtml = renderCellWithBadge(row.pe_vol, row.pe_vol_pct, row.pe_vol_badge);
+                            let peOiHtml = renderCellWithBadge(row.pe_oi, row.pe_oi_pct, row.pe_oi_badge);
+
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${ceOiHtml}</td><td class="ce-vol-col ${row.ce_vol_color}">${ceVolHtml}</td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${peVolHtml}</td><td class="pe-oi-col ${row.pe_oi_color}">${peOiHtml}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
