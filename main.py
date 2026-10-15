@@ -377,7 +377,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             t2 = valid[1]['strike'] if len(valid) > 1 else 0
             return t1, t2
 
-                c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
+        c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
         c_vol_1, c_vol_2 = get_top_two_strikes(ceVolArray)
         p_vol_1, p_vol_2 = get_top_two_strikes(peVolArray)
         p_oi_1, p_oi_2 = get_top_two_strikes(peOiArray)
@@ -411,6 +411,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                     'pe_vol_badge': finalQ5, 
                     'pe_oi_badge': finalU5
                 })
+                spot_inserted = True
+            grid_rows_built.append(r_copy)
+
+        if not spot_inserted and spot_price > 0:
+            grid_rows_built.append({
+                'is_spot_row': True, 
+                'spot_price': spot_price, 
+                'ce_oi_badge': finalD5, 
+                'ce_vol_badge': finalH5, 
+                'pe_vol_badge': finalQ5, 
+                'pe_oi_badge': finalU5
+            })
+   
                 spot_inserted = True
             grid_rows_built.append(r_copy)
 
