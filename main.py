@@ -228,7 +228,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -245,7 +245,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
             if peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-            if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else: ceWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -310,7 +309,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
-            # 🎯 EXACT FORMAT: e.g. 10:45pm-Eor vol - 23000 (No extra headers inside box)
             if isShifting:
                 line1 = f"{displayTime}-{sideLabel} - {strike}"
                 line2 = f"shifted {get_memory('SHIFT_TYPE_' + cacheKey)}"
@@ -615,12 +613,14 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
-        /* 🎯 COMPACT CARDS WITH NO EXTRA HEADER TEXT, WHITE BG & LIGHT TINTS */
+        /* 🎯 SOFT LIGHT GREEN (CE) & LIGHT RED/PINK (PE) BACKGROUND TINTS */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { background: #ffffff; padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
-        .card-ce { background: #f0f8ff; border-color: #b0e0e6; }
-        .card-pe { background: #f5fffa; border-color: #afeeee; }
+        /* CE Side: Soft Light Green */
+        .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
+        /* PE Side: Soft Light Red / Pink */
+        .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
 
