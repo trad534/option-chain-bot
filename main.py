@@ -170,11 +170,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             filtered = [item for item in data_array if item['val'] > 0]
             if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             
-            # Sort descending by value to get 1st highest
             filtered.sort(key=lambda x: x['val'], reverse=True)
             highest = filtered[0]
             
-            # Find strict distinct 2nd highest (ignoring duplicate strikes if any)
             second = {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             for item in filtered:
                 if item['strike'] != highest['strike']:
@@ -273,47 +271,47 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 lastTarget = float(get_memory("SHIFT_TARGET_" + cacheKey, 0))
                 if strike == shiftFrom or (lastTarget > 0 and secondStrike != lastTarget):
                     set_memory("IS_SHIFTED_" + cacheKey, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    set_memory("PREV_STRK_" + cacheKey, str(strike))
                     script_memory.pop(f"{active_symbol_name}_SHIFT_TARGET_" + cacheKey, None)
 
             if strike != prevStrike and prevStrike > 0 and finalStatusText in ["wtb", "wtt"]:
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
-                set_memory("IS_SHIFTED_" + cache_key, "true")
-                set_memory("SHIFT_TYPE_" + cache_key, shiftType)
-                set_memory("SHIFT_FROM_" + cache_key, str(prevStrike))
-                set_memory("SHIFT_TARGET_" + cache_key, str(secondStrike))
+                set_memory("IS_SHIFTED_" + cacheKey, "true")
+                set_memory("SHIFT_TYPE_" + cacheKey, shiftType)
+                set_memory("SHIFT_FROM_" + cacheKey, str(prevStrike))
+                set_memory("SHIFT_TARGET_" + cacheKey, str(secondStrike))
 
-            if get_memory("IS_SHIFTED_" + cache_key) == "true":
+            if get_memory("IS_SHIFTED_" + cacheKey) == "true":
                 if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
-                    set_memory("IS_SHIFTED_" + cache_key, "false")
-                    set_memory("PREV_STRK_" + cache_key, str(strike))
+                    set_memory("IS_SHIFTED_" + cacheKey, "false")
+                    set_memory("PREV_STRK_" + cacheKey, str(strike))
                     scenarioStatus = finalStatusText
                 else:
                     isShifting = True
-                    shiftType = get_memory("SHIFT_TYPE_" + cache_key)
+                    shiftType = get_memory("SHIFT_TYPE_" + cacheKey)
                     scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
             else:
-                set_memory("PREV_STRK_" + cache_key, str(strike))
+                set_memory("PREV_STRK_" + cacheKey, str(strike))
                 scenarioStatus = finalStatusText
 
             if not isWinner and rawState != "STRONG":
                 displayStatus = "stable strong"; scenarioStatus = "stable strong"
 
-            displayTime = get_memory("TIME_" + cache_key)
-            lastStatus = get_memory("LAST_STATUS_" + cache_key, "")
+            displayTime = get_memory("TIME_" + cacheKey)
+            lastStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTrigger = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
 
             if isTrigger and displayStatus != lastStatus:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cache_key, displayTime)
-                set_memory("LAST_STATUS_" + cache_key, displayStatus)
+                set_memory("TIME_" + cacheKey, displayTime)
+                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
             elif not displayTime:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cache_key, displayTime)
-                set_memory("LAST_STATUS_" + cache_key, displayStatus)
+                set_memory("TIME_" + cacheKey, displayTime)
+                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
             if isShifting:
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cache_key)})"
+                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cacheKey)})"
             else:
                 if displayStatus == "stable strong":
                     outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
