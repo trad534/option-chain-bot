@@ -278,11 +278,10 @@ def execute_python_scenario_tracker():
             if len(filtered) == 0:
                 return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             
-            # Sort strictly descending by value, then use stable sorting or explicit unique items for 1st and 2nd highest
             filtered.sort(key=lambda x: x['val'], reverse=True)
             highest = filtered[0]
             
-            # Find the exact distinct 2nd highest value correctly
+            # Strict 2nd highest selection ensuring it is distinct from highest
             second = {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             for item in filtered:
                 if item['strike'] != highest['strike']:
@@ -358,7 +357,7 @@ def execute_python_scenario_tracker():
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
