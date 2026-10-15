@@ -411,21 +411,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
                 spot_insert_idx += 1
 
-        def get_state_badge_info(st, top_obj, raw_state):
-            pct = round(top_obj['pct'], 2)
-            if st == top_obj['highest']['strike']:
-                state_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
-                return {"state": state_type, "pct": pct, "show_badge": True}
-            elif st == top_obj['second']['strike'] and top_obj['pct'] >= 75.0:
-                state_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
-                return {"state": state_type, "pct": pct, "show_badge": True}
-            return {"state": "", "pct": 0, "show_badge": False}
+        def build_badge_payload(top_obj, raw_state):
+            if not top_obj or top_obj['highest']['strike'] == 0: return {}
+            s_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
+            return {"state": s_type, "pct": round(top_obj['pct'], 2), "show_badge": True}
 
         for idx, r_dict in enumerate(raw_rows):
             if not spot_inserted and idx == spot_insert_idx:
                 grid_rows_built.append({
                     'is_spot_row': True, 
-                    'spot_price': round(spot_price, 2)
+                    'spot_price': round(spot_price, 2),
+                    'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
+                    'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
+                    'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
+                    'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
                 })
                 spot_inserted = True
 
@@ -441,17 +440,16 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
 
-            r_copy['ce_oi_badge'] = get_state_badge_info(st, ceOiTop, ceOiRawState)
-            r_copy['ce_vol_badge'] = get_state_badge_info(st, ceVolTop, ceVolRawState)
-            r_copy['pe_vol_badge'] = get_state_badge_info(st, peVolTop, peVolRawState)
-            r_copy['pe_oi_badge'] = get_state_badge_info(st, peOiTop, peOiRawState)
-
             grid_rows_built.append(r_copy)
 
         if not spot_inserted:
             grid_rows_built.append({
                 'is_spot_row': True, 
-                'spot_price': round(spot_price, 2)
+                'spot_price': round(spot_price, 2),
+                'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
+                'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
+                'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
+                'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
             })
 
         vault["grid_rows"] = grid_rows_built
@@ -655,14 +653,14 @@ HTML_TEMPLATE = """
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
 
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
-        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
+        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* Red Line Rule Across Table Row */
-        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
+        /* Red Line Overlap Style */
+        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 1px; }
         .spot-row td::after { 
             content: ""; 
             position: absolute; 
@@ -675,7 +673,7 @@ HTML_TEMPLATE = """
             transform: translateY(-50%);
         }
         
-        /* Spot Box Center Cell */
+        /* Center Spot Price Cell */
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { 
             background: #ffffff !important; 
@@ -704,23 +702,30 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* Clean Photo 2 Style Badge */
+        /* 2nd Photo Style Exact Floating Badge Directly On Top of Red Line */
+        .spot-badge-overlay {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 8;
+            pointer-events: none;
+        }
         .state-badge-pill {
             background: #ffffff;
-            border: 1.8px solid #333333;
+            border: 2px solid #222222;
             border-radius: 12px;
-            padding: 1px 6px;
+            padding: 1px 7px;
             display: inline-flex;
             align-items: center;
             gap: 3px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.25);
             font-size: 10px;
             white-space: nowrap;
-            margin-top: 2px;
         }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
-        .state-strong { color: #2e7d32; border-color: #333333; }
+        .state-strong { color: #2e7d32; border-color: #222222; }
 
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
@@ -804,17 +809,7 @@ HTML_TEMPLATE = """
             if (!badgeObj || !badgeObj.show_badge) return "";
             let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
             let pctColor = badgeObj.state === 'WTB' ? '#c62828' : '#2e7d32';
-            return `<div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div>`;
-        }
-
-        function renderCellWithBadge(val, pctVal, badgeObj) {
-            let html = `<div>${val}</div>`;
-            if (badgeObj && badgeObj.show_badge) {
-                html += createPillBadgeHtml(badgeObj);
-            } else {
-                html += `<span class="pct-sub">(${pctVal}%)</span>`;
-            }
-            return html;
+            return `<div class="spot-badge-overlay"><div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div></div>`;
         }
 
         function fetchData() {
@@ -834,14 +829,14 @@ HTML_TEMPLATE = """
                         if (row.is_spot_row) {
                             tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-                        } else {
-                            let ceOiHtml = renderCellWithBadge(row.ce_oi, row.ce_oi_pct, row.ce_oi_badge);
-                            let ceVolHtml = renderCellWithBadge(row.ce_vol, row.ce_vol_pct, row.ce_vol_badge);
-                            let peVolHtml = renderCellWithBadge(row.pe_vol, row.pe_vol_pct, row.pe_vol_badge);
-                            let peOiHtml = renderCellWithBadge(row.pe_oi, row.pe_oi_pct, row.pe_oi_badge);
+                            let ceOiPill = createPillBadgeHtml(row.ce_oi_badge);
+                            let ceVolPill = createPillBadgeHtml(row.ce_vol_badge);
+                            let peVolPill = createPillBadgeHtml(row.pe_vol_badge);
+                            let peOiPill = createPillBadgeHtml(row.pe_oi_badge);
 
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${ceOiHtml}</td><td class="ce-vol-col ${row.ce_vol_color}">${ceVolHtml}</td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${peVolHtml}</td><td class="pe-oi-col ${row.pe_oi_color}">${peOiHtml}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td>${ceOiPill}</td><td>${ceVolPill}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td>${peVolPill}</td><td>${peOiPill}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                        } else {
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
