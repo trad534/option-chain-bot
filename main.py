@@ -645,10 +645,41 @@ HTML_TEMPLATE = """
         th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
+        
+        /* CE & PE side Red line rule */
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
-        .spot-price-cell { background: #ffffff !important; color: #7950f2 !important; font-weight: bold; font-size: 13px; text-align: center; z-index: 4; border: 2px solid #f03e3e !important; }
-        .spot-tag-small { color: #7950f2; font-size: 9px; font-weight: bold; display: block; margin-bottom: 2px; }
+        
+        /* Spot Center Cell - Red Line Removed from Spot Cell specifically */
+        .spot-row td.spot-price-cell::after { display: none !important; }
+        .spot-price-cell { 
+            background: #ffffff !important; 
+            text-align: center; 
+            z-index: 4; 
+            padding: 4px 2px !important;
+            border-left: 2px solid #dee2e6 !important;
+            border-right: 2px solid #dee2e6 !important;
+        }
+        
+        /* 2nd Photo Style Spot Red Badge and Green Bold Text */
+        .spot-tag-red { 
+            background: #e53935; 
+            color: #ffffff; 
+            font-size: 9px; 
+            font-weight: 800; 
+            padding: 1px 6px; 
+            border-radius: 10px; 
+            display: inline-block; 
+            margin-bottom: 2px;
+            letter-spacing: 0.5px;
+        }
+        .spot-value-green {
+            color: #2e7d32;
+            font-weight: 800;
+            font-size: 13px;
+            display: block;
+        }
+
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
@@ -743,7 +774,7 @@ HTML_TEMPLATE = """
                         if (row.is_spot_row) {
                             tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-small">SPOT</span>${renderSpotValue}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
