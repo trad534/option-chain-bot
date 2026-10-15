@@ -387,6 +387,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
+        step_size = 50 if active_symbol_name == "NIFTY" else (100 if "BANK" in active_symbol_name else 50)
+        imaginary_spot = round(spot_price / step_size) * step_size
+
         grid_rows_built = []
         spot_inserted = False
         for r_dict in raw_rows:
@@ -402,26 +405,26 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
 
-            if not spot_inserted and spot_price > 0 and st >= spot_price:
+            if not spot_inserted and st >= imaginary_spot:
                 grid_rows_built.append({
                     'is_spot_row': True, 
-                    'spot_price': spot_price, 
-                    'ce_oi_badge': finalD5, 
-                    'ce_vol_badge': finalH5, 
-                    'pe_vol_badge': finalQ5, 
-                    'pe_oi_badge': finalU5
+                    'spot_price': imaginary_spot, 
+                    'ce_oi_badge': "", 
+                    'ce_vol_badge': "", 
+                    'pe_vol_badge': "", 
+                    'pe_oi_badge': ""
                 })
                 spot_inserted = True
             grid_rows_built.append(r_copy)
 
-        if not spot_inserted and spot_price > 0:
+        if not spot_inserted:
             grid_rows_built.append({
                 'is_spot_row': True, 
-                'spot_price': spot_price, 
-                'ce_oi_badge': finalD5, 
-                'ce_vol_badge': finalH5, 
-                'pe_vol_badge': finalQ5, 
-                'pe_oi_badge': finalU5
+                'spot_price': imaginary_spot, 
+                'ce_oi_badge': "", 
+                'ce_vol_badge': "", 
+                'pe_vol_badge': "", 
+                'pe_oi_badge': ""
             })
 
         vault["grid_rows"] = grid_rows_built
@@ -594,7 +597,6 @@ HTML_TEMPLATE = """
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
-        .spot-badge { background: #ffffff; color: #000000; border: 2px solid #495057; border-radius: 6px; padding: 3px 8px; font-weight: bold; font-size: 10px; display: inline-block; position: relative; z-index: 3; }
         .spot-price-cell { background: #7950f2 !important; color: #ffffff !important; font-weight: bold; font-size: 13px; text-align: center; z-index: 4; border: 2px solid #f03e3e !important; }
         .spot-tag-small { background: #ffffff; color: #7950f2; font-size: 8px; font-weight: bold; padding: 1px 4px; border-radius: 3px; display: block; margin-bottom: 2px; }
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
@@ -690,7 +692,7 @@ HTML_TEMPLATE = """
                         let tr = document.createElement("tr");
                         if (row.is_spot_row) {
                             tr.classList.add("spot-row");
-                            tr.innerHTML = `<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td><span class="spot-badge">${row.ce_oi_badge}</span></td><td><span class="spot-badge">${row.ce_vol_badge}</span></td><td>-</td><td>-</td><td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td><td>-</td><td>-</td><td><span class="spot-badge">${row.pe_vol_badge}</span></td><td><span class="spot-badge">${row.pe_oi_badge}</span></td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>`;
+                            tr.innerHTML = `<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>`;
                         } else {
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
