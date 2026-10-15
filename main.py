@@ -309,16 +309,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
+            # 🎯 CLEAN COMPACT DISPLAY FORMATTING LIKE PHOTO 2
+            prefix_label = "RESISTANCE" if "CE" in cacheKey else "SUPPORT"
             if isShifting:
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cacheKey)})"
+                st_type = get_memory('SHIFT_TYPE_' + cacheKey)
+                shift_badge = f"Shifted from Bottom to Top" if st_type == "bottom to top" else "Shifted from Top to Bottom"
+                outputText = f"<div><b>{prefix_label} {strike} - {displayStatus.upper()}-{secondStrike}</b></div><div class='tag-pill-yellow'>{shift_badge}</div>"
             else:
                 if displayStatus == "stable strong":
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
+                    outputText = f"<div><b>{prefix_label} {strike} - STRONG</b></div><div class='tag-pill-yellow'>STABLE STRONG</div>"
                 elif "to strong" in displayStatus:
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n   ({displayStatus})"
+                    outputText = f"<div><b>{prefix_label} {strike} - {displayStatus.upper()}</b></div>"
                 else:
-                    weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n({weakDir})"
+                    weakDir = "WTB" if displayStatus == "wtb" else "WTT"
+                    outputText = f"<div><b>{prefix_label} {strike} - {weakDir}-{secondStrike}</b></div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus}
 
@@ -604,13 +608,17 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; gap: 15px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
-        .card { background: #ffffff; padding: 12px; border-radius: 8px; border: 2px solid #dee2e6; text-align: center; font-size: 12px; font-weight: bold; white-space: pre-line; }
-        .card h3 { margin: 0 0 5px 0; font-size: 13px; color: #495057; text-transform: uppercase; }
-        .k3-banner { background: #e6fcf5; padding: 14px; margin-top: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 8px; color: #0ca678; border: 1px solid #20c997; }
-        .table-container { margin-top: 15px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
+        
+        /* 🎯 COMPACT & NEAT CARD BADGES (PHOTO 2 STYLE) */
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+        .card { background: #ffffff; padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 48px; }
+        .card h3 { margin: 0 0 3px 0; font-size: 11px; color: #495057; text-transform: uppercase; border-bottom: 1px solid #e9ecef; width: 100%; padding-bottom: 2px; }
+        .tag-pill-yellow { background: #ffe066; color: #000000; font-size: 9px; font-weight: bold; padding: 2px 8px; border-radius: 10px; margin-top: 3px; display: inline-block; border: 1px solid #fcc419; }
+
+        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
+        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 6px 7px; white-space: nowrap; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
@@ -640,10 +648,10 @@ HTML_TEMPLATE = """
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
     <div class="status-box">
-        <div class="card"><h3>CE OI (D5)</h3><p id="d5Val">-</p></div>
-        <div class="card"><h3>CE Vol (H5)</h3><p id="h5Val">-</p></div>
-        <div class="card"><h3>PE Vol (Q5)</h3><p id="q5Val">-</p></div>
-        <div class="card"><h3>PE OI (U5)</h3><p id="u5Val">-</p></div>
+        <div class="card"><h3>CE OI (D5)</h3><div id="d5Val">-</div></div>
+        <div class="card"><h3>CE Vol (H5)</h3><div id="h5Val">-</div></div>
+        <div class="card"><h3>PE Vol (Q5)</h3><div id="q5Val">-</div></div>
+        <div class="card"><h3>PE OI (U5)</h3><div id="u5Val">-</div></div>
     </div>
     <div class="table-container">
         <table id="optionChainTable">
@@ -699,10 +707,10 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                document.getElementById("d5Val").innerText = data.D5;
-                document.getElementById("h5Val").innerText = data.H5;
-                document.getElementById("q5Val").innerText = data.Q5;
-                document.getElementById("u5Val").innerText = data.U5;
+                document.getElementById("d5Val").innerHTML = data.D5;
+                document.getElementById("h5Val").innerHTML = data.H5;
+                document.getElementById("q5Val").innerHTML = data.Q5;
+                document.getElementById("u5Val").innerHTML = data.U5;
                 document.getElementById("k3Display").innerText = data.K3;
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
                 if (data.grid_rows && data.grid_rows.length > 0) {
