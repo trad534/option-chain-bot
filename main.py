@@ -621,7 +621,7 @@ HTML_TEMPLATE = """
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
         .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
-        .pe-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
+        .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
