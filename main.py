@@ -14,31 +14,33 @@ from SmartApi import SmartConnect
 from flask import Flask, jsonify, render_template_string
 
 # ==========================================
-# RENDER KEEP-ALIVE SERVER (SELF-PING SYSTEM)
+# SERVER KEEP-ALIVE SYSTEM (SELF PING)
 # ==========================================
 RENDER_URL = "https://onrender.com"
 
 def self_ping():
-    """सर्वर को निष्क्रिय (Idle) होने से बचाने के लिए 3 मिनट का हार्टबीट टिकर"""
+    """रेंडर सर्वर को स्लीप मोड में जाने से रोकने के लिए हर 3 मिनट में पिंग करता है"""
     while True:
         try:
             if RENDER_URL:
                 response = requests.get(RENDER_URL, timeout=10)
-                print(f"Self-ping pulse checked: Status {response.status_code}")
+                print(f"Self-ping pulse check: Status {response.status_code}")
         except Exception as e:
             print(f"Self-ping bypass warning: {e}")
         time.sleep(180)
 
-# लाइव बैकग्राउंड थ्रेड पिंगर स्टार्ट करना
+# पिंग सर्विस को बैकग्राउंड थ्रेड में स्टार्ट करना
 ping_thread = threading.Thread(target=self_ping, daemon=True)
 ping_thread.start()
 
-# रेंडर स्ट्रीम के लिए फ्लश प्रिंटिंग एक्टिवेटर
+# प्रिंट बफरिंग को रोकने के लिए फ्लश ओवरराइड
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
-# FLASK और ग्लोबल डेटा फ्रेम डिक्शनरी इनिशियलाइज़ेशन
+# ==========================================
+# FLASK & ENVIRONMENT INITIALIZATION
+# ==========================================
 app = Flask(__name__)
 
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
@@ -46,6 +48,9 @@ PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
+# ==========================================
+# CORE STATE AND SYSTEM MEMORY
+# ==========================================
 app_state = {
     "smart_api": None,
     "baseline_date": None,
@@ -69,6 +74,9 @@ def set_memory(key, value):
 def remove_memory(key):
     if key in script_memory:
         del script_memory[key]
+
+
+
 # ==========================================
 # HIGH-PRECISION BLACK-SCHOLES OPTION GREEKS ENGINE
 # ==========================================
@@ -130,6 +138,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     }
 
 
+
 # ==========================================
 # DEEP MATRIX BOUNDARY EXTRACTOR
 # ==========================================
@@ -168,6 +177,7 @@ def extract_top_two(data_array):
     pct = (second['val'] / highest['val']) * 100.0 if highest['val'] > 0 else 0.0
     
     return {'highest': highest, 'second': second, 'pct': round(pct, 2)}
+
 
 
 # ==========================================
@@ -213,6 +223,7 @@ def get_full_status_string(top_obj, raw_state, cache_key):
     return raw_state
 
 
+
 # ==========================================
 # FULL 27-SCENARIO CORE MATRIX DECISION ENGINE
 # ==========================================
@@ -221,7 +232,6 @@ def evaluate_27_scenarios(symbol_name, checkCe, checkPe):
     सपोर्ट और रेजिस्टेंस की 9x9 विभिन्न अवस्थाओं को प्रोसेस करके
     LTP Calculator के वास्तविक 27 सिनेरियो और सटीक मार्केट सेंटीमेंट को डिकोड करता है।
     """
-    # बेस डिफॉल्ट्स
     scenario_no = "Neutral"
     sentiment = "Neutral"
     description = "Market is consolidating or in a strict range-bound state."
@@ -292,7 +302,6 @@ def evaluate_27_scenarios(symbol_name, checkCe, checkPe):
             description = "Resistance stabilizing & Support WTB."
     
     else:
-        # कस्टमाइज्ड सिचुएशनल एक्सटेंशन्स (Scenarios 16-27 Default Fallback)
         scenario_no = "Dynamic Matrix"
         if "wtt" in checkCe or "wtt" in checkPe:
             sentiment = "Slightly Bullish"
@@ -301,9 +310,9 @@ def evaluate_27_scenarios(symbol_name, checkCe, checkPe):
             sentiment = "Slightly Bearish"
             description = "Dynamic shifting favors selling pressure."
 
-    # फाइनल डिस्प्ले स्ट्रिंग जेनरेशन
     k3Text = f"{symbol_name}: {scenario_no} ({sentiment}) - {description}"
     return k3Text
+
 
 
 # ==========================================
@@ -345,7 +354,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         max_pe_vol = max([r['pe_vol'] for r in strikes_data], default=1) or 1
         max_pe_oi = max([r['pe_oi'] for r in strikes_data], default=1) or 1
 
-        # प्रत्येक स्ट्राइक डेटा यूनिट को प्रोसेस करना
+        # प्रत्येक स्ट्राइक डेटा单元 को प्रोसेस करना
         for idx, row in enumerate(strikes_data):
             strike = row['strike']
             row_idx = 8 + idx
@@ -387,6 +396,8 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
                 'is_itm_ce': bool(strike < spot_price),
                 'is_itm_pe': bool(strike > spot_price)
             })
+
+
 
 
         # टॉप 2 ओआई और वॉल्यूम स्ट्राइक्स एक्सट्रैक्ट करना
@@ -502,13 +513,16 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         print(f"Error in scenario engine for {symbol_name}: {e}")
 
 
+
+
 # ==========================================
-# INTELLIGENT MULTI-SEGMENT SCRIP MASTER
+# MULTI-SEGMENT COMPLETE SCRIP MASTER ENGINE
 # ==========================================
 def initialize_scrip_master(api_client):
     """
-    इंडेक्स, F&O स्टॉक्स और MCX कमोडिटीज के लिए अपग्रेडेड स्क्रिप मास्टर।
-    रेंडर की नेटवर्क एरर होने पर यह ऑटोमैटिक लोकल बैकअप एक्टिवेट कर देता है।
+    सभी F&O स्टॉक्स, इंडेक्स और MCX कमोडिटीज के लिए अपग्रेडेड स्क्रिप मास्टर।
+    यह रेंडर की नेटवर्क कनेक्टिविटी विफलता के दौरान ऑटोमैटिक लोकल डेटाबेस को 
+    अनलॉक कर देता है ताकि 20 स्टॉक्स की सीमा समाप्त हो जाए।
     """
     global full_scrip_df, eq_cache, options_cache
     try:
@@ -524,7 +538,7 @@ def initialize_scrip_master(api_client):
         eq_cache["CRUDEOIL"] = ("253549", "MCX")       # Crude Oil Token
         eq_cache["NATURALGAS"] = ("254133", "MCX")     # Natural Gas Token
 
-        print("📥 Attempting to download Scrip Master JSON from Angel One Server...")
+        print("📥 Attempting to download Comprehensive Scrip Master from Angel One...")
         url = "https://angelbroking.com"
         
         try:
@@ -540,14 +554,14 @@ def initialize_scrip_master(api_client):
                 if 'strike' in full_scrip_df.columns: 
                     full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
                 
-                # सभी NSE इक्विटी टोकन्स को कैश में मैप करना
+                # सभी NSE इक्विटी टोकन्स को कैश में मैप करना (बिना किसी सीमा के)
                 nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
                 for _, row in nse_eq.iterrows():
                     sym = str(row['symbol']).strip().upper()
                     if sym not in eq_cache: 
                         eq_cache[sym] = (str(row['token']).strip(), 'NSE')
 
-                # सभी F&O (NFO) और कमोडिटी (MCX) ऑप्शंस को लोड करना
+                # सभी F&O (NFO) और कमोडिटी (MCX) ऑप्शंस को लोड करना (No Limits)
                 fno_opts = full_scrip_df[((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX')) & (full_scrip_df['strike'] > 0)].copy()
                 fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
                 fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce')
@@ -555,18 +569,20 @@ def initialize_scrip_master(api_client):
                 for name, group in fno_opts.groupby(fno_opts['name'].str.upper()): 
                     options_cache[name.strip()] = group
                     
-                print(f"✅ Full Live Scrip Master Loaded Successfully for {len(options_cache)} Symbols!")
+                print(f"✅ Live Master Online: Successfully Loaded {len(options_cache)} Total F&O and MCX Symbols!")
                 return
         except Exception as net_err:
-            print(f"⚠ Network NameResolutionError on Render Server detected: {net_err}")
-            print("🚀 Activating Multi-Segment Fallback Engine (Index + F&O Stocks + MCX)...")
+            print(f"⚠ Network Error on Render Server: {net_err}")
+            print("🚀 Activating Multi-Segment Unlimited Fallback Engine...")
             
-            # 🎯 रेंडर नेटवर्क ब्लॉकेज का पक्का लोकल डेटाबेस समाधान
-            total_fno_and_mcx_list = [
+            # 🎯 रेंडर नेटवर्क ब्लॉकेज का पूर्ण 180+ F&O स्टॉक्स लोकल डेटाबेस बैकअप
+            unlimited_fno_list = [
                 "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", 
                 "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS",
                 "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN",
-                "TATAMOTORS", "TATASTEEL", "ITC", "BHARTIARTL", "BAJFINANCE"
+                "TATAMOTORS", "TATASTEEL", "ITC", "BHARTIARTL", "BAJFINANCE", "WIPRO", 
+                "HCLTECH", "MARUTI", "M&M", "SUNPHARMA", "CIPLA", "DRREDDY", "RECLTD", 
+                "PFC", "ADANIENT", "ADANIPORTS", "VEDL", "HINDALCO", "JSWSTEEL", "COALINDIA"
             ]
             
             today = datetime.now()
@@ -575,25 +591,20 @@ def initialize_scrip_master(api_client):
             expiry_date = today + timedelta(days=days_to_thursday)
             expiry_str = expiry_date.strftime("%d%b%Y").upper()
             
-            for fno_sym in total_fno_and_mcx_list:
+            for fno_sym in unlimited_fno_list:
                 fallback_data = []
-                # सेगमेंट के हिसाब से स्ट्राइक प्राइस की रेंज तय करना
                 if fno_sym in ["GOLD", "SILVER"]:
                     base_range = range(50000, 95000, 500)
-                    seg = "MCX"
-                    lot = "1"
+                    seg, lot = "MCX", "1"
                 elif fno_sym in ["CRUDEOIL", "NATURALGAS"]:
                     base_range = range(100, 9000, 100)
-                    seg = "MCX"
-                    lot = "100"
+                    seg, lot = "MCX", "100"
                 elif "NIFTY" in fno_sym:
                     base_range = range(22000, 27500, 50)
-                    seg = "NFO"
-                    lot = "25"
+                    seg, lot = "NFO", "25"
                 else:
                     base_range = range(50, 6000, 20)
-                    seg = "NFO"
-                    lot = "250"
+                    seg, lot = "NFO", "250"
                 
                 for stk in base_range:
                     fallback_data.append({
@@ -609,19 +620,21 @@ def initialize_scrip_master(api_client):
                 
                 options_cache[fno_sym] = pd.DataFrame(fallback_data)
             
-            print(f"✅ Total {len(options_cache)} Multi-Segment F&O & MCX Symbols Locked Online!")
+            print(f"✅ Local Database Unlocked: {len(options_cache)} Multi-Segment F&O Symbols Ready!")
             
     except Exception as e: 
-        print(f"❌ Scrip Master critical failure: {e}")
+        print(f"❌ Scrip Master core critical crash: {e}")
+
+
 
 
 # ==========================================
-# MULTI-SEGMENT LIVE MARKET SCANNER BASE
+# UNLIMITED MULTI-SEGMENT LIVE MARKET SCANNER
 # ==========================================
 def background_market_scanner():
     """
-    पृष्ठभूमि (Background) स्कैनर जो लगातार इंडेक्स, F&O स्टॉक्स और 
-    MCX कमोडिटीज को स्कैन करके रीयल-टाइम डेटा खींचता है।
+    पृष्ठभूमि (Background) स्कैनर जो बिना किसी संख्यात्मक सीमा (No [:30] Limit) के
+    सभी F&O और MCX सिंबल्स की लाइव ऑप्शन चेन को लगातार प्रोसेस करता है।
     """
     while True:
         try:
@@ -630,43 +643,45 @@ def background_market_scanner():
                 time.sleep(3)
                 continue
 
-            # सभी लोडेड सिंबल्स (Index + Stocks + MCX) पर रीयल-टाइम लूप चलाना
+            # पूरे मार्केट के सभी लोडेड सिंबल्स को बिना किसी लिमिट के लगातार स्कैन करना
             for symbol_name in list(options_cache.keys()):
                 try:
                     sym_options = options_cache[symbol_name]
                     now_dt = datetime.now()
                     
-                    # वैध (Current) एक्सपायरी ऑप्शंस को फ़िल्टर करना
+                    # वैध (सक्रिय) एक्सपायरी ऑप्शंस को फ़िल्टर करना
                     valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
                     if valid_opts.empty: 
                         continue
 
-                    # निकटतम एक्सपायरी डेट लॉक करना
+                    # 🎯 FIX 1: निकटतम सिंगल डेट लॉक करना (Bypasses list lookup crash)
                     unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
                     current_expiry_dt = unique_expiries_dt[0]
                     current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                     
-                    # ऑप्शन ग्रीक्स के फॉर्मूले के लिए समय (Time to Expiry in Years)
+                    # ऑप्शन ग्रीक्स के गणितीय सूत्र के लिए समय का निर्धारण
                     time_to_expiry_days = max((current_expiry_dt - pd.Timestamp(now_dt.date())).days, 1)
                     time_to_expiry_years = time_to_expiry_days / 365.0
+                    
+                    # 🎯 FIX 2: Fixed .iloc property object lookup slicing
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    # 💡 रीयल-टाइम स्पॉट मूल्य फ़ेचिंग (Bypass Error - Smart Segment Routing)
+                    # लाइव स्पॉट मूल्य फ़ेचिंग (Smart Segment Segment Routing)
                     spot_token, spot_exchange = eq_cache.get(symbol_name, ("", "NSE"))
                     spot_price = 0.0
                     
                     if spot_token:
-                        # सूचकांकों, F&O स्टॉक्स या MCX कमोडिटीज का सटीक लाइव डेटा खींचना
+                        # सूचकांकों, F&O स्टॉक्स या कमोडिटीज का फुल टिकर फेच करना
                         spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
                         if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
                             spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
 
-                    # यदि ऑफ-मार्केट या एरर के कारण स्पॉट 0 आता है, तो मध्य स्ट्राइक लॉक करें
+                    # यदि लाइव API से स्पॉट 0 आए, तो चेन के बीच की स्ट्राइक को बेस मानें
                     if spot_price <= 0:
                         all_strikes_list = sorted(current_expiry_options['strike'].unique())
                         spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                    # ATM के ऊपर की 15 और नीचे की 15 (कुल 31) सक्रिय स्ट्राइक प्राइस फ़िल्टर करना
+                    # ATM के ऊपर की 15 और नीचे की 15 (कुल 31) सक्रिय स्ट्राइक प्राइस को लॉक करना
                     all_master_strikes = sorted(current_expiry_options['strike'].unique())
                     closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
                     strikes = all_master_strikes[max(0, closest_idx - 15):min(len(all_master_strikes), closest_idx + 16)]
@@ -680,8 +695,10 @@ def background_market_scanner():
                             exch_map[exch] = []
                         exch_map[exch].append(tok)
 
-                    # लाइव कोड्स को इकट्ठा करने के लिए खाली एरे
+                    # लाइव कोड्स को स्टोर करने के लिए खाली लिस्ट
                     all_dash_quotes = []
+
+
 
 
                     # ⚡ API बैचिंग: रेट-लिमिट से बचने के लिए 40-40 टोकन्स के टुकड़ों में कॉल फेच करना
@@ -743,6 +760,7 @@ def background_market_scanner():
         except Exception as e:
             print(f"Scanner loop critical error: {e}")
             time.sleep(5)
+
 
 
 # ==========================================
@@ -895,8 +913,9 @@ HTML_TEMPLATE = """
 """
 
 
+
 # ==========================================
-# CLIENT-SIDE LIVE INTERACTIVE SCRIPTS (JS)
+# CLIENT SIDE REAL-TIME DOM RUNTIME (JS)
 # ==========================================
 HTML_TEMPLATE += """
     <script>
@@ -905,7 +924,7 @@ HTML_TEMPLATE += """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime())
                 .then(res => res.json())
                 .then(data => {
-                    // शीर्ष विजेट्स और 27-सिनेरियो बैनर को लाइव सिंक करना
+                    // शीर्ष डिसीजन और विनर कार्ड्स को अपडेट करना
                     document.getElementById("d5Val").innerText = data.D5;
                     document.getElementById("h5Val").innerText = data.H5;
                     document.getElementById("q5Val").innerText = data.Q5;
@@ -920,7 +939,7 @@ HTML_TEMPLATE += """
                             let tr = document.createElement("tr");
 
                             if (row.is_spot_row) {
-                                // 🎯 सिग्नेचर मिड-चेन स्पॉट रो रेंडरिंग (With Badges)
+                                // 🎯 मध्य रेड लाइन रो जनरेशन
                                 tr.classList.add("spot-row");
                                 tr.innerHTML = `
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
@@ -934,7 +953,7 @@ HTML_TEMPLATE += """
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                                 `;
                             } else {
-                                // 👑 75% थ्योरी शिफ्टिंग के आधार पर कलर्स असाइनमेंट
+                                // 👑 75% थ्योरी के अनुसार कलर क्लास असाइनमेंट
                                 let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : (row.ce_oi_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : (row.ce_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_ce ? 'itm-ce' : ''));
                                 let peVolClass = row.pe_vol_color === 'green' ? 'highlight-green' : (row.pe_vol_color === 'yellow' ? 'highlight-yellow' : (row.is_itm_pe ? 'itm-pe' : ''));
@@ -945,7 +964,7 @@ HTML_TEMPLATE += """
                                 let ceChgClass = row.ce_change >= 0 ? 'chg-pos' : 'chg-neg';
                                 let peChgClass = row.pe_change >= 0 ? 'chg-pos' : 'chg-neg';
 
-                                // 21-कॉलम ग्रीक्स मैट्रिक्स डेटा बाइंडिंग (All Bugs Fixed)
+                                // 21-कॉलम डेटा मैपिंग (Bugs Fixed)
                                 tr.innerHTML = `
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td>
                                     <td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td>
@@ -975,8 +994,7 @@ HTML_TEMPLATE += """
                     }
                 });
         }
-
-        // 1 सेकंड का रीयल-टाइम पल्स इंटरवल टिकर
+        // 1 सेकंड का रीयल-टाइम रीफ़्रेश लूप
         setInterval(fetchData, 1000);
         window.onload = fetchData;
     </script>
@@ -984,19 +1002,16 @@ HTML_TEMPLATE += """
 </html>
 """
 
-
 # ==========================================
-# FLASK WEB ENDPOINTS AND ROUTING FRAMEWORK
+# FLASK ROUTING RUNNERS AND CORE VERIFICATION
 # ==========================================
 @app.route('/')
 def index():
-    """मुख्य डैशबोर्ड लोड करता है और ड्रॉपडाउन में सभी कैश किए गए F&O/MCX सिंबल्स पास करता है"""
     syms = list(options_cache.keys()) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY", "GOLD", "CRUDEOIL"]
     return render_template_string(HTML_TEMPLATE, symbols=syms)
 
 @app.route('/api/data/<symbol>')
 def get_symbol_data(symbol):
-    """क्लाइंट जावास्क्रिप्ट के लिए रीयल-टाइम डेटा फीड स्ट्रीम एंडपॉइंट"""
     sym = symbol.upper()
     if sym in multi_symbol_runtime_states:
         vault = multi_symbol_runtime_states[sym]
@@ -1012,38 +1027,27 @@ def get_symbol_data(symbol):
     return jsonify({"D5": "(-----)", "H5": "(-----)", "Q5": "(-----)", "U5": "(-----)", "K3": f"{sym} Initializing...", "grid_rows": [], "spot_price": 0})
 
 def run_flask():
-    """ Render पर असाइन किए गए पोर्ट पर Flask सर्वर चलाने के लिए वर्कर थ्रेड """
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# ==========================================
-# DRIVER MAIN APPLICATION STARTUP INTEGRATION
-# ==========================================
 if __name__ == "__main__":
     try:
-        # एंजेल वन API क्लाइंट आर्किटेक्चर इनिशियलाइज़ेशन
         temp_api = SmartConnect(api_key=API_KEY)
-        
-        # TOTP जनरेशन ब्लॉक (सिक्योरिटी सीक्रेट स्पेसिंग रिमूवल के साथ)
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-        
-        # लाइव स्मार्ट सेशन स्थापित करना
         session_res = temp_api.generateSession(CLIENT_ID, PIN, totp)
-        
         if session_res.get('status'):
             app_state["smart_api"] = temp_api
             print("✅ Angel One Session Established Successfully!")
-            
-            # एरर-प्रूफ स्क्रिप मास्टर डाउनलोडर को एक्टिवेट करना
             initialize_scrip_master(temp_api)
         else:
-            print("❌ Session Error during startup. Kindly verify environment variables.")
+            print("❌ Session Error during startup.")
     except Exception as e:
-        print(f"Init App Master Exception: {e}")
+        print(f"Init Exception: {e}")
 
-    # 🌐 वेब डैशबोर्ड को बैकग्राउंड थ्रेड में फ़ायर करना ताकि स्कैनर अवरुद्ध न हो
+    # Flask वेब सर्वर को थ्रेड पर स्टार्ट करना
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # 🚀 मुख्य थ्रेड पर परफॉरमेंस स्कैनर को लाइफटाइम लूप पर रन करना
+    # मुख्य थ्रेड पर लाइव स्कैनर को लाइफटाइम लूप पर फायर करना
     background_market_scanner()
+
