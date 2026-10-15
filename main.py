@@ -245,7 +245,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
             if peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-            if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI" # wait, corrected below for pe
+            if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI" # wait, corrected for pe
             if peVolActiveRow != peOiActiveRow: peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -310,9 +310,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
-            # 🎯 NO BRACKETS, NO CE/PE TEXT, CLEAN FORMAT WITH YELLOW PILL
+            # 🎯 EXACT MATCHING ORIGINAL FORMAT FROM PHOTOS: line1 = timestamp - strike-status-secondStrike, line2 in yellow pill = status text
             if isShifting:
-                line1 = f"{displayTime} - {strike}-{displayStatus.upper()}-{secondStrike}"
+                line1 = f"{displayTime} - {strike}-{displayStatus}-{secondStrike}"
                 line2 = f"shifted {get_memory('SHIFT_TYPE_' + cacheKey)}"
                 outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
             else:
@@ -362,7 +362,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtt" and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif "wtb to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif "wtb to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
+        elif "wtb" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
         elif "wtb to strong" in checkCe and "stable strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bullish"
         elif "stable strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bullish"
         elif "wtt to strong" in checkCe and "stable strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish"
@@ -615,18 +615,16 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
-        /* 🎯 COMPACT CARDS, WHITE BG, BLACK TEXT & LIGHT CE/PE TINTS */
+        /* 🎯 COMPACT CARDS WITH WHITE BG, BLACK TEXT & LIGHT TINTS */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { background: #ffffff; padding: 6px 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 44px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card { background: #ffffff; padding: 6px 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 48px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
-        /* CE Side Cards Light Blue/Cyan tint */
         .card-ce { background: #f0f8ff; border-color: #b0e0e6; }
-        /* PE Side Cards Light Green/Yellow tint */
         .card-pe { background: #f5fffa; border-color: #afeeee; }
 
-        .card h3 { margin: 0 0 2px 0; font-size: 10px; color: #495057; text-transform: uppercase; border-bottom: 1px solid #e9ecef; width: 100%; padding-bottom: 1px; }
+        .card h3 { margin: 0 0 3px 0; font-size: 10px; color: #495057; text-transform: uppercase; border-bottom: 1px solid #e9ecef; width: 100%; padding-bottom: 1px; }
         
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 2px; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 2px; }
 
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
