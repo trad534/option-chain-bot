@@ -18,7 +18,7 @@ import builtins
 # ====================================================================
 # 🛡️ SYSTEM TERMINAL LOGS & SERVER SHIELD KEEP-ALIVE
 # ====================================================================
-RENDER_URL = "https://onrender.com"
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://onrender.com")
 
 def self_ping():
     while True:
@@ -500,22 +500,36 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["lot_size"] = lot_size
         vault["spot_price"] = spot_price
 
+        # Calculate Percentages for Highlight Coloring (100% vs 75%+)
+        max_ce_oi = ceOiTop['highest']['val'] if ceOiTop['highest']['val'] > 0 else 1
+        max_ce_vol = ceVolTop['highest']['val'] if ceVolTop['highest']['val'] > 0 else 1
+        max_pe_vol = peVolTop['highest']['val'] if peVolTop['highest']['val'] > 0 else 1
+        max_pe_oi = peOiTop['highest']['val'] if peOiTop['highest']['val'] > 0 else 1
+
         grid_rows_built = []
         if raw_rows:
-            highest_ce_oi = ceOiTop['highest']['strike']
-            highest_ce_vol = ceVolTop['highest']['strike']
-            highest_pe_vol = peVolTop['highest']['strike']
-            highest_pe_oi = peOiTop['highest']['strike']
-            
             spot_inserted = False
             for r_dict in raw_rows:
                 st = r_dict['strike']
                 r_copy = r_dict.copy()
-                r_copy['ce_oi_color'] = 'green' if st == highest_ce_oi else ''
-                r_copy['ce_vol_color'] = 'green' if st == highest_ce_vol else ''
-                r_copy['pe_vol_color'] = 'green' if st == highest_pe_vol else ''
-                r_copy['pe_oi_color'] = 'green' if st == highest_pe_oi else ''
-                
+
+                # Calculate Percentage values
+                ce_oi_pct = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
+                ce_vol_pct = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
+                pe_vol_pct = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
+                pe_oi_pct = round((r_dict['pe_oi'] / max_pe_oi) * 100, 2)
+
+                r_copy['ce_oi_pct'] = ce_oi_pct
+                r_copy['ce_vol_pct'] = ce_vol_pct
+                r_copy['pe_vol_pct'] = pe_vol_pct
+                r_copy['pe_oi_pct'] = pe_oi_pct
+
+                # Color Flags: 'bg-100' for Max, 'bg-75' for >= 75%
+                r_copy['ce_oi_color'] = 'bg-100' if ce_oi_pct == 100 else ('bg-75' if ce_oi_pct >= 75 else '')
+                r_copy['ce_vol_color'] = 'bg-100' if ce_vol_pct == 100 else ('bg-75' if ce_vol_pct >= 75 else '')
+                r_copy['pe_vol_color'] = 'bg-100' if pe_vol_pct == 100 else ('bg-75' if pe_vol_pct >= 75 else '')
+                r_copy['pe_oi_color'] = 'bg-100' if pe_oi_pct == 100 else ('bg-75' if pe_oi_pct >= 75 else '')
+
                 if not spot_inserted and spot_price > 0 and st >= spot_price:
                     grid_rows_built.append({
                         'is_spot_row': True,
@@ -612,14 +626,16 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
+                # Accurate Spot Price Fetching Logic
                 spot_token, spot_exchange = eq_cache.get(clean_active_symbol, ("", "NSE"))
                 spot_price = 0.0
                 if spot_token:
                     try:
                         spot_quote = smart_api.getMarketData("FULL", {spot_exchange: [spot_token]})
-                        if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
+                        if spot_quote and spot_quote.get('status') and spot_quote.get('data') and spot_quote['data'].get('fetched'):
                             spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
-                    except Exception: pass
+                    except Exception as e: 
+                        print(f"⚠ Spot fetch error: {e}")
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -632,7 +648,9 @@ def fetch_and_update_option_chain(smart_api):
 
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-                strikes = all_master_strikes[max(0, closest_idx - 20):min(len(all_master_strikes), closest_idx + 21)]
+
+                # Exact 12 Strikes Above & 12 Strikes Below (Total 25 Strikes Range)
+                strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
                 filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
                 exch_map = {}
@@ -754,19 +772,32 @@ HTML_TEMPLATE = """
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 6px 7px; white-space: nowrap; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
-        .strike-col { background: #fff3bf !important; color: #000000 !important; font-weight: bold; font-size: 12px; }
+        
+        /* Solid Orange Color for Strike Price Column as per Photo 7 */
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
+        
+        /* Red Imaginary Line & Spot Row Formatting */
         .spot-row td { background: #ffffff !important; position: relative; padding: 4px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; }
         .spot-badge { background: #ffffff; color: #000000; border: 2px solid #495057; border-radius: 6px; padding: 3px 8px; font-weight: bold; font-size: 10px; display: inline-block; position: relative; z-index: 3; }
-        .spot-price-cell { background: #e03131 !important; color: #ffffff !important; font-weight: bold; font-size: 13px; text-align: center; z-index: 4; }
-        .spot-tag-small { background: #ffffff; color: #e03131; font-size: 8px; font-weight: bold; padding: 1px 4px; border-radius: 3px; display: block; margin-bottom: 2px; }
+        .spot-price-cell { background: #7950f2 !important; color: #ffffff !important; font-weight: bold; font-size: 13px; text-align: center; z-index: 4; border: 2px solid #f03e3e !important; }
+        .spot-tag-small { background: #ffffff; color: #7950f2; font-size: 8px; font-weight: bold; padding: 1px 4px; border-radius: 3px; display: block; margin-bottom: 2px; }
+        
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
-        .highlight-green { background: #2b8a3e !important; color: #ffffff !important; font-weight: bold; }
-        .highlight-yellow { background: #fab005 !important; color: #000000 !important; font-weight: bold; }
+        
+        /* Highlight Rules based on Photos 3, 4, 5, 6 */
+        .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
+        .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
+        .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
+        .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
+        
+        /* Yellow Color for 75%+ Values with Dark Text */
+        .bg-75 { background: #ffd43b !important; color: #000000 !important; font-weight: bold; }
+        
+        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
-        .pct-sub { font-size: 9px; color: #666; display: block; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -799,7 +830,7 @@ HTML_TEMPLATE = """
             <thead>
                 <tr>
                     <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 13px;">CALLS (CE)</th>
-                    <th class="strike-col" style="background: #fab005 !important; color: #000000 !important;">STRIKE</th>
+                    <th class="strike-col" style="background: #ff922b !important; color: #ffffff !important;">STRIKE</th>
                     <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
                 </tr>
                 <tr>
@@ -876,11 +907,7 @@ HTML_TEMPLATE = """
                                 tr.classList.add("spot-row");
                                 tr.innerHTML = `<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td><span class="spot-badge">${row.ce_oi_badge}</span></td><td><span class="spot-badge">${row.ce_vol_badge}</span></td><td>-</td><td>-</td><td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td><td>-</td><td>-</td><td><span class="spot-badge">${row.pe_vol_badge}</span></td><td><span class="spot-badge">${row.pe_oi_badge}</span></td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>`;
                             } else {
-                                let ceOiClass = row.ce_oi_color === 'green' ? 'highlight-green' : '';
-                                let ceVolClass = row.ce_vol_color === 'green' ? 'highlight-green' : '';
-                                let peVolClass = row.pe_vol_color === 'green' ? 'highlight-green' : '';
-                                let peOiClass = row.pe_oi_color === 'green' ? 'highlight-green' : '';
-                                tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="${ceOiClass}">${row.ce_oi}</td><td class="${ceVolClass}">${row.ce_vol}</td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="${peVolClass}">${row.pe_vol}</td><td class="${peOiClass}">${row.pe_oi}</td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                                tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                             }
                             tbody.appendChild(tr);
                         });
