@@ -384,7 +384,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
             if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-            if peVolActiveRow != peOiActiveRow: ceWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI" # corrected line
             if peVolActiveRow != peOiActiveRow: peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
@@ -398,7 +397,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         def calculate_independent_cell(top_obj, cache_key, side_label, is_winner, raw_state, final_status_text):
             if not top_obj or not top_obj.get('highest') or not top_obj['highest'].get('strike') or top_obj['highest']['strike'] == 0:
-                return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong"}
+                return {'text': "(-----)", 'status': "stable strong", 'rawState': "STRONG", 'scenarioStatus': "stable strong", 'badge': "STABLE STRONG"}
 
             strike = top_obj['highest']['strike']
             second_strike = strike
@@ -431,25 +430,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             if not is_winner and raw_state != "STRONG": display_status = "stable strong"; scenario_status = "stable strong"
 
-            display_time = get_memory("TIME_" + cache_key); last_recorded_status = get_memory("LAST_STATUS_" + cache_key, "")
-            is_trigger_status = (display_status in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or is_shifting)
-
-            if is_trigger_status and display_status != last_recorded_status:
-                display_time = current_time_clock; set_memory("TIME_" + cache_key, display_time); set_memory("LAST_STATUS_" + cache_key, display_status)
-            elif not display_time: display_time = current_time_clock; set_memory("TIME_" + cache_key, display_time); set_memory("LAST_STATUS_" + cache_key, display_status)
-
             s_val = int(strike) if strike.is_integer() else strike
             sec_val = int(second_strike) if second_strike.is_integer() else second_strike
 
-            # Exact format matching Photo 2: Status with percentage e.g. WTB 99.4% or STRONG
             st_upper = display_status.upper()
-            if st_upper == "STRONG":
-                badge_text = "STRONG"
-            else:
-                pct_val = round(top_obj['pct'], 1)
+            pct_val = round(top_obj['pct'], 1)
+            
+            if "STRONG" in st_upper or st_upper == "STABLE STRONG":
+                badge_text = f"STABLE STRONG {pct_val}%"
+            elif st_upper in ["WTB", "WTT"]:
                 badge_text = f"{st_upper} {pct_val}%"
+            else:
+                badge_text = f"{st_upper}"
 
-            return {'text': output_text if 'output_text' in locals() else f"{badge_text}", 'scenarioStatus': scenario_status, 'badge': badge_text}
+            return {'text': badge_text, 'scenarioStatus': scenario_status, 'badge': badge_text}
 
         ceOiResult  = calculate_independent_cell(ceOiTop, "CE_OI", "Eor OI", ceWinner in ["OI", "BOTH"], ceOiRawState, ceOiStatusText)
         ceVolResult = calculate_independent_cell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner in ["VOL", "BOTH"], ceVolRawState, ceVolStatusText)
@@ -485,7 +479,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkCe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkCe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
@@ -499,7 +493,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["lot_size"] = lot_size
         vault["spot_price"] = spot_price
 
-        # Sort and find 1st and 2nd Highest for highlighting
         def get_top_two_strikes(arr):
             valid = [x for x in arr if x['val'] > 0]
             valid.sort(key=lambda x: x['val'], reverse=True)
@@ -534,7 +527,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 r_copy['pe_vol_pct'] = pe_vol_pct
                 r_copy['pe_oi_pct'] = pe_oi_pct
 
-                # 1st Highest = bg-100, 2nd Highest = bg-75 (Yellow) as per photo requirements
                 r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 else '')
                 r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 else '')
                 r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 else '')
@@ -616,7 +608,7 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                # Problem 1 Fix: Accurate Spot Price Fetching (Checking both NSE and NFO segments)
+                # Problem 4 Fix: Accurate Spot Price Fetching (NSE + Index Futures Fallback)
                 spot_token, spot_exchange = eq_cache.get(clean_active_symbol, ("", "NSE"))
                 spot_price = 0.0
                 if spot_token:
@@ -649,7 +641,7 @@ def fetch_and_update_option_chain(smart_api):
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
 
-                # Problem 2 Fix: Exactly 12 Strikes Above & 12 Strikes Below (Total 25 Strikes)
+                # Problem 2 Fix: Exact 12 Strikes Above & 12 Strikes Below (Total 25 Strikes)
                 strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
                 filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
@@ -756,7 +748,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LTP Calculator - Complete 27 Scenario Tracker</title>
+    <title>Arush LTP Calculator - Complete 27 Scenario Tracker</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -784,7 +776,6 @@ HTML_TEMPLATE = """
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         
-        /* Problem 3 Fix: Exact 1st & 2nd Highest Highlighting Colors matching Photo 1 & Photo 2 */
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
         .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
@@ -799,7 +790,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="header">
-        <h2>⚡ LTP Calculator (27 Scenarios Tracking Engine)</h2>
+        <h2>⚡ Arush LTP Calculator (27 Scenarios Tracking Engine)</h2>
         <div class="controls-group">
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
             <div style="display: flex; gap: 5px; align-items: center;">
