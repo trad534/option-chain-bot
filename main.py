@@ -124,7 +124,6 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             }
 
         sym_vault = multi_symbol_runtime_states[symbol_name]
-        sym_vault["spot_price"] = spot_price
 
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
         raw_rows = []
@@ -301,7 +300,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
             if not spot_inserted and spot_price > 0 and st >= spot_price:
                 grid_rows_built.append({
                     'is_spot_row': True,
-                    'spot_price': round(spot_price, 2),
+                    'spot_price': spot_price,
                     'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
                     'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
                     'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
@@ -315,7 +314,7 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
         if not spot_inserted and spot_price > 0:
             grid_rows_built.append({
                 'is_spot_row': True,
-                'spot_price': round(spot_price, 2),
+                'spot_price': spot_price,
                 'ce_oi_badge': f"{ceOiRawState.upper()} {ceOiPctVal}%",
                 'ce_vol_badge': f"{ceVolRawState.upper()} {ceVolPctVal}%",
                 'pe_vol_badge': f"{peVolRawState.upper()} {peVolPctVal}%",
@@ -324,10 +323,11 @@ def process_symbol_scenario(symbol_name, strikes_data, spot_price, lot_size, tim
 
         sym_vault["D5_TEXT"] = ceOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["H5_TEXT"] = ceVolResult['text'] if ceWinner == "VOL" else "(-----)"
-        sym_vault["Q5_TEXT"] = peVolResult['text'] if ceWinner == "VOL" else "(-----)"
+        sym_vault["Q5_TEXT"] = peVolResult['text'] if peWinner == "VOL" else "(-----)"
         sym_vault["U5_TEXT"] = peOiResult['text'] if ceWinner == "OI" else "(-----)"
         sym_vault["K3_TEXT"] = k3Text
         sym_vault["grid_rows"] = grid_rows_built
+        sym_vault["spot_price"] = spot_price
 
     except Exception as e:
         print(f"Error in scenario engine for {symbol_name}: {e}")
@@ -348,11 +348,10 @@ def initialize_scrip_master(api_client):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'].isin(['NSE', 'BSE', 'NFO'])) & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
+            nse_eq = full_scrip_df[(full_scrip_df['exch_seg'] == 'NSE') & (~full_scrip_df['instrumenttype'].str.contains('OPT|FUT', na=False))]
             for _, row in nse_eq.iterrows():
-                sym, name, tok, exch = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip(), str(row['exch_seg']).strip()
-                eq_cache[sym] = (tok, exch)
-                eq_cache[name] = (tok, exch)
+                sym, name, tok = str(row['symbol']).strip().upper(), str(row['name']).strip().upper(), str(row['token']).strip()
+                eq_cache[sym] = (tok, 'NSE'); eq_cache[name] = (tok, 'NSE')
             
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'] == 'NFO')].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
@@ -384,34 +383,19 @@ def background_market_scanner():
                     time_to_expiry_years = time_to_expiry_days / 365.0
                     lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                    all_master_strikes = sorted(current_expiry_options['strike'].unique())
-
-                    # 100% FOOLPROOF SPOT PRICE RESOLUTION (Direct Option Chain Center Strike Fallback)
+                    spot_token, spot_exchange = eq_cache.get(symbol_name, ("", "NSE"))
                     spot_price = 0.0
-                    if all_master_strikes:
-                        spot_price = float(all_master_strikes[len(all_master_strikes) // 2])
+                    if spot_token:
+                        spot_quote = api.getMarketData("FULL", {spot_exchange: [spot_token]})
+                        if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
+                            spot_price = float(spot_quote['data']['fetched'][0].get('ltp', 0))
 
-                    # Try fetching live LTP if available
-                    spot_token, spot_exchange = eq_cache.get(symbol_name, ("", ""))
-                    if not spot_token and not full_scrip_df.empty:
-                        match_df = full_scrip_df[(full_scrip_df['symbol'].str.upper() == symbol_name) | (full_scrip_df['name'].str.upper() == symbol_name)]
-                        if not match_df.empty:
-                            spot_token = str(match_df['token'].iloc[0]).strip()
-                            spot_exchange = str(match_df['exch_seg'].iloc[0]).strip()
+                    if spot_price <= 0:
+                        all_strikes_list = sorted(current_expiry_options['strike'].unique())
+                        spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                    if spot_token and spot_exchange:
-                        try:
-                            spot_quote = api.getMarketData("LTP", {spot_exchange: [spot_token]})
-                            if spot_quote and spot_quote.get('status') and spot_quote.get('data'):
-                                fetched_list = spot_quote['data'].get('fetched', [])
-                                if fetched_list:
-                                    live_ltp = float(fetched_list[0].get('ltp', 0))
-                                    if live_ltp > 0:
-                                        spot_price = live_ltp
-                        except Exception:
-                            pass
-
-                    closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price)) if all_master_strikes else 0
+                    all_master_strikes = sorted(current_expiry_options['strike'].unique())
+                    closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
                     strikes = all_master_strikes[max(0, closest_idx - 15):min(len(all_master_strikes), closest_idx + 16)]
 
                     filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
@@ -476,7 +460,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LTP Calculator - Guaranteed Spot Price</title>
+    <title>LTP Calculator - Clean Middle Line Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
@@ -501,16 +485,18 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 15px; overflow-x: auto; max-height: 700px; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: none !important; padding: 5px 6px; white-space: nowrap; }
-        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; border-bottom: 1px solid #dee2e6 !important; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
+        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; font-size: 11px; }
         
         .strike-col { background: #ff9800 !important; color: #000 !important; font-weight: bold; font-size: 12px; }
         
+        /* Spot Row with ONLY middle red line (no top/bottom borders) */
         .spot-row td { 
             background: #ffffff !important; 
-            border: none !important; 
+            border-top: 1px solid #dee2e6 !important; 
+            border-bottom: 1px solid #dee2e6 !important; 
             position: relative;
-            padding: 4px 6px !important; 
+            padding: 4px; 
         }
         .spot-row td::after {
             content: "";
@@ -644,13 +630,12 @@ HTML_TEMPLATE = """
 
                             if (row.is_spot_row) {
                                 tr.classList.add("spot-row");
-                                let activeSpotPrice = row.spot_price || data.spot_price || 'N/A';
                                 tr.innerHTML = `
                                     <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.ce_oi_badge}</span></td>
                                     <td><span class="spot-badge">${row.ce_vol_badge}</span></td>
                                     <td>-</td><td>-</td>
-                                    <td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${activeSpotPrice}</td>
+                                    <td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td>
                                     <td>-</td><td>-</td>
                                     <td><span class="spot-badge">${row.pe_vol_badge}</span></td>
                                     <td><span class="spot-badge">${row.pe_oi_badge}</span></td>
@@ -687,7 +672,7 @@ HTML_TEMPLATE = """
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>
-                                    <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>
+                                    <td class="is_itm_pe ? 'itm-pe' : ''">${row.pe_theta}</td>
                                     <td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>
                                 `;
                             }
@@ -706,7 +691,7 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    syms = sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    syms = list(options_cache.keys()) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     return render_template_string(HTML_TEMPLATE, symbols=syms)
 
 @app.route('/api/data/<symbol>')
