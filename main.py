@@ -228,7 +228,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -309,17 +309,25 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
-            # 🎯 100% ORIGINAL TEXT FORMATTING
+            # 🎯 EXACT ORIGINAL MULTI-LINE TEXT WITH STYLISH YELLOW PILL BADGE
             if isShifting:
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cacheKey)})"
+                line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
+                line2 = f"(shifted {get_memory('SHIFT_TYPE_' + cacheKey)})"
+                outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
             else:
                 if displayStatus == "stable strong":
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
+                    line1 = f"({displayTime} - {sideLabel} - {strike})"
+                    line2 = f"(stable strong)"
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
                 elif "to strong" in displayStatus:
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n   ({displayStatus})"
+                    line1 = f"({displayTime} - {sideLabel} - {strike})"
+                    line2 = f"({displayStatus})"
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n({weakDir})"
+                    line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
+                    line2 = f"({weakDir})"
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus}
 
@@ -606,10 +614,12 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
-        /* 🎯 COMPACT CARDS & ORIGINAL MULTI-LINE TEXT SUPPORT */
+        /* 🎯 EXACT ORIGINAL MULTI-LINE TEXT WITH STYLISH YELLOW PILL BADGE */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { background: #ffffff; padding: 6px 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; white-space: pre-line; line-height: 1.3; }
-        .card h3 { margin: 0 0 3px 0; font-size: 11px; color: #495057; text-transform: uppercase; border-bottom: 1px solid #e9ecef; padding-bottom: 2px; }
+        .card { background: #ffffff; padding: 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; white-space: pre-line; line-height: 1.4; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .card h3 { margin: 0 0 4px 0; font-size: 11px; color: #495057; text-transform: uppercase; border-bottom: 1px solid #f1f3f5; width: 100%; padding-bottom: 2px; }
+        
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
 
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; }
@@ -644,10 +654,10 @@ HTML_TEMPLATE = """
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
     <div class="status-box">
-        <div class="card"><h3>CE OI (D5)</h3><p id="d5Val">-</p></div>
-        <div class="card"><h3>CE Vol (H5)</h3><p id="h5Val">-</p></div>
-        <div class="card"><h3>PE Vol (Q5)</h3><p id="q5Val">-</p></div>
-        <div class="card"><h3>PE OI (U5)</h3><p id="u5Val">-</p></div>
+        <div class="card"><h3>CE OI (D5)</h3><div id="d5Val">-</div></div>
+        <div class="card"><h3>CE Vol (H5)</h3><div id="h5Val">-</div></div>
+        <div class="card"><h3>PE Vol (Q5)</h3><div id="q5Val">-</div></div>
+        <div class="card"><h3>PE OI (U5)</h3><div id="u5Val">-</div></div>
     </div>
     <div class="table-container">
         <table id="optionChainTable">
@@ -703,10 +713,10 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                document.getElementById("d5Val").innerText = data.D5;
-                document.getElementById("h5Val").innerText = data.H5;
-                document.getElementById("q5Val").innerText = data.Q5;
-                document.getElementById("u5Val").innerText = data.U5;
+                document.getElementById("d5Val").innerHTML = data.D5;
+                document.getElementById("h5Val").innerHTML = data.H5;
+                document.getElementById("q5Val").innerHTML = data.Q5;
+                document.getElementById("u5Val").innerHTML = data.U5;
                 document.getElementById("k3Display").innerText = data.K3;
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
                 if (data.grid_rows && data.grid_rows.length > 0) {
