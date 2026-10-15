@@ -164,17 +164,14 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
             peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
 
-        # 🎯 STRICT ABSOLUTE 1st & 2nd HIGHEST LOGIC FIX
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered = [item for item in data_array if item['val'] > 0]
             if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             
-            # Absolute Numeric Sort Descending
             sorted_items = sorted(filtered, key=lambda x: x['val'], reverse=True)
             highest = sorted_items[0]
             
-            # Find exact 2nd highest distinct strike
             second = {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             for item in sorted_items:
                 if item['strike'] != highest['strike']:
@@ -381,7 +378,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["D5_TEXT"] = finalD5; vault["H5_TEXT"] = finalH5; vault["U5_TEXT"] = finalU5; vault["Q5_TEXT"] = finalQ5
         vault["K3_TEXT"] = k3Text; vault["lot_size"] = lot_size; vault["spot_price"] = spot_price
 
-        # 🎯 HIGHLIGHTING STRIKE FIX (2ND HIGHEST STRICT MATCH)
         c_oi_1 = ceOiTop['highest']['strike']
         c_oi_2 = ceOiTop['second']['strike']
         
@@ -625,9 +621,9 @@ HTML_TEMPLATE = """
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
         .ce-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
-        .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
+        .pe-vol-col.bg-100 { background: #40c057 !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
-        .bg-75 { background: #ffd43b !important; color: #000000 !important; font-weight: bold; }
+        .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
