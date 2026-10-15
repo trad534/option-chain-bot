@@ -72,7 +72,7 @@ full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
 current_active_symbol_for_memory = "NIFTY"
-last_session_date = None  # Track daily session reset
+last_session_date = None
 
 def get_memory(key, default=""):
     global current_active_symbol_for_memory
@@ -229,7 +229,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -404,7 +404,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
-        step_size = 50 if active_symbol_name == "NIFTY" else (100 if "BANK" in active_symbol_name else 50)
+        # 🎯 UNIVERSAL DYNAMIC STEP SIZE FOR INDICES AND STOCKS (NIFTY/BANKNIFTY/FINNIFTY/STOCKS)
+        if active_symbol_name == "NIFTY": step_size = 50
+        elif "BANK" in active_symbol_name: step_size = 100
+        elif active_symbol_name in ["FINNIFTY", "MIDCPNIFTY"]: step_size = 50
+        else:
+            # For stock options like MARUTI, RELIANCE etc., determine step size dynamically from strikes
+            all_master_strikes_list = sorted([item['strike'] for item in raw_rows])
+            if len(all_master_strikes_list) > 1:
+                diffs = [all_master_strikes_list[i+1] - all_master_strikes_list[i] for i in range(len(all_master_strikes_list)-1)]
+                step_size = min(diffs) if diffs else 50
+            else:
+                step_size = 100 if spot_price > 5000 else (50 if spot_price > 1000 else 10)
+
         imaginary_spot = round(spot_price / step_size) * step_size
 
         grid_rows_built = []
@@ -484,8 +496,11 @@ def fetch_and_update_option_chain(smart_api):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
+                
+                # 🎯 UNIVERSAL SPOT / UNDERLYING PRICE FETCHER FOR INDICES AND STOCKS (E.G. MARUTI, RELIANCE)
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
+                
                 if target_tok:
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
@@ -493,10 +508,27 @@ def fetch_and_update_option_chain(smart_api):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
+                
+                # If not an index or index token failed, fetch equity cash (EQ) or future token for stocks
+                if spot_price <= 0:
+                    try:
+                        eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & ((full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'].str.upper().str.endswith('-EQ') | (full_scrip_df['symbol'].str.upper() == clean_active_symbol)))]
+                        if eq_sub.empty:
+                            eq_sub = full_scrip_df[full_scrip_df['name'].str.upper() == clean_active_symbol]
+                        
+                        if not eq_sub.empty:
+                            eq_tok = str(eq_sub['token'].values[0])
+                            eq_exch = str(eq_sub['exch_seg'].values[0])
+                            eq_quote = smart_api.getMarketData("FULL", {eq_exch: [eq_tok]})
+                            if eq_quote and eq_quote.get('status') and eq_quote.get('data') and eq_quote['data'].get('fetched'):
+                                s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
+                    except Exception as e:
+                        print(f"⚠ Stock Spot Fetch Error: {e}")
 
                 if spot_price <= 0:
                     try:
-                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'] == 'FUTIDX')]
+                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))]
                         if not fut_sub.empty:
                             fut_tok = str(fut_sub['token'].values[0])
                             fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
@@ -537,7 +569,6 @@ def fetch_and_update_option_chain(smart_api):
                     tok = str(item.get('symbolToken', item.get('token', ''))).strip()
                     ltp = float(item.get('ltp', 0)); volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0)); change = float(item.get('netChange', 0))
                     
-                    # 🎯 FILTER FALSE / ZERO TICKS: Only cache if LTP > 0 or OI > 0 to prevent bad/false data propagation
                     if ltp > 0 or oi > 0:
                         persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
 
@@ -623,9 +654,7 @@ HTML_TEMPLATE = """
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
-        /* CE Side: Soft Light Green */
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
-        /* PE Side: Soft Light Red / Pink */
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: inline-block; margin-top: 3px; }
@@ -735,7 +764,7 @@ HTML_TEMPLATE = """
                             tr.classList.add("spot-row");
                             tr.innerHTML = `<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class="strike-col spot-price-cell"><span class="spot-tag-small">SPOT</span>${row.spot_price}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
@@ -792,7 +821,6 @@ def run_bot_lock_loop():
             now_dt = datetime.now()
             today_date_str = now_dt.strftime("%Y-%m-%d")
             
-            # 🎯 DAILY RECONNECT / SESSION RE-GENERATE AT/AFTER 9:00 AM EACH DAY
             if last_session_date != today_date_str and now_dt.hour >= 9:
                 print(f"🔄 Daily Session Refresh for {today_date_str}...")
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
@@ -802,7 +830,6 @@ def run_bot_lock_loop():
                     initialize_scrip_master(smart_api)
                     print("✅ Daily Session Renewed Successfully!")
             
-            # If not initialized yet
             if not options_cache:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'):
