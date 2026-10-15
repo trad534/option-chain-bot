@@ -355,7 +355,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
         elif checkCe == "wtb" and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bloodbath"
-        elif "wtt to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
+        elif "wtt to strong" in checkPe and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
         elif checkCe == "wtt" and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
         elif "wtt to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
         elif checkCe == "wtt" and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
@@ -702,7 +702,7 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* Container for Red Line Badges with Exact 12px Gap */
+        /* Container for Red Line Badges with Exact 14px Gap */
         .spot-badges-wrapper {
             position: absolute;
             left: 50%;
@@ -712,7 +712,7 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 12px; /* Red line badges ke beech exact 12px distance */
+            gap: 14px; /* Red line badges ke beech exact 14px distance */
             pointer-events: none;
             width: max-content;
         }
