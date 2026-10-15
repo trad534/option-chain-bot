@@ -158,28 +158,30 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
         for idx, r_dict in enumerate(raw_rows):
             row_idx = 8 + idx
-            if row_idx == 18: continue
             strike = float(r_dict['strike'])
             ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
             ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
             peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
             peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
 
+        # 🎯 STRICT ABSOLUTE 1st & 2nd HIGHEST LOGIC FIX
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered = [item for item in data_array if item['val'] > 0]
             if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             
-            filtered.sort(key=lambda x: x['val'], reverse=True)
-            highest = filtered[0]
+            # Absolute Numeric Sort Descending
+            sorted_items = sorted(filtered, key=lambda x: x['val'], reverse=True)
+            highest = sorted_items[0]
             
+            # Find exact 2nd highest distinct strike
             second = {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
-            for item in filtered:
+            for item in sorted_items:
                 if item['strike'] != highest['strike']:
                     second = item
                     break
-            if second['val'] == 0 and len(filtered) > 1:
-                second = filtered[1]
+            if second['val'] == 0 and len(sorted_items) > 1:
+                second = sorted_items[1]
 
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
             return {'highest': highest, 'second': second, 'pct': pct}
@@ -379,23 +381,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["D5_TEXT"] = finalD5; vault["H5_TEXT"] = finalH5; vault["U5_TEXT"] = finalU5; vault["Q5_TEXT"] = finalQ5
         vault["K3_TEXT"] = k3Text; vault["lot_size"] = lot_size; vault["spot_price"] = spot_price
 
-        def get_top_two_strikes(arr):
-            valid = [x for x in arr if x['val'] > 0]
-            valid.sort(key=lambda x: x['val'], reverse=True)
-            t1 = valid[0]['strike'] if len(valid) > 0 else 0
-            t2 = 0
-            for x in valid:
-                if x['strike'] != t1:
-                    t2 = x['strike']
-                    break
-            if t2 == 0 and len(valid) > 1:
-                t2 = valid[1]['strike']
-            return t1, t2
-
-        c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
-        c_vol_1, c_vol_2 = get_top_two_strikes(ceVolArray)
-        p_vol_1, p_vol_2 = get_top_two_strikes(peVolArray)
-        p_oi_1, p_oi_2 = get_top_two_strikes(peOiArray)
+        # 🎯 HIGHLIGHTING STRIKE FIX (2ND HIGHEST STRICT MATCH)
+        c_oi_1 = ceOiTop['highest']['strike']
+        c_oi_2 = ceOiTop['second']['strike']
+        
+        c_vol_1 = ceVolTop['highest']['strike']
+        c_vol_2 = ceVolTop['second']['strike']
+        
+        p_vol_1 = peVolTop['highest']['strike']
+        p_vol_2 = peVolTop['second']['strike']
+        
+        p_oi_1 = peOiTop['highest']['strike']
+        p_oi_2 = peOiTop['second']['strike']
 
         max_ce_oi = ceOiTop['highest']['val'] or 1
         max_ce_vol = ceVolTop['highest']['val'] or 1
