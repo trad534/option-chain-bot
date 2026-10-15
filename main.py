@@ -169,9 +169,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered = [item for item in data_array if item['val'] > 0]
             if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            
+            # Sort descending by value to get 1st highest
             filtered.sort(key=lambda x: x['val'], reverse=True)
             highest = filtered[0]
-            second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
+            
+            # Find strict distinct 2nd highest (ignoring duplicate strikes if any)
+            second = {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
+            for item in filtered:
+                if item['strike'] != highest['strike']:
+                    second = item
+                    break
+            if second['val'] == 0 and len(filtered) > 1:
+                second = filtered[1]
+
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
             return {'highest': highest, 'second': second, 'pct': pct}
 
@@ -262,47 +273,47 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 lastTarget = float(get_memory("SHIFT_TARGET_" + cacheKey, 0))
                 if strike == shiftFrom or (lastTarget > 0 and secondStrike != lastTarget):
                     set_memory("IS_SHIFTED_" + cacheKey, "false")
-                    set_memory("PREV_STRK_" + cacheKey, str(strike))
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
                     script_memory.pop(f"{active_symbol_name}_SHIFT_TARGET_" + cacheKey, None)
 
             if strike != prevStrike and prevStrike > 0 and finalStatusText in ["wtb", "wtt"]:
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
-                set_memory("IS_SHIFTED_" + cacheKey, "true")
-                set_memory("SHIFT_TYPE_" + cacheKey, shiftType)
-                set_memory("SHIFT_FROM_" + cacheKey, str(prevStrike))
-                set_memory("SHIFT_TARGET_" + cacheKey, str(secondStrike))
+                set_memory("IS_SHIFTED_" + cache_key, "true")
+                set_memory("SHIFT_TYPE_" + cache_key, shiftType)
+                set_memory("SHIFT_FROM_" + cache_key, str(prevStrike))
+                set_memory("SHIFT_TARGET_" + cache_key, str(secondStrike))
 
-            if get_memory("IS_SHIFTED_" + cacheKey) == "true":
+            if get_memory("IS_SHIFTED_" + cache_key) == "true":
                 if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
-                    set_memory("IS_SHIFTED_" + cacheKey, "false")
-                    set_memory("PREV_STRK_" + cacheKey, str(strike))
+                    set_memory("IS_SHIFTED_" + cache_key, "false")
+                    set_memory("PREV_STRK_" + cache_key, str(strike))
                     scenarioStatus = finalStatusText
                 else:
                     isShifting = True
-                    shiftType = get_memory("SHIFT_TYPE_" + cacheKey)
+                    shiftType = get_memory("SHIFT_TYPE_" + cache_key)
                     scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
             else:
-                set_memory("PREV_STRK_" + cacheKey, str(strike))
+                set_memory("PREV_STRK_" + cache_key, str(strike))
                 scenarioStatus = finalStatusText
 
             if not isWinner and rawState != "STRONG":
                 displayStatus = "stable strong"; scenarioStatus = "stable strong"
 
-            displayTime = get_memory("TIME_" + cacheKey)
-            lastStatus = get_memory("LAST_STATUS_" + cacheKey, "")
+            displayTime = get_memory("TIME_" + cache_key)
+            lastStatus = get_memory("LAST_STATUS_" + cache_key, "")
             isTrigger = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
 
             if isTrigger and displayStatus != lastStatus:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cacheKey, displayTime)
-                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
+                set_memory("TIME_" + cache_key, displayTime)
+                set_memory("LAST_STATUS_" + cache_key, displayStatus)
             elif not displayTime:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cacheKey, displayTime)
-                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
+                set_memory("TIME_" + cache_key, displayTime)
+                set_memory("LAST_STATUS_" + cache_key, displayStatus)
 
             if isShifting:
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cacheKey)})"
+                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {get_memory('SHIFT_TYPE_' + cache_key)})"
             else:
                 if displayStatus == "stable strong":
                     outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
@@ -374,7 +385,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             valid = [x for x in arr if x['val'] > 0]
             valid.sort(key=lambda x: x['val'], reverse=True)
             t1 = valid[0]['strike'] if len(valid) > 0 else 0
-            t2 = valid[1]['strike'] if len(valid) > 1 else 0
+            t2 = 0
+            for x in valid:
+                if x['strike'] != t1:
+                    t2 = x['strike']
+                    break
+            if t2 == 0 and len(valid) > 1:
+                t2 = valid[1]['strike']
             return t1, t2
 
         c_oi_1, c_oi_2 = get_top_two_strikes(ceOiArray)
@@ -387,7 +404,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
-        # MROUND / FLOOR logic matching Excel `=MROUND(spot, step)`
         step_size = 50 if active_symbol_name == "NIFTY" else (100 if "BANK" in active_symbol_name else 50)
         imaginary_spot = round(spot_price / step_size) * step_size
 
@@ -467,7 +483,6 @@ def fetch_and_update_option_chain(smart_api):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                # 100% Guaranteed Direct Index Token Spot Price Fetch
                 spot_price = 0.0
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
