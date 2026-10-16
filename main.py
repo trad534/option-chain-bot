@@ -214,13 +214,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -336,7 +336,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -376,20 +376,32 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         finalQ5 = "<div>-----</div>"
         finalU5 = "<div>-----</div>"
 
-        if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
-        elif ceWinner == "VOL": finalH5 = ceVolResult['text']
-        elif ceWinner == "OI": finalD5 = ceOiResult['text']
+        if ceWinner == "BOTH": 
+            finalD5 = ceOiResult['text']
+            finalH5 = ceVolResult['text']
+        elif ceWinner == "VOL": 
+            finalD5 = "<div>-----</div>"
+            finalH5 = ceVolResult['text']
+        elif ceWinner == "OI": 
+            finalD5 = ceOiResult['text']
+            finalH5 = "<div>-----</div>"
 
-        if peWinner == "BOTH": finalU5 = peOiResult['text']; finalQ5 = peVolResult['text']
-        elif peWinner == "VOL": finalQ5 = peVolResult['text']
-        elif peWinner == "OI": finalU5 = peOiResult['text']
+        if peWinner == "BOTH": 
+            finalU5 = peOiResult['text']
+            finalQ5 = peVolResult['text']
+        elif peWinner == "VOL": 
+            finalU5 = "<div>-----</div>"
+            finalQ5 = peVolResult['text']
+        elif peWinner == "OI": 
+            finalU5 = peOiResult['text']
+            finalQ5 = "<div>-----</div>"
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
         vault["D5_TEXT"] = finalD5
         vault["H5_TEXT"] = finalH5
         vault["U5_TEXT"] = finalU5
-        vault["Q5_TEXT"] = finalU5
+        vault["Q5_TEXT"] = finalQ5
         vault["K3_TEXT"] = k3Text
         vault["lot_size"] = lot_size
         vault["spot_price"] = spot_price
@@ -956,15 +968,12 @@ def run_bot_lock_loop():
                     last_session_date = today_date_str
                     initialize_scrip_master(smart_api)
             
-            # 🎯 PRIORITY 1: Always update the currently viewed symbol first so user gets instant 1-sec speed!
             active_sym = current_active_symbol_ui
             if active_sym:
                 fetch_symbol_data(smart_api, active_sym)
 
-            # 🎯 PRIORITY 2: Background rotation for other major indices and active F&O symbols to maintain continuous morning-to-evening history state!
             all_syms = list(options_cache.keys())
             priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
-            # Rotate through active symbols so their history is never lost when switched
             for sym in priority_list:
                 if sym in all_syms and sym != active_sym:
                     fetch_symbol_data(smart_api, sym)
