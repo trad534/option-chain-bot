@@ -229,7 +229,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -702,8 +702,8 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* Container for Red Line Badges with Exact 16px Gap (No Inner Border/Line) */
-        .spot-badges-wrapper {
+        /* Container for Red Line Badges inside Specific Cell (No Overlap Outside Column) */
+        .spot-cell-badge-wrapper {
             position: absolute;
             left: 50%;
             top: 50%;
@@ -712,17 +712,16 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 16px;
             pointer-events: none;
-            width: max-content;
+            width: 100%;
         }
 
-        /* Pill Badge Styling (Clean seamless look) */
+        /* Pill Badge Styling (Strictly inside column bounds) */
         .state-badge-pill {
             background: #ffffff;
             border: 1.8px solid #333333;
             border-radius: 12px;
-            padding: 1px 8px;
+            padding: 1px 6px;
             display: inline-flex;
             align-items: center;
             gap: 4px;
@@ -791,7 +790,6 @@ HTML_TEMPLATE = """
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
                 
-                // Indices first, then F&O stocks
                 let priorityIndices = ["NIFTY", "BANKNIFTY", "FINNIFTY"];
                 let sortedSymbols = meta.symbols.sort((a, b) => {
                     let aIdx = priorityIndices.indexOf(a);
@@ -832,7 +830,7 @@ HTML_TEMPLATE = """
             if (!badgeObj || !badgeObj.show_badge) return "";
             let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
             let pctColor = badgeObj.state === 'WTB' ? '#c62828' : '#2e7d32';
-            return `<div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div>`;
+            return `<div class="spot-cell-badge-wrapper"><div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div></div>`;
         }
 
         function fetchData() {
@@ -849,11 +847,11 @@ HTML_TEMPLATE = """
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
                 if(k3TextLower.includes("bull")) {
-                    k3Div.style.color = "#0000FF"; // Blue for Bullish
+                    k3Div.style.color = "#0000FF";
                 } else if(k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) {
-                    k3Div.style.color = "#FF0000"; // Red for Bearish/Bloodbath
+                    k3Div.style.color = "#FF0000";
                 } else {
-                    k3Div.style.color = "#000000"; // Black for Neutral
+                    k3Div.style.color = "#000000";
                 }
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
@@ -864,22 +862,12 @@ HTML_TEMPLATE = """
                             tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
                             
-                            let ceBadges = [];
                             let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
                             let ceVolHtml = createSinglePillBadgeHtml(row.ce_vol_badge);
-                            if(ceOiHtml) ceBadges.push(ceOiHtml);
-                            if(ceVolHtml) ceBadges.push(ceVolHtml);
-
-                            let peBadges = [];
                             let peVolHtml = createSinglePillBadgeHtml(row.pe_vol_badge);
                             let peOiHtml = createSinglePillBadgeHtml(row.pe_oi_badge);
-                            if(peVolHtml) peBadges.push(peVolHtml);
-                            if(peOiHtml) peBadges.push(peOiHtml);
 
-                            let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
-                            let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
-
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td style="position:relative;">${ceOiHtml}</td><td style="position:relative;">${ceVolHtml}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td style="position:relative;">${peVolHtml}</td><td style="position:relative;">${peOiHtml}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
