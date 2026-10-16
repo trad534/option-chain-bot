@@ -659,10 +659,10 @@ HTML_TEMPLATE = """
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* 📏 OI aur Volume Columns ki Width Bada di gayi hai */
+        /* 📏 OI aur Volume Columns ki Width Compact (82px) ki gayi hai */
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col {
-            min-width: 105px !important;
-            width: 105px !important;
+            min-width: 82px !important;
+            width: 82px !important;
         }
 
         /* Red Imaginary Spot Line */
@@ -708,7 +708,7 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* 📍 Pahle Jaisa Exact Original Badge Wrapper (Red Line par Center Centered Overlay) */
+        /* 📍 Red Line Overlay Badges Wrapper */
         .spot-badges-wrapper {
             position: absolute;
             left: 50%;
@@ -718,22 +718,22 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 2px;
             pointer-events: none;
             width: max-content;
         }
 
-        /* Pill Badge Styling (Exact Original Style) */
+        /* Pill Badge Styling (Compact & Clean) */
         .state-badge-pill {
             background: #ffffff;
-            border: 1.8px solid #333333;
-            border-radius: 12px;
-            padding: 1px 8px;
+            border: 1.5px solid #333333;
+            border-radius: 10px;
+            padding: 0px 5px;
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            font-size: 10px;
+            gap: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            font-size: 9.5px;
             white-space: nowrap;
         }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
