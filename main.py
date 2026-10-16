@@ -483,13 +483,12 @@ def fetch_and_update_option_chain(smart_api):
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
             if not valid_opts.empty:
+                # Sort unique expiries by actual datetime sequence
                 unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
                 expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
                 
-                # Check user selected expiry from UI, else fallback to nearest
                 target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
                 
-                # Verify selected expiry exists
                 matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
                 if matched_exp:
                     current_expiry_dt = matched_exp[0]
@@ -633,8 +632,15 @@ def initialize_scrip_master(smart_api):
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 options_cache[name.strip()] = group
-                valid_exp = sorted(group[group['parsed_expiry'] >= today_dt]['expiry'].unique())
-                symbol_expiries_cache[name.strip()] = [str(exp).upper() for exp in valid_exp]
+                # Correctly sort dates in ascending chronological sequence
+                valid_group = group[group['parsed_expiry'] >= today_dt].copy()
+                valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
+                unique_expiries = []
+                for exp_dt in valid_group_sorted['parsed_expiry'].unique():
+                    formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
+                    if formatted_exp not in unique_expiries:
+                        unique_expiries.append(formatted_exp)
+                symbol_expiries_cache[name.strip()] = unique_expiries
             print(f"✅ Scrip Master Loaded for {len(options_cache)} Symbols!")
     except Exception as e: print(f"⚠ Scrip Master Error: {e}")
 
@@ -855,14 +861,6 @@ HTML_TEMPLATE = """
                 document.getElementById("q5Val").innerHTML = data.Q5;
                 document.getElementById("u5Val").innerHTML = data.U5;
                 
-                // Sync Expiry Dropdown Cell Value Automatically
-                if (data.active_expiry) {
-                    let expSelect = document.getElementById("expirySelect");
-                    if (expSelect.value !== data.active_expiry) {
-                        expSelect.value = data.active_expiry;
-                    }
-                }
-
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
