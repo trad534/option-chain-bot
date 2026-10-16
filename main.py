@@ -184,13 +184,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -211,7 +211,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -240,9 +240,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
         if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
 
+        # 🎯 FORMATTING ENGINE MATCHING 2ND PHOTO EXACTLY
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
-                return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
+                return {'text': "<div>-----</div>", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
             strike = topObj['highest']['strike']
             secondStrike = strike
@@ -310,22 +311,31 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
+            # Format HTML to display 2nd photo design without parentheses
             if isShifting:
-                outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n   (shifted {shiftType})"
+                line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                line2 = f"shifted {shiftType}"
+                outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
             else:
                 if displayStatus == "stable strong":
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n    (stable strong)"
+                    line1 = f"{displayTime}-{sideLabel}-{strike}"
+                    line2 = "stable strong"
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
                 elif "to strong" in displayStatus:
-                    outputText = f"({displayTime} - {sideLabel} - {strike})\n   ({displayStatus})"
+                    line1 = f"{displayTime}-{sideLabel}-{strike}"
+                    line2 = displayStatus
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    outputText = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})\n({weakDir})"
+                    line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                    line2 = weakDir
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
         ceOiResult  = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner == "OI" or ceWinner == "BOTH", ceOiRawState, ceOiStatusText)
-        ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner == "VOL" or ceWinner == "BOTH", ceVolRawState, ceVolStatusText)
-        peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos VOL", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText)
+        ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor vol", ceWinner == "VOL" or ceWinner == "BOTH", ceVolRawState, ceVolStatusText)
+        peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos vol", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText)
         peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
@@ -364,10 +374,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
 
-        finalD5 = "(-----)"
-        finalH5 = "(-----)"
-        finalQ5 = "(-----)"
-        finalU5 = "(-----)"
+        finalD5 = "<div>-----</div>"
+        finalH5 = "<div>-----</div>"
+        finalQ5 = "<div>-----</div>"
+        finalU5 = "<div>-----</div>"
 
         if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
         elif ceWinner == "VOL": finalH5 = ceVolResult['text']
@@ -630,11 +640,24 @@ HTML_TEMPLATE = """
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); white-space: pre-line; }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
+        .yellow-pill-badge { 
+            background: #ffd43b; 
+            color: #000000; 
+            font-size: 11px; 
+            font-weight: 700; 
+            padding: 2px 10px; 
+            border-radius: 12px; 
+            border: 1px solid #fab005; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08); 
+            display: inline-block; 
+            margin-top: 4px; 
+        }
+
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
@@ -825,10 +848,12 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                document.getElementById("d5Val").innerText = data.D5;
-                document.getElementById("h5Val").innerText = data.H5;
-                document.getElementById("q5Val").innerText = data.Q5;
-                document.getElementById("u5Val").innerText = data.U5;
+                
+                // Set innerHTML to properly render yellow pill badge
+                document.getElementById("d5Val").innerHTML = data.D5;
+                document.getElementById("h5Val").innerHTML = data.H5;
+                document.getElementById("q5Val").innerHTML = data.Q5;
+                document.getElementById("u5Val").innerHTML = data.U5;
                 
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
@@ -902,10 +927,10 @@ def get_symbol_runtime_data(symbol):
     vault = multi_symbol_runtime_states.get(sym, {})
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
-        "D5": vault.get("D5_TEXT", "(-----)"),
-        "H5": vault.get("H5_TEXT", "(-----)"),
-        "Q5": vault.get("Q5_TEXT", "(-----)"),
-        "U5": vault.get("U5_TEXT", "(-----)"),
+        "D5": vault.get("D5_TEXT", "<div>-----</div>"),
+        "H5": vault.get("H5_TEXT", "<div>-----</div>"),
+        "Q5": vault.get("Q5_TEXT", "<div>-----</div>"),
+        "U5": vault.get("U5_TEXT", "<div>-----</div>"),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
         "spot_price": vault.get("spot_price", 0)
