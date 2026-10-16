@@ -107,14 +107,36 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         current_active_symbol_for_memory = active_symbol_name
         if not raw_rows: return
 
+        # Spot price / Imaginary line index calculation
+        strikes_list = [float(r['strike']) for r in raw_rows]
+        spot_idx = 0
+        if strikes_list:
+            spot_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price))
+
+        # Range Boundaries:
+        # CE Side: Imaginary line se 3 strike upar (spot_idx - 3) se lekar niche last strike price tak
+        ce_start_idx = max(0, spot_idx - 3)
+        ce_end_idx = len(raw_rows)
+
+        # PE Side: Imaginary line se 3 strike neeche (spot_idx + 3) se lekar upar last strike price (0) tak
+        pe_start_idx = 0
+        pe_end_idx = min(len(raw_rows), spot_idx + 4)
+
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        
         for idx, r_dict in enumerate(raw_rows):
             row_idx = 8 + idx
             strike = float(r_dict['strike'])
-            ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
-            ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
-            peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
-            peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
+            
+            # CE side filtering: spot_idx - 3 se last tak
+            if ce_start_idx <= idx < ce_end_idx:
+                ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
+                ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
+                
+            # PE side filtering: 0 se spot_idx + 3 tak
+            if pe_start_idx <= idx < pe_end_idx:
+                peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
+                peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -180,7 +202,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -355,12 +377,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         grid_rows_built = []
         spot_inserted = False
         
-        strikes_list = [r['strike'] for r in raw_rows]
-        spot_insert_idx = 0
-        if strikes_list:
-            spot_insert_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price))
-            if spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
-                spot_insert_idx += 1
+        spot_insert_idx = spot_idx
+        if strikes_list and spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
+            spot_insert_idx += 1
 
         def build_badge_payload(top_obj, raw_state):
             if not top_obj or top_obj['highest']['strike'] == 0: return {}
