@@ -92,8 +92,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-(d1 - sigma * np.sqrt(t)))) / 365
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
-def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry=""):
-    global global_run_date, multi_symbol_runtime_states, current_active_symbol_for_memory, current_active_symbol_ui
+def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
+    global global_run_date, multi_symbol_runtime_states, current_active_symbol_for_memory
     try:
         now_dt = datetime.now()
         today_str = now_dt.strftime("%Y-%m-%d")
@@ -103,8 +103,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             script_memory.clear()
             global_run_date = today_str
 
-        active_symbol_name = current_active_symbol_ui
-        current_active_symbol_for_memory = active_symbol_name
+        current_active_symbol_for_memory = symbol_name
         if not raw_rows: return
 
         strikes_list = [float(r['strike']) for r in raw_rows]
@@ -184,7 +183,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -192,9 +191,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -211,7 +210,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -240,7 +239,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
         if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
 
-        # 🎯 FORMATTING ENGINE MATCHING 2ND PHOTO EXACTLY
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
                 return {'text': "<div>-----</div>", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
@@ -266,7 +264,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
                     set_memory("IS_SHIFTED_" + cacheKey, "false")
                     set_memory("PREV_STRK_" + cacheKey, str(strike))
-                    script_memory.pop(f"{active_symbol_name}_SHIFT_TARGET_" + cacheKey, None)
+                    script_memory.pop(f"{symbol_name}_SHIFT_TARGET_" + cacheKey, None)
 
             if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"):
                 if strike < prevStrike:
@@ -311,7 +309,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_memory("TIME_" + cacheKey, displayTime)
                 set_memory("LAST_STATUS_" + cacheKey, displayStatus)
 
-            # Format HTML to display 2nd photo design without parentheses
             if isShifting:
                 line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
                 line2 = f"shifted {shiftType}"
@@ -347,32 +344,32 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkCe = finalCeState
         checkPe = finalPeState
 
-        k3Text = f"{active_symbol_name} is Neutral"
-        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{active_symbol_name} is 8th scenario both side Risky"
-        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{active_symbol_name} is 9th scenario both side Risky"
-        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is Neutral"
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly bullish"
-        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish"
-        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun"
-        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{active_symbol_name} is bloodbath"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{active_symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{active_symbol_name} is confirm bloodbath"
+        k3Text = f"{symbol_name} is Neutral"
+        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
 
         finalD5 = "<div>-----</div>"
         finalH5 = "<div>-----</div>"
@@ -387,12 +384,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peWinner == "VOL": finalQ5 = peVolResult['text']
         elif peWinner == "OI": finalU5 = peOiResult['text']
 
-        if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
-        vault = multi_symbol_runtime_states[active_symbol_name]
+        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
+        vault = multi_symbol_runtime_states[symbol_name]
         vault["D5_TEXT"] = finalD5
         vault["H5_TEXT"] = finalH5
         vault["U5_TEXT"] = finalU5
-        vault["Q5_TEXT"] = finalQ5
+        vault["Q5_TEXT"] = finalU5
         vault["K3_TEXT"] = k3Text
         vault["lot_size"] = lot_size
         vault["spot_price"] = spot_price
@@ -462,17 +459,15 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["grid_rows"] = grid_rows_built
         vault["spot_price"] = round(spot_price, 2)
     except Exception as err:
-        print(f"❌ Scenario Tracker Error: {err}")
+        print(f"❌ Scenario Tracker Error for {symbol_name}: {err}")
 
-def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries, current_active_symbol_ui
+def fetch_symbol_data(smart_api, clean_active_symbol):
+    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
         if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
-        if not options_cache: initialize_scrip_master(smart_api); return
-
-        clean_active_symbol = current_active_symbol_ui.replace("-EQ", "").replace(".NS", "").strip()
+        if not options_cache: return
 
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
@@ -593,8 +588,8 @@ def fetch_and_update_option_chain(smart_api):
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
 
-                execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry)
-    except Exception as ex: print(f"❌ Fetch Error: {str(ex)}")
+                execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+    except Exception as ex: print(f"❌ Fetch Error for {clean_active_symbol}: {str(ex)}")
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
@@ -849,7 +844,6 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                // Set innerHTML to properly render yellow pill badge
                 document.getElementById("d5Val").innerHTML = data.D5;
                 document.getElementById("h5Val").innerHTML = data.H5;
                 document.getElementById("q5Val").innerHTML = data.Q5;
@@ -937,8 +931,8 @@ def get_symbol_runtime_data(symbol):
     })
 
 def run_bot_lock_loop():
-    global last_session_date
-    print("🚀 Starting Engine...")
+    global last_session_date, current_active_symbol_ui, options_cache
+    print("🚀 Starting Multi-Symbol Background Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -962,7 +956,20 @@ def run_bot_lock_loop():
                     last_session_date = today_date_str
                     initialize_scrip_master(smart_api)
             
-            fetch_and_update_option_chain(smart_api)
+            # 🎯 PRIORITY 1: Always update the currently viewed symbol first so user gets instant 1-sec speed!
+            active_sym = current_active_symbol_ui
+            if active_sym:
+                fetch_symbol_data(smart_api, active_sym)
+
+            # 🎯 PRIORITY 2: Background rotation for other major indices and active F&O symbols to maintain continuous morning-to-evening history state!
+            all_syms = list(options_cache.keys())
+            priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+            # Rotate through active symbols so their history is never lost when switched
+            for sym in priority_list:
+                if sym in all_syms and sym != active_sym:
+                    fetch_symbol_data(smart_api, sym)
+                    time.sleep(0.5)
+
         except Exception as err:
             print(f"⚠ Loop Error: {err}")
         time.sleep(1)
