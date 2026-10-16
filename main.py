@@ -13,13 +13,13 @@ from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
 
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://onrender.com")
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 def self_ping():
     while True:
         try:
             if RENDER_URL:
-                requests.get(RENDER_URL)
+                requests.get(RENDER_URL, timeout=5)
         except Exception:
             pass
         time.sleep(180)
@@ -51,7 +51,6 @@ persistent_quotes_cache = {}
 multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
 options_cache = {}
-eq_cache = {}
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
@@ -119,12 +118,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if not strike: continue
 
             if idx >= (spot_idx - 3) and idx < len(raw_rows):
-                ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
-                ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
+                ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
+                ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
             if idx <= (spot_idx + 3):
-                peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
-                peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
+                peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
+                peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -183,7 +182,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -216,7 +215,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -394,7 +393,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             finalQ5 = peVolResult['text']
         elif peWinner == "OI": 
             finalU5 = peOiResult['text']
-            finalQ5 = "<div>-----</div>"
+            finalH5 = "<div>-----</div>"
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
@@ -446,10 +445,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             st = r_dict['strike']
             r_copy = r_dict.copy()
-            r_copy['ce_oi_pct'] = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
-            r_copy['ce_vol_pct'] = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
-            r_copy['pe_vol_pct'] = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
-            r_copy['pe_oi_pct'] = round((r_dict['pe_oi'] / max_pe_oi) * 100, 2)
+            r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2)
+            r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2)
+            r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2)
+            r_copy['pe_oi_pct'] = round((r_dict.get('pe_oi', 0) / max_pe_oi) * 100, 2)
 
             r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '')
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
@@ -470,8 +469,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         vault["grid_rows"] = grid_rows_built
         vault["spot_price"] = round(spot_price, 2)
-    except Exception as err:
-        print(f"❌ Scenario Tracker Error for {symbol_name}: {err}")
+    except Exception:
+        pass
 
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
@@ -525,8 +524,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             if eq_quote and eq_quote.get('status') and eq_quote.get('data') and eq_quote['data'].get('fetched'):
                                 s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
-                    except Exception as e:
-                        print(f"⚠ Equity Spot Fetch Error: {e}")
+                    except Exception: pass
 
                 if spot_price <= 0:
                     try:
@@ -537,8 +535,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
                                 s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
-                    except Exception as e:
-                        print(f"⚠ Future Spot Fetch Error: {e}")
+                    except Exception: pass
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -566,13 +563,19 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
                     tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-                    ltp = float(item.get('ltp', 0)); volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0)); change = float(item.get('netChange', 0))
-                    if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
+                    ltp = float(item.get('ltp', 0))
+                    volume = float(item.get('tradeVolume', item.get('volume', 0)))
+                    oi = float(item.get('opnInterest', item.get('oi', 0)))
+                    change = float(item.get('netChange', item.get('change', 0)))
+                    oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
+                    if ltp > 0 or oi > 0: 
+                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change, 'oi_chg': oi_chg}
 
                 for tok, q_data in persistent_quotes_cache.items():
                     if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
                     base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']}
+                    calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
+                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
                 t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
@@ -601,7 +604,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                     })
 
                 execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-    except Exception as ex: print(f"❌ Fetch Error for {clean_active_symbol}: {str(ex)}")
+    except Exception: pass
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
@@ -944,23 +947,22 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache
-    print("🚀 Starting Multi-Symbol Background Engine...")
+    print("🚀 Starting Optimized Multi-Symbol Background Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
+    symbol_index = 0
     while True:
         try:
             now_dt = datetime.now()
             today_date_str = now_dt.strftime("%Y-%m-%d")
             
             if last_session_date != today_date_str and now_dt.hour >= 9:
-                print(f"🔄 Daily Session Refresh for {today_date_str}...")
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
                     initialize_scrip_master(smart_api)
-                    print("✅ Daily Session Renewed Successfully!")
             
             if not options_cache:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
@@ -968,20 +970,24 @@ def run_bot_lock_loop():
                     last_session_date = today_date_str
                     initialize_scrip_master(smart_api)
             
+            # Priority Fetch: Always fetch current active symbol UI
             active_sym = current_active_symbol_ui
             if active_sym:
                 fetch_symbol_data(smart_api, active_sym)
 
+            # Round-robin background update for all other symbols (one per loop)
             all_syms = list(options_cache.keys())
-            priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
-            for sym in priority_list:
-                if sym in all_syms and sym != active_sym:
-                    fetch_symbol_data(smart_api, sym)
-                    time.sleep(0.5)
+            if all_syms:
+                if symbol_index >= len(all_syms):
+                    symbol_index = 0
+                bg_sym = all_syms[symbol_index]
+                symbol_index += 1
+                if bg_sym != active_sym:
+                    fetch_symbol_data(smart_api, bg_sym)
 
-        except Exception as err:
-            print(f"⚠ Loop Error: {err}")
-        time.sleep(1)
+        except Exception:
+            pass
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
