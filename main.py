@@ -119,12 +119,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if not strike: continue
 
             if idx >= (spot_idx - 3) and idx < len(raw_rows):
-                ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
-                ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
+                ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
+                ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
 
             if idx <= (spot_idx + 3):
-                peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
-                peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
+                peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
+                peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -446,10 +446,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             st = r_dict['strike']
             r_copy = r_dict.copy()
-            r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2)
-            r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2)
-            r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2)
-            r_copy['pe_oi_pct'] = round((r_dict.get('pe_oi', 0) / max_pe_oi) * 100, 2)
+            r_copy['ce_oi_pct'] = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
+            r_copy['ce_vol_pct'] = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
+            r_copy['pe_vol_pct'] = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
+            r_copy['pe_oi_pct'] = round((r_dict['pe_oi'] / max_pe_oi) * 100, 2)
 
             r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '')
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
@@ -566,19 +566,13 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
                     tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-                    ltp = float(item.get('ltp', 0))
-                    volume = float(item.get('tradeVolume', item.get('volume', 0)))
-                    oi = float(item.get('opnInterest', item.get('oi', 0)))
-                    change = float(item.get('netChange', item.get('change', 0)))
-                    oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
-                    if ltp > 0 or oi > 0: 
-                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change, 'oi_chg': oi_chg}
+                    ltp = float(item.get('ltp', 0)); volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0)); change = float(item.get('netChange', 0))
+                    if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
 
                 for tok, q_data in persistent_quotes_cache.items():
                     if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
                     base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                    calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
-                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
+                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']}
 
                 t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
@@ -950,7 +944,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache
-    print("🚀 Starting High-Performance Multi-Symbol Background Engine...")
+    print("🚀 Starting Multi-Symbol Background Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -979,10 +973,11 @@ def run_bot_lock_loop():
                 fetch_symbol_data(smart_api, active_sym)
 
             all_syms = list(options_cache.keys())
-            for sym in all_syms:
-                if sym != active_sym:
+            priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+            for sym in priority_list:
+                if sym in all_syms and sym != active_sym:
                     fetch_symbol_data(smart_api, sym)
-                    time.sleep(0.2)
+                    time.sleep(0.5)
 
         except Exception as err:
             print(f"⚠ Loop Error: {err}")
