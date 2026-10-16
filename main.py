@@ -73,6 +73,7 @@ morning_oi_dict = {}
 baseline_date = None
 current_active_symbol_for_memory = "NIFTY"
 last_session_date = None
+user_selected_expiries = {}  # Dynamic tracking per symbol
 
 def get_memory(key, default=""):
     global current_active_symbol_for_memory
@@ -385,7 +386,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if active_symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[active_symbol_name] = {}
         vault = multi_symbol_runtime_states[active_symbol_name]
         vault["D5_TEXT"] = finalD5; vault["H5_TEXT"] = finalH5; vault["U5_TEXT"] = finalU5; vault["Q5_TEXT"] = finalQ5
-        vault["K3_TEXT"] = k3Text; vault["lot_size"] = lot_size; vault["spot_price"] = spot_price
+        vault["K3_TEXT"] = k3Text; vault["lot_size"] = lot_size; vault["spot_price"] = spot_price; vault["active_expiry"] = active_expiry
 
         c_oi_1 = ceOiTop['highest']['strike']
         c_oi_2 = ceOiTop['second']['strike']
@@ -463,7 +464,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         print(f"❌ Scenario Tracker Error: {err}")
 
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache
+    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -484,16 +485,23 @@ def fetch_and_update_option_chain(smart_api):
             if not valid_opts.empty:
                 unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
                 expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
-                active_expiries = expiry_strings_sorted[:4]
-                while len(active_expiries) < 4: active_expiries.append(active_expiries[-1] if active_expiries else "N/A")
+                
+                # Check user selected expiry from UI, else fallback to nearest
+                target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
+                
+                # Verify selected expiry exists
+                matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
+                if matched_exp:
+                    current_expiry_dt = matched_exp[0]
+                    current_expiry = target_expiry_str
+                else:
+                    current_expiry_dt = unique_expiries_dt[0]
+                    current_expiry = expiry_strings_sorted[0]
 
-                current_expiry = active_expiries[0]
-                current_expiry_dt = unique_expiries_dt[0]
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-                
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
@@ -659,13 +667,11 @@ HTML_TEMPLATE = """
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* OI aur Volume Columns Width Exact 87px */
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col {
             min-width: 87px !important;
             width: 87px !important;
         }
 
-        /* Red Imaginary Spot Line */
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
         .spot-row td::after { 
             content: ""; 
@@ -679,7 +685,6 @@ HTML_TEMPLATE = """
             transform: translateY(-50%);
         }
         
-        /* Center Spot Price Box */
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { 
             background: #ffffff !important; 
@@ -708,7 +713,6 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* Red Line Overlay Badges Wrapper */
         .spot-badges-wrapper {
             position: absolute;
             left: 50%;
@@ -723,7 +727,6 @@ HTML_TEMPLATE = """
             width: max-content;
         }
 
-        /* Pill Badge Styling (Optimized Font Size 11px) */
         .state-badge-pill {
             background: #ffffff;
             border: 1.8px solid #333333;
@@ -822,7 +825,8 @@ HTML_TEMPLATE = """
             let sym = document.getElementById("symbolSelect").value;
             let expSelect = document.getElementById("expirySelect");
             expSelect.innerHTML = "";
-            (allExpiriesData[sym] || []).forEach(exp => {
+            let list = allExpiriesData[sym] || [];
+            list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
             updateSelectedSymbolSheet();
@@ -851,6 +855,14 @@ HTML_TEMPLATE = """
                 document.getElementById("q5Val").innerHTML = data.Q5;
                 document.getElementById("u5Val").innerHTML = data.U5;
                 
+                // Sync Expiry Dropdown Cell Value Automatically
+                if (data.active_expiry) {
+                    let expSelect = document.getElementById("expirySelect");
+                    if (expSelect.value !== data.active_expiry) {
+                        expSelect.value = data.active_expiry;
+                    }
+                }
+
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
@@ -913,8 +925,12 @@ def get_initial_metadata():
 @app.route('/api/set-symbol/<symbol>', defaults={'expiry': None}, methods=['POST'])
 @app.route('/api/set-symbol/<symbol>/<expiry>', methods=['POST'])
 def set_symbol_api(symbol, expiry):
+    global user_selected_expiries
+    sym = symbol.upper()
     try:
-        if dashboard_sheet: dashboard_sheet.update_acell("J4", symbol.upper())
+        if dashboard_sheet: dashboard_sheet.update_acell("J4", sym)
+        if expiry:
+            user_selected_expiries[sym] = expiry.upper()
     except Exception: pass
     return jsonify({"status": "success"})
 
@@ -930,7 +946,8 @@ def get_symbol_runtime_data(symbol):
         "U5": vault.get("U5_TEXT", "---"),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
-        "spot_price": vault.get("spot_price", 0)
+        "spot_price": vault.get("spot_price", 0),
+        "active_expiry": vault.get("active_expiry", "")
     })
 
 def run_bot_lock_loop():
