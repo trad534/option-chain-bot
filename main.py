@@ -659,7 +659,7 @@ HTML_TEMPLATE = """
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* 📏 OI aur Volume Columns ki Width Compact (82px) ki gayi hai */
+        /* OI aur Volume Columns Width (82px) */
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col {
             min-width: 82px !important;
             width: 82px !important;
@@ -708,7 +708,7 @@ HTML_TEMPLATE = """
             display: block;
         }
 
-        /* 📍 Red Line Overlay Badges Wrapper */
+        /* Red Line Overlay Badges Wrapper */
         .spot-badges-wrapper {
             position: absolute;
             left: 50%;
@@ -723,17 +723,18 @@ HTML_TEMPLATE = """
             width: max-content;
         }
 
-        /* Pill Badge Styling (Compact & Clean) */
+        /* Pill Badge Styling (Text Thoda Bada Kiya Gaya Hai: 11px) */
         .state-badge-pill {
             background: #ffffff;
-            border: 1.5px solid #333333;
-            border-radius: 10px;
-            padding: 0px 5px;
+            border: 1.8px solid #333333;
+            border-radius: 12px;
+            padding: 2px 7px;
             display: inline-flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-            font-size: 9.5px;
+            font-size: 11px;
+            font-weight: 700;
             white-space: nowrap;
         }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
