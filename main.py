@@ -119,12 +119,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if not strike: continue
 
             if idx >= (spot_idx - 3) and idx < len(raw_rows):
-                ceOiArray.append({'strike': strike, 'val': float(r_dict['ce_oi']), 'row': row_idx})
-                ceVolArray.append({'strike': strike, 'val': float(r_dict['ce_vol']), 'row': row_idx})
+                ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
+                ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
             if idx <= (spot_idx + 3):
-                peVolArray.append({'strike': strike, 'val': float(r_dict['pe_vol']), 'row': row_idx})
-                peOiArray.append({'strike': strike, 'val': float(r_dict['pe_oi']), 'row': row_idx})
+                peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
+                peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
@@ -178,22 +178,22 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
         ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peOiStatusText
+        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -216,11 +216,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -446,10 +446,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             st = r_dict['strike']
             r_copy = r_dict.copy()
-            r_copy['ce_oi_pct'] = round((r_dict['ce_oi'] / max_ce_oi) * 100, 2)
-            r_copy['ce_vol_pct'] = round((r_dict['ce_vol'] / max_ce_vol) * 100, 2)
-            r_copy['pe_vol_pct'] = round((r_dict['pe_vol'] / max_pe_vol) * 100, 2)
-            r_copy['pe_oi_pct'] = round((r_dict['pe_oi'] / max_pe_oi) * 100, 2)
+            r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2)
+            r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2)
+            r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2)
+            r_copy['pe_oi_pct'] = round((r_dict.get('pe_oi', 0) / max_pe_oi) * 100, 2)
 
             r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '')
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
@@ -566,13 +566,19 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
                     tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-                    ltp = float(item.get('ltp', 0)); volume = float(item.get('tradeVolume', 0)); oi = float(item.get('opnInterest', 0)); change = float(item.get('netChange', 0))
-                    if ltp > 0 or oi > 0: persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change}
+                    ltp = float(item.get('ltp', 0))
+                    volume = float(item.get('tradeVolume', item.get('volume', 0)))
+                    oi = float(item.get('opnInterest', item.get('oi', 0)))
+                    change = float(item.get('netChange', item.get('change', 0)))
+                    oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
+                    if ltp > 0 or oi > 0: 
+                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change, 'oi_chg': oi_chg}
 
                 for tok, q_data in persistent_quotes_cache.items():
                     if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
                     base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': q_data['oi'] - base_oi, 'net_change': q_data['net_change']}
+                    calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
+                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
                 t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
