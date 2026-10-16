@@ -229,7 +229,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -659,10 +659,10 @@ HTML_TEMPLATE = """
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
         
-        /* OI aur Volume Columns Width (82px) */
+        /* 📏 OI aur Volume Columns Width Updated to 87px */
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col {
-            min-width: 82px !important;
-            width: 82px !important;
+            min-width: 87px !important;
+            width: 87px !important;
         }
 
         /* Red Imaginary Spot Line */
@@ -723,7 +723,7 @@ HTML_TEMPLATE = """
             width: max-content;
         }
 
-        /* Pill Badge Styling (Text Thoda Bada Kiya Gaya Hai: 11px) */
+        /* Pill Badge Styling (Optimized Font Size 11px) */
         .state-badge-pill {
             background: #ffffff;
             border: 1.8px solid #333333;
