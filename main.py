@@ -5,8 +5,6 @@ import requests
 import pandas as pd
 import numpy as np
 import pyotp
-import gspread
-import gspread.utils
 from scipy.stats import norm
 from scipy.optimize import brentq
 from datetime import datetime
@@ -47,22 +45,8 @@ PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
-GOOGLE_SHEET_NAME = "6 LTP CALCULATOR"
-MAIN_SHEET_NAME = "upstox get data"
-SYMBOL_SHEET_NAME = "Option chain index new"
-
-try:
-    gc = gspread.service_account(filename="Credentials.json") if os.path.exists("Credentials.json") else gspread.service_account_from_dict(json.loads(os.getenv("GOOGLE_CREDENTIALS", "{}")))
-    spreadsheet = gc.open(GOOGLE_SHEET_NAME)
-    data_sheet = spreadsheet.worksheet(MAIN_SHEET_NAME)
-    dashboard_sheet = spreadsheet.worksheet(SYMBOL_SHEET_NAME)
-    print("✅ SUCCESS: Google Sheet Connected Successfully!")
-except Exception as e:
-    print(f"❌ Google Sheet Connection Error: {e}")
-
 script_memory = {}
 global_run_date = ""
-last_written_values = {}
 persistent_quotes_cache = {}
 multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
@@ -72,8 +56,9 @@ full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
 current_active_symbol_for_memory = "NIFTY"
+current_active_symbol_ui = "NIFTY"
 last_session_date = None
-user_selected_expiries = {}  # Dynamic tracking per symbol
+user_selected_expiries = {}
 
 def get_memory(key, default=""):
     global current_active_symbol_for_memory
@@ -82,34 +67,6 @@ def get_memory(key, default=""):
 def set_memory(key, value):
     global current_active_symbol_for_memory
     script_memory[f"{current_active_symbol_for_memory}_{key}"] = str(value)
-
-def safe_update_cell(sheet, cell_name, new_value):
-    global last_written_values
-    if not sheet: return
-    cache_key = f"{sheet.title}_{cell_name}"
-    str_val = str(new_value)
-    if last_written_values.get(cache_key) != str_val:
-        try:
-            sheet.update_acell(cell_name, str_val)
-            last_written_values[cache_key] = str_val
-            time.sleep(0.1)
-        except Exception as e:
-            print(f"⚠ Cell Update Error: {e}")
-
-def update_k3_with_color(spreadsheet_obj, sheet, cell_name, text_value):
-    if not sheet or not spreadsheet_obj: return
-    try:
-        sheet.update_acell(cell_name, text_value)
-        text_lower = text_value.lower()
-        if "bull" in text_lower: color_dict = {"red": 0.0, "green": 0.0, "blue": 1.0}
-        elif "bear" in text_lower or "bloodbath" in text_lower: color_dict = {"red": 1.0, "green": 0.0, "blue": 0.0}
-        else: color_dict = {"red": 0.0, "green": 0.0, "blue": 0.0}
-
-        row, col = gspread.utils.a1_to_rowcol(cell_name)
-        body = {"requests": [{"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": row - 1, "endRowIndex": row, "startColumnIndex": col - 1, "endColumnIndex": col}, "cell": {"userEnteredFormat": {"textFormat": {"foregroundColor": color_dict}}}, "fields": "userEnteredFormat.textFormat.foregroundColor"}}]}
-        spreadsheet_obj.batch_update(body)
-    except Exception as e:
-        print(f"⚠ K3 Color Error: {e}")
 
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
@@ -136,7 +93,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry=""):
-    global global_run_date, multi_symbol_runtime_states, current_active_symbol_for_memory
+    global global_run_date, multi_symbol_runtime_states, current_active_symbol_for_memory, current_active_symbol_ui
     try:
         now_dt = datetime.now()
         today_str = now_dt.strftime("%Y-%m-%d")
@@ -146,14 +103,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             script_memory.clear()
             global_run_date = today_str
 
-        active_symbol_name = "NIFTY"
-        try:
-            if dashboard_sheet:
-                j4_val = str(dashboard_sheet.cell(4, 10).value).strip()
-                if j4_val and j4_val not in ["NONE", "NAN", "0", ""]:
-                    active_symbol_name = j4_val.replace("-EQ", "").replace(".NS", "").strip().upper()
-        except Exception: pass
-
+        active_symbol_name = current_active_symbol_ui
         current_active_symbol_for_memory = active_symbol_name
         if not raw_rows: return
 
@@ -230,7 +180,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']: ceWinner = "VOL"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']: ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
             if ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
@@ -365,14 +315,14 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif "wtb" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish (both side trade)"
         elif "wtb to strong" in checkPe and "stable strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bullish"
         elif "stable strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bullish"
-        elif "wtt to strong" in checkCe and "stable strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish"
+        elif "wtt to strong" in checkPe and "stable strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish"
         elif "stable strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is slightly Bearish"
-        elif "wtt to strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
-        elif "wtb to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
-        elif "wtb to strong" in checkCe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
-        elif "wtt to strong" in checkCe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm bloodbath"
-        elif "wtt to strong" in checkCe and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun High Momentum"
-        elif "wtb to strong" in checkCe and checkPe == "wtb": k3Text = f"{active_symbol_name} is Bloodbath High Momentum"
+        elif "wtt to strong" in checkPe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is 8th scenario both side Risky trade"
+        elif "wtb to strong" in checkPe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is 9th scenario both side Risky trade"
+        elif "wtb to strong" in checkPe and "wtb to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm Bull Run"
+        elif "wtt to strong" in checkPe and "wtt to strong" in checkPe: k3Text = f"{active_symbol_name} is confirm bloodbath"
+        elif "wtt to strong" in checkPe and checkPe == "wtt": k3Text = f"{active_symbol_name} is Bullrun High Momentum"
+        elif "wtb to strong" in checkPe and checkPe == "wtb": k3Text = f"{active_symbol_name} is Bloodbath High Momentum"
 
         finalD5 = "---"; finalH5 = "---"; finalU5 = "---"; finalQ5 = "---"
         if ceWinner == "BOTH": finalD5 = ceOiResult['text']; finalH5 = ceVolResult['text']
@@ -455,35 +405,23 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         vault["grid_rows"] = grid_rows_built
         vault["spot_price"] = round(spot_price, 2)
-        safe_update_cell(dashboard_sheet, "D5", finalD5)
-        safe_update_cell(dashboard_sheet, "H5", finalH5)
-        safe_update_cell(dashboard_sheet, "U5", finalU5)
-        safe_update_cell(dashboard_sheet, "Q5", finalQ5)
-        update_k3_with_color(spreadsheet, dashboard_sheet, "K3", k3Text)
     except Exception as err:
         print(f"❌ Scenario Tracker Error: {err}")
 
 def fetch_and_update_option_chain(smart_api):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
+    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries, current_active_symbol_ui
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
         if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
         if not options_cache: initialize_scrip_master(smart_api); return
 
-        raw_selected_symbol = "NIFTY"
-        try:
-            if dashboard_sheet:
-                val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-                if val and val not in ["NONE", "NAN", "0"]: raw_selected_symbol = val
-        except Exception: pass
-        clean_active_symbol = raw_selected_symbol.replace("-EQ", "").replace(".NS", "").strip()
+        clean_active_symbol = current_active_symbol_ui.replace("-EQ", "").replace(".NS", "").strip()
 
         if clean_active_symbol in options_cache:
             sym_options = options_cache[clean_active_symbol]
             valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
             if not valid_opts.empty:
-                # Sort unique expiries by actual datetime sequence
                 unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
                 expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
                 
@@ -543,10 +481,6 @@ def fetch_and_update_option_chain(smart_api):
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                safe_update_cell(data_sheet, "K9", spot_price)
-                safe_update_cell(data_sheet, "L9", str(current_expiry))
-                safe_update_cell(data_sheet, "A7", lot_size)
-
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
                 strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
@@ -579,7 +513,6 @@ def fetch_and_update_option_chain(smart_api):
 
                 t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
-                output_rows = [["CE Vega", "CE Theta", "CE Gamma", "CE Delta", "CE IV", "CE OI Chg", "CE OI", "CE Vol", "CE Change", "CE LTP", "Strike Price", "PE LTP", "PE Change", "PE Vol", "PE OI", "PE OI Chg", "PE IV", "PE Delta", "PE Gamma", "PE Theta", "PE Vega"]]
                 raw_grid_payload = []
 
                 for st in strikes:
@@ -593,8 +526,6 @@ def fetch_and_update_option_chain(smart_api):
 
                     ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
                     pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
-
-                    output_rows.append([ce_gks['vega'], ce_gks['theta'], ce_gks['gamma'], ce_gks['delta'], ce_gks['iv'] if ce_gks['iv'] > 1 else 0, ce_q['oi_chg'], ce_q['oi'], ce_q['volume'], ce_q['net_change'], ce_q['ltp'], st, pe_q['ltp'], pe_q['net_change'], pe_q['volume'], pe_q['oi'], pe_q['oi_chg'], pe_gks['iv'] if pe_gks['iv'] > 1 else 0, pe_gks['delta'], pe_gks['gamma'], pe_gks['theta'], pe_gks['vega']])
                     
                     raw_grid_payload.append({
                         'strike': st,
@@ -605,11 +536,6 @@ def fetch_and_update_option_chain(smart_api):
                         'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
-
-                if len(output_rows) > 1 and data_sheet:
-                    data_sheet.update(range_name=f"A10:U{10 + len(output_rows) - 1}", values=output_rows)
-                    try: data_sheet.batch_clear([f"A{10 + len(output_rows)}:U100"])
-                    except Exception: pass
 
                 execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry)
     except Exception as ex: print(f"❌ Fetch Error: {str(ex)}")
@@ -632,7 +558,6 @@ def initialize_scrip_master(smart_api):
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 options_cache[name.strip()] = group
-                # Correctly sort dates in ascending chronological sequence
                 valid_group = group[group['parsed_expiry'] >= today_dt].copy()
                 valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
                 unique_expiries = []
@@ -912,21 +837,16 @@ HTML_TEMPLATE = """
 
 @app.route('/api/init-meta')
 def get_initial_metadata():
-    active_sym = "NIFTY"
-    try:
-        if dashboard_sheet:
-            val = str(dashboard_sheet.cell(4, 10).value).strip().upper()
-            if val and val not in ["NONE", "NAN", "0"]: active_sym = val.replace("-EQ", "").replace(".NS", "").strip()
-    except Exception: pass
-    return jsonify({"symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY"], "expiries": symbol_expiries_cache, "active_symbol": active_sym})
+    global current_active_symbol_ui
+    return jsonify({"symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY"], "expiries": symbol_expiries_cache, "active_symbol": current_active_symbol_ui})
 
 @app.route('/api/set-symbol/<symbol>', defaults={'expiry': None}, methods=['POST'])
 @app.route('/api/set-symbol/<symbol>/<expiry>', methods=['POST'])
 def set_symbol_api(symbol, expiry):
-    global user_selected_expiries
+    global user_selected_expiries, current_active_symbol_ui
     sym = symbol.upper()
+    current_active_symbol_ui = sym
     try:
-        if dashboard_sheet: dashboard_sheet.update_acell("J4", sym)
         if expiry:
             user_selected_expiries[sym] = expiry.upper()
     except Exception: pass
@@ -944,8 +864,7 @@ def get_symbol_runtime_data(symbol):
         "U5": vault.get("U5_TEXT", "---"),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
-        "spot_price": vault.get("spot_price", 0),
-        "active_expiry": vault.get("active_expiry", "")
+        "spot_price": vault.get("spot_price", 0)
     })
 
 def run_bot_lock_loop():
