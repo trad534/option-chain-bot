@@ -47,7 +47,7 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 # ==============================================================================
-# 🌟 MULTI-SYMBOL INDEPENDENT MEMORY VAULT & WEBSOCKET TICK CACHE
+# 🌟 MULTI-SYMBOL INDEPENDENT MEMORY VAULT & EVENT TIMESTAMP LOCK ENGINE
 # ==============================================================================
 symbol_memory_vault = {}
 global_run_date = ""
@@ -106,7 +106,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 # ==============================================================================
-# 🎯 SCENARIO TRACKER ENGINE (YOUR EXACT LOGIC PRESERVED 100%)
+# 🎯 SCENARIO TRACKER ENGINE WITH EXACT 9:15 AM EVENT TIMESTAMP FREEZING
 # ==============================================================================
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
     global global_run_date, multi_symbol_runtime_states, symbol_memory_vault
@@ -204,7 +204,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -311,6 +311,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
+            # ------------------------------------------------------------------
+            # 🔒 EXACT TIMESTAMP FREEZE LOGIC (INVESTING DADDY PARITY)
+            # ------------------------------------------------------------------
             displayTime = get_symbol_memory(symbol_name, "TIME_" + cacheKey)
             lastRecordedStatus = get_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -928,7 +931,7 @@ def get_symbol_runtime_data(symbol):
 # ==============================================================================
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_stream_client, feed_token_global
-    print("🚀 Starting 6000% Instant WebSocket Stream Engine...")
+    print("🚀 Starting 6000% Instant WebSocket Stream Engine with Time Lock...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
