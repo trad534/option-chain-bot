@@ -193,7 +193,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -296,7 +296,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK
+            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK[span_3](start_span)[span_3](end_span)
             displayTime = get_memory("TIME_" + cacheKey)
             lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -392,7 +392,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             finalQ5 = peVolResult['text']
         elif peWinner == "VOL": 
             finalU5 = "<div>-----</div>"
-            finalH5 = ceVolResult['text']
+            finalQ5 = peVolResult['text']
         elif peWinner == "OI": 
             finalU5 = peOiResult['text']
             finalH5 = "<div>-----</div>"
@@ -929,9 +929,9 @@ def set_symbol_api(symbol, expiry):
     try:
         if expiry:
             user_selected_expiries[sym] = expiry.upper()
-        # ⚡ INSTANT PRIORITY FETCH ON SYMBOL CHANGE
+        # ⚡ NON-BLOCKING LAZY LOAD TRIGGER: Instantly fetch in background thread so HTTP response never hangs
         if smart_api_global and sym in options_cache:
-            fetch_symbol_data(smart_api_global, sym)
+            threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
     except Exception: pass
     return jsonify({"status": "success"})
 
@@ -939,6 +939,10 @@ def set_symbol_api(symbol, expiry):
 def get_symbol_runtime_data(symbol):
     sym = symbol.upper()
     vault = multi_symbol_runtime_states.get(sym, {})
+    # If vault is empty, trigger a quick background fetch for this symbol immediately
+    if not vault.get("grid_rows") and smart_api_global and sym in options_cache:
+        threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
+        
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
         "D5": vault.get("D5_TEXT", "<div>-----</div>"),
@@ -952,11 +956,10 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting Instant Priority Engine with 9:15 AM Timestamp Lock...")
+    print("🚀 Starting True Lazy-Loading Asynchronous Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
-    symbol_index = 0
     while True:
         try:
             now_dt = datetime.now()
@@ -975,24 +978,14 @@ def run_bot_lock_loop():
                     last_session_date = today_date_str
                     initialize_scrip_master(smart_api)
             
-            # 1. PRIORITY FETCH: Active symbol updates instantly
+            # ⚡ TRUE LAZY LOADING: Only fetch the exact active symbol selected by the user on UI. No heavy 180-symbol loops!
             active_sym = current_active_symbol_ui
             if active_sym and options_cache:
                 fetch_symbol_data(smart_api, active_sym)
 
-            # 2. BACKGROUND ROUND-ROBIN: Other symbols update smoothly one by one
-            all_syms = list(options_cache.keys())
-            if all_syms:
-                if symbol_index >= len(all_syms):
-                    symbol_index = 0
-                bg_sym = all_syms[symbol_index]
-                symbol_index += 1
-                if bg_sym != active_sym:
-                    fetch_symbol_data(smart_api, bg_sym)
-
         except Exception:
             pass
-        time.sleep(0.5)
+        time.sleep(1.0)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
