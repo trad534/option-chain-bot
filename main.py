@@ -7,7 +7,7 @@ import numpy as np
 import pyotp
 from scipy.stats import norm
 from scipy.optimize import brentq
-from datetime import datetime
+from datetime import datetime, time as dtime
 from SmartApi import SmartConnect
 from SmartApi.smartStreamWS import SmartStreamWS
 from flask import Flask, jsonify, render_template_string
@@ -409,7 +409,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             finalQ5 = peVolResult['text']
         elif peWinner == "VOL": 
             finalU5 = "<div>-----</div>"
-            finalQ5 = peVolResult['text']
+            finalH5 = ceVolResult['text']
         elif peWinner == "OI": 
             finalU5 = peOiResult['text']
             finalH5 = "<div>-----</div>"
@@ -927,36 +927,31 @@ def get_symbol_runtime_data(symbol):
     })
 
 # ==============================================================================
-# 🚀 WEBSOCKET STREAMING ENGINE RUNNER
+# 🚀 PRE-WARMED 09:15:00 AM EXACT TIMING ENGINE RUNNER
 # ==============================================================================
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_stream_client, feed_token_global
-    print("🚀 Starting 6000% Instant WebSocket Stream Engine with Time Lock...")
+    print("🚀 Starting 5000% Pre-Warmed Exact Time Stream Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
     while True:
         try:
             now_dt = datetime.now()
+            now_time = now_dt.time()
             today_date_str = now_dt.strftime("%Y-%m-%d")
-            
-            if last_session_date != today_date_str and now_dt.hour >= 9:
+
+            # 1. Subah 09:05 AM se hi Scrip Master pre-load ho jayegi (0 Delay at 09:15 AM)
+            if not options_cache or (now_time >= dtime(9, 5) and last_session_date != today_date_str):
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
                     feed_token_global = session_res['data']['feedToken']
                     initialize_scrip_master(smart_api)
-            
-            if not options_cache:
-                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
-                if session_res and session_res.get('status'):
-                    last_session_date = today_date_str
-                    feed_token_global = session_res['data']['feedToken']
-                    initialize_scrip_master(smart_api)
-            
-            # Continuously process all cached symbols at lightning speed
+                    print("⚡ Scrip master successfully pre-loaded for 9:15 AM market opening!")
+
+            # 2. Continuous real-time processing across all F&O stocks
             for sym in list(options_cache.keys()):
                 process_symbol_fast(sym)
 
