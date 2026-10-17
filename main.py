@@ -189,7 +189,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -296,7 +296,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK[span_3](start_span)[span_3](end_span)
+            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK
             displayTime = get_memory("TIME_" + cacheKey)
             lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -600,7 +600,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                         'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                         'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
                         'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'],
                         'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
@@ -634,7 +634,7 @@ def initialize_scrip_master(smart_api):
                     if formatted_exp not in unique_expiries:
                         unique_expiries.append(formatted_exp)
                 symbol_expiries_cache[name.strip()] = unique_expiries
-            print(f"✅ Scrip Master Loaded for {len(options_cache)} Symbols!")
+            print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols at 8:50 AM!")
     except Exception as e: print(f"⚠ Scrip Master Error: {e}")
 
 HTML_TEMPLATE = """
@@ -929,7 +929,6 @@ def set_symbol_api(symbol, expiry):
     try:
         if expiry:
             user_selected_expiries[sym] = expiry.upper()
-        # ⚡ NON-BLOCKING LAZY LOAD TRIGGER: Instantly fetch in background thread so HTTP response never hangs
         if smart_api_global and sym in options_cache:
             threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
     except Exception: pass
@@ -939,7 +938,6 @@ def set_symbol_api(symbol, expiry):
 def get_symbol_runtime_data(symbol):
     sym = symbol.upper()
     vault = multi_symbol_runtime_states.get(sym, {})
-    # If vault is empty, trigger a quick background fetch for this symbol immediately
     if not vault.get("grid_rows") and smart_api_global and sym in options_cache:
         threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
         
@@ -956,7 +954,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting True Lazy-Loading Asynchronous Engine...")
+    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -964,24 +962,24 @@ def run_bot_lock_loop():
         try:
             now_dt = datetime.now()
             today_date_str = now_dt.strftime("%Y-%m-%d")
+            current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
-            if last_session_date != today_date_str and now_dt.hour >= 9:
+            # ⏰ 8:50 AM PRE-LOAD SCHEDULER (8:50 AM = 530 minutes from midnight)
+            target_preload_minutes = 8 * 60 + 50
+            
+            if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
+                    print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
-            if not options_cache:
-                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'):
-                    last_session_date = today_date_str
-                    initialize_scrip_master(smart_api)
-            
-            # ⚡ TRUE LAZY LOADING: Only fetch the exact active symbol selected by the user on UI. No heavy 180-symbol loops!
-            active_sym = current_active_symbol_ui
-            if active_sym and options_cache:
-                fetch_symbol_data(smart_api, active_sym)
+            # Active Symbol Ticker Sync (only when market is active or after 8:50 AM)
+            if options_cache and current_total_minutes >= target_preload_minutes:
+                active_sym = current_active_symbol_ui
+                if active_sym:
+                    fetch_symbol_data(smart_api, active_sym)
 
         except Exception:
             pass
