@@ -9,10 +9,10 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 from datetime import datetime
 from SmartApi import SmartConnect
+from SmartApi.smartStreamWS import SmartStreamWS
 from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
-from concurrent.futures import ThreadPoolExecutor
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
@@ -47,7 +47,7 @@ API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 # ==============================================================================
-# 🌟 MULTI-SYMBOL INDEPENDENT MEMORY VAULT (5000% SOLVES SYMBOL SWITCH BUG)
+# 🌟 MULTI-SYMBOL INDEPENDENT MEMORY VAULT & WEBSOCKET TICK CACHE
 # ==============================================================================
 symbol_memory_vault = {}
 global_run_date = ""
@@ -61,6 +61,8 @@ baseline_date = None
 current_active_symbol_ui = "NIFTY"
 last_session_date = None
 user_selected_expiries = {}
+smart_stream_client = None
+feed_token_global = ""
 
 def get_symbol_memory(sym, key, default=""):
     sym = sym.upper()
@@ -200,9 +202,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -486,139 +488,101 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
     except Exception:
         pass
 
-def fetch_symbol_data(smart_api, clean_active_symbol):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
+# ==============================================================================
+# ⚡ HIGH-SPEED WEBSOCKET DATA STREAMER (ZERO DELAY ENGINE)
+# ==============================================================================
+def on_data_received(ws, tick_data):
+    global persistent_quotes_cache, morning_oi_dict
+    try:
+        if not tick_data: return
+        tok = str(tick_data.get('token', tick_data.get('symbolToken', ''))).strip()
+        if not tok: return
+        
+        ltp = float(tick_data.get('last_traded_price', tick_data.get('ltp', 0))) / 100.0 if tick_data.get('last_traded_price') else float(tick_data.get('ltp', 0))
+        vol = float(tick_data.get('volume_traded_for_the_day', tick_data.get('volume', 0)))
+        oi = float(tick_data.get('opn_interest', tick_data.get('oi', 0)))
+        
+        if tok not in persistent_quotes_cache:
+            persistent_quotes_cache[tok] = {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0, 'oi_chg': 0}
+            
+        if ltp > 0: persistent_quotes_cache[tok]['ltp'] = ltp
+        if vol > 0: persistent_quotes_cache[tok]['volume'] = vol
+        if oi > 0: persistent_quotes_cache[tok]['oi'] = oi
+        
+        now_dt = datetime.now()
+        if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and oi > 0:
+            morning_oi_dict[tok] = oi
+            
+    except Exception:
+        pass
+
+def process_symbol_fast(clean_active_symbol):
+    global options_cache, persistent_quotes_cache, morning_oi_dict, user_selected_expiries
     try:
         now_dt = datetime.now()
-        current_date_str = now_dt.strftime('%Y-%m-%d')
-        if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
-        if not options_cache: return
+        if clean_active_symbol not in options_cache: return
+        sym_options = options_cache[clean_active_symbol]
+        valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
+        if valid_opts.empty: return
 
-        if clean_active_symbol in options_cache:
-            sym_options = options_cache[clean_active_symbol]
-            valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-            if not valid_opts.empty:
-                unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
-                expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
-                
-                target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
-                
-                matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
-                if matched_exp:
-                    current_expiry_dt = matched_exp[0]
-                    current_expiry = target_expiry_str
-                else:
-                    current_expiry_dt = unique_expiries_dt[0]
-                    current_expiry = expiry_strings_sorted[0]
+        unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
+        expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
+        target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
+        
+        matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
+        current_expiry_dt = matched_exp[0] if matched_exp else unique_expiries_dt[0]
+        current_expiry = target_expiry_str if matched_exp else expiry_strings_sorted[0]
 
-                current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-                lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+        current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
+        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                spot_price = 0.0
-                index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
-                target_tok = index_tokens.get(clean_active_symbol, "")
-                
-                if target_tok:
-                    try:
-                        q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
-                        if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
-                            s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
-                            if s_val > 0: spot_price = s_val
-                    except Exception: pass
-                
-                if spot_price <= 0:
-                    try:
-                        eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')].copy()
-                        if not eq_sub.empty:
-                            exact_match = eq_sub[eq_sub['symbol'].str.upper().isin([clean_active_symbol, clean_active_symbol + "-EQ"])]
-                            target_row = exact_match.iloc[0] if not exact_match.empty else eq_sub.iloc[0]
-                            eq_tok = str(target_row['token'])
-                            eq_exch = str(target_row['exch_seg'])
-                            eq_quote = smart_api.getMarketData("FULL", {eq_exch: [eq_tok]})
-                            if eq_quote and eq_quote.get('status') and eq_quote.get('data') and eq_quote['data'].get('fetched'):
-                                s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
+        spot_price = 0.0
+        index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
+        target_tok = index_tokens.get(clean_active_symbol, "")
+        if target_tok and target_tok in persistent_quotes_cache:
+            spot_price = persistent_quotes_cache[target_tok]['ltp']
 
-                if spot_price <= 0:
-                    try:
-                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))]
-                        if not fut_sub.empty:
-                            fut_tok = str(fut_sub['token'].values[0])
-                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
-                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
-                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
+        if spot_price <= 0:
+            all_strikes_list = sorted(current_expiry_options['strike'].unique())
+            spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                if spot_price <= 0:
-                    all_strikes_list = sorted(current_expiry_options['strike'].unique())
-                    spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
+        all_master_strikes = sorted(current_expiry_options['strike'].unique())
+        closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
+        strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
-                all_master_strikes = sorted(current_expiry_options['strike'].unique())
-                closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-                strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
+        t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
-                filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
-                exch_map = {}
-                for _, row in filtered_opts.iterrows():
-                    exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip()
-                    if exch not in exch_map: exch_map[exch] = []
-                    exch_map[exch].append(tok)
+        raw_grid_payload = []
+        for st in strikes:
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
+            ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
+            
+            ce_q = persistent_quotes_cache.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0})
+            pe_q = persistent_quotes_cache.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0})
 
-                all_dash_quotes = []
-                for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 40):
-                        try:
-                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
-                            if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
-                        except Exception: pass
+            ce_base_oi = morning_oi_dict.get(ce_token, ce_q['oi'])
+            pe_base_oi = morning_oi_dict.get(pe_token, pe_q['oi'])
+            ce_oi_chg = ce_q['oi'] - ce_base_oi if ce_q['oi'] > 0 else 0
+            pe_oi_chg = pe_q['oi'] - pe_base_oi if pe_q['oi'] > 0 else 0
 
-                dash_quotes_dict = {}
-                for item in all_dash_quotes:
-                    tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-                    ltp = float(item.get('ltp', 0))
-                    volume = float(item.get('tradeVolume', item.get('volume', 0)))
-                    oi = float(item.get('opnInterest', item.get('oi', 0)))
-                    change = float(item.get('netChange', item.get('change', 0)))
-                    oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
-                    if ltp > 0 or oi > 0: 
-                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change, 'oi_chg': oi_chg}
+            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
+            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
+            
+            raw_grid_payload.append({
+                'strike': st,
+                'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
+                'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
+                'ce_oi_chg': ce_oi_chg, 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_oi_chg,
+                'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
+                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
+            })
 
-                for tok, q_data in persistent_quotes_cache.items():
-                    if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
-                    base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                    calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
-                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
-
-                t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
-
-                raw_grid_payload = []
-
-                for st in strikes:
-                    ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
-                    pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
-                    ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-                    pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-                    
-                    ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-                    pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-
-                    ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
-                    pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
-                    
-                    raw_grid_payload.append({
-                        'strike': st,
-                        'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
-                        'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
-                        'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
-                        'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
-                        'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
-                    })
-
-                execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-    except Exception: pass
+        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+    except Exception:
+        pass
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
@@ -921,7 +885,7 @@ HTML_TEMPLATE = """
                 }
             });
         }
-        setInterval(fetchData, 1500); window.onload = initApp;
+        setInterval(fetchData, 1000); window.onload = initApp;
     </script>
 </body>
 </html>
@@ -960,15 +924,13 @@ def get_symbol_runtime_data(symbol):
     })
 
 # ==============================================================================
-# 🚀 HIGH-SPEED PARALLEL BACKGROUND ENGINE (3-5 SEC BATCH SCANNING)
+# 🚀 WEBSOCKET STREAMING ENGINE RUNNER
 # ==============================================================================
 def run_bot_lock_loop():
-    global last_session_date, current_active_symbol_ui, options_cache
-    print("🚀 Starting Professional Multi-Symbol Background Engine...")
+    global last_session_date, current_active_symbol_ui, options_cache, smart_stream_client, feed_token_global
+    print("🚀 Starting 6000% Instant WebSocket Stream Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY)
     except Exception as e: print(f"❌ Init Error: {e}"); return
-    
-    executor = ThreadPoolExecutor(max_workers=5)
     
     while True:
         try:
@@ -980,31 +942,24 @@ def run_bot_lock_loop():
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
+                    feed_token_global = session_res['data']['feedToken']
                     initialize_scrip_master(smart_api)
             
             if not options_cache:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                if smart_api.generateSession(CLIENT_ID, PIN, totp).get('status'):
+                session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
+                if session_res and session_res.get('status'):
                     last_session_date = today_date_str
+                    feed_token_global = session_res['data']['feedToken']
                     initialize_scrip_master(smart_api)
             
-            all_syms = list(options_cache.keys())
-            if all_syms:
-                # 1. Active UI Symbol gets top priority instant refresh
-                active_sym = current_active_symbol_ui
-                if active_sym:
-                    executor.submit(fetch_symbol_data, smart_api, active_sym)
-
-                # 2. Key High-Volume Index / F&O symbols scanned continuously in parallel
-                priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "CRUDEOIL", "RELIANCE", "HDFCBANK"]
-                bg_targets = [s for s in priority_list if s in all_syms and s != active_sym]
-                
-                for bg_sym in bg_targets:
-                    executor.submit(fetch_symbol_data, smart_api, bg_sym)
+            # Continuously process all cached symbols at lightning speed
+            for sym in list(options_cache.keys()):
+                process_symbol_fast(sym)
 
         except Exception:
             pass
-        time.sleep(1.5)
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
