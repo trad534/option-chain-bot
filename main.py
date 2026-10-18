@@ -648,36 +648,26 @@ HTML_TEMPLATE = """
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         
         /* Fixed Header Controls Wrapper for Mobile & Desktop */
-        .header { display: flex; flex-direction: column; gap: 10px; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
-        @media(min-width: 600px) {
-            .header { flex-direction: row; justify-content: space-between; align-items: center; }
-        }
+                .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 8px; border: 1px solid #ced4da; gap: 5px; }
+        .controls-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
         
-        .title-container { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-        @media(min-width: 600px) { .title-container { width: auto; } }
-        
-        .controls-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
-        @media(min-width: 600px) { .controls-group { width: auto; } }
-        
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 13px; }
-        
-        /* Greeks Hide/Show Button */
         .btn-greeks {
             background: #40c057;
             color: #ffffff;
             border: none;
-            padding: 7px 12px;
-            font-size: 13px;
+            padding: 5px 8px;
+            font-size: 12px;
             font-weight: bold;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            transition: background 0.2s ease;
             white-space: nowrap;
         }
         .btn-greeks:hover { background: #37b24d; }
         .btn-greeks.active-hide { background: #f03e3e; }
 
-        select { padding: 6px 8px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        select { padding: 4px 6px; font-size: 12px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
+
         
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
