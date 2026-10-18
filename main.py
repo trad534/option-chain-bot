@@ -189,11 +189,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -296,6 +296,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
+            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK
             displayTime = get_memory("TIME_" + cacheKey)
             lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -599,7 +600,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                         'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                         'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
                         'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'],
                         'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
@@ -649,6 +650,7 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         
+        /* Greeks Hide/Show Toggle Button Styles */
         .btn-greeks {
             background: #40c057;
             color: #ffffff;
@@ -780,6 +782,7 @@ HTML_TEMPLATE = """
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
 
+        /* Hide Greeks class */
         .hide-greeks-col { display: none !important; }
     </style>
 </head>
@@ -1006,7 +1009,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine with Greeks Toggle...")
+    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -1016,6 +1019,7 @@ def run_bot_lock_loop():
             today_date_str = now_dt.strftime("%Y-%m-%d")
             current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
+            # ⏰ 8:50 AM PRE-LOAD SCHEDULER (8:50 AM = 530 minutes from midnight)
             target_preload_minutes = 8 * 60 + 50
             
             if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
@@ -1026,6 +1030,7 @@ def run_bot_lock_loop():
                     print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
+            # Active Symbol Ticker Sync (only when market is active or after 8:50 AM)
             if options_cache and current_total_minutes >= target_preload_minutes:
                 active_sym = current_active_symbol_ui
                 if active_sym:
