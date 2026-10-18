@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -645,8 +645,8 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
-        .controls-group { display: flex; gap: 10px; align-items: center; }
+        .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; gap: 10px; }
+        .controls-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         
         .btn-greeks {
@@ -659,6 +659,7 @@ HTML_TEMPLATE = """
             border-radius: 5px;
             cursor: pointer;
             transition: background 0.2s ease;
+            white-space: nowrap;
         }
         .btn-greeks:hover { background: #37b24d; }
         .btn-greeks.active-hide { background: #f03e3e; }
@@ -779,7 +780,6 @@ HTML_TEMPLATE = """
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
 
-        /* Hide Greeks utility class */
         .hide-greeks-col { display: none !important; }
     </style>
 </head>
