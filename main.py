@@ -187,7 +187,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -395,7 +395,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             finalQ5 = peVolResult['text']
         elif peWinner == "OI": 
             finalU5 = peOiResult['text']
-            finalH5 = "<div>-----</div>"
+            finalQ5 = "<div>-----</div>"
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
@@ -975,11 +975,19 @@ def run_bot_lock_loop():
                     print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
-            # Active Symbol Ticker Sync (only when market is active or after 8:50 AM)
+            # ⚡ MULTI-SYMBOL BACKGROUND SCANNER (Continuous Background Fetching for Historical Baseline)
             if options_cache and current_total_minutes >= target_preload_minutes:
+                # Always prioritize the currently selected active symbol for real-time responsiveness
                 active_sym = current_active_symbol_ui
                 if active_sym:
                     fetch_symbol_data(smart_api, active_sym)
+
+                # Continuous silent background tracking for major indices & symbols
+                priority_symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+                for p_sym in priority_symbols:
+                    if p_sym != active_sym and p_sym in options_cache:
+                        fetch_symbol_data(smart_api, p_sym)
+                        time.sleep(0.5)
 
         except Exception:
             pass
