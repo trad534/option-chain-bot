@@ -296,7 +296,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK
             displayTime = get_memory("TIME_" + cacheKey)
             lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -556,12 +555,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
                 all_dash_quotes = []
                 for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 20):  # Batch size reduced to 20 for API safety
+                    for i in range(0, len(t_list), 20):
                         try:
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+20]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
-                        time.sleep(0.5)  # Safe Rate Limit Throttle
+                        time.sleep(0.5)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -783,7 +782,6 @@ HTML_TEMPLATE = """
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
 
-        /* Hide Greeks class (IV is NOT hidden) */
         .hide-greeks-col { display: none !important; }
     </style>
 </head>
