@@ -187,7 +187,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -513,6 +513,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
+                    time.sleep(0.2)
                 
                 if spot_price <= 0:
                     try:
@@ -527,6 +528,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                                 s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
                     except Exception: pass
+                    time.sleep(0.2)
 
                 if spot_price <= 0:
                     try:
@@ -538,6 +540,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                                 s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
                     except Exception: pass
+                    time.sleep(0.2)
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -561,6 +564,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
+                        time.sleep(0.2)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -954,7 +958,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine...")
+    print("🚀 Starting 8:50 AM Pre-Load & Multi-Symbol Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -964,7 +968,6 @@ def run_bot_lock_loop():
             today_date_str = now_dt.strftime("%Y-%m-%d")
             current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
-            # ⏰ 8:50 AM PRE-LOAD SCHEDULER (8:50 AM = 530 minutes from midnight)
             target_preload_minutes = 8 * 60 + 50
             
             if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
@@ -975,19 +978,11 @@ def run_bot_lock_loop():
                     print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
-            # ⚡ MULTI-SYMBOL BACKGROUND SCANNER (Continuous Background Fetching for Historical Baseline)
             if options_cache and current_total_minutes >= target_preload_minutes:
-                # Always prioritize the currently selected active symbol for real-time responsiveness
                 active_sym = current_active_symbol_ui
                 if active_sym:
                     fetch_symbol_data(smart_api, active_sym)
-
-                # Continuous silent background tracking for major indices & symbols
-                priority_symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
-                for p_sym in priority_symbols:
-                    if p_sym != active_sym and p_sym in options_cache:
-                        fetch_symbol_data(smart_api, p_sym)
-                        time.sleep(0.5)
+                    time.sleep(2.0)
 
         except Exception:
             pass
