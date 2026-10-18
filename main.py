@@ -513,7 +513,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
-                    time.sleep(0.2)
+                    time.sleep(0.4)
                 
                 if spot_price <= 0:
                     try:
@@ -528,19 +528,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                                 s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
                                 if s_val > 0: spot_price = s_val
                     except Exception: pass
-                    time.sleep(0.2)
-
-                if spot_price <= 0:
-                    try:
-                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))]
-                        if not fut_sub.empty:
-                            fut_tok = str(fut_sub['token'].values[0])
-                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
-                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
-                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
-                    time.sleep(0.2)
+                    time.sleep(0.4)
 
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
@@ -564,7 +552,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
-                        time.sleep(0.2)
+                        time.sleep(0.4)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -958,7 +946,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting 8:50 AM Pre-Load & Multi-Symbol Engine...")
+    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -982,11 +970,10 @@ def run_bot_lock_loop():
                 active_sym = current_active_symbol_ui
                 if active_sym:
                     fetch_symbol_data(smart_api, active_sym)
-                    time.sleep(2.0)
 
         except Exception:
             pass
-        time.sleep(1.0)
+        time.sleep(2.5)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
