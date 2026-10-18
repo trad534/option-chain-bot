@@ -178,7 +178,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
         ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
+        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peOiStatusText
 
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
@@ -193,7 +193,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -647,27 +647,26 @@ HTML_TEMPLATE = """
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
         
-        /* Fixed Header Controls Wrapper for Mobile & Desktop */
-                .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 8px; border: 1px solid #ced4da; gap: 5px; }
-        .controls-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; gap: 8px; }
+        .controls-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 10px; border-radius: 5px; font-weight: bold; font-size: 13px; }
         
         .btn-greeks {
             background: #40c057;
             color: #ffffff;
             border: none;
-            padding: 5px 8px;
-            font-size: 12px;
+            padding: 6px 10px;
+            font-size: 13px;
             font-weight: bold;
-            border-radius: 4px;
+            border-radius: 5px;
             cursor: pointer;
+            transition: background 0.2s ease;
             white-space: nowrap;
         }
         .btn-greeks:hover { background: #37b24d; }
         .btn-greeks.active-hide { background: #f03e3e; }
 
-        select { padding: 4px 6px; font-size: 12px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
-
+        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
@@ -783,15 +782,13 @@ HTML_TEMPLATE = """
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
 
-        /* Hide class for Greeks ONLY (IV excluded) */
+        /* Hide Greeks class (IV is NOT hidden) */
         .hide-greeks-col { display: none !important; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="title-container">
-            <h2 style="margin:0; font-size: 18px;">⚡ Arush LTP Calculator</h2>
-        </div>
+        <h2 style="margin: 0; font-size: 18px;">⚡ Arush LTP Calculator</h2>
         <div class="controls-group">
             <button id="toggleGreeksBtn" class="btn-greeks" onclick="toggleGreeks()">📊 Hide Greeks</button>
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
@@ -1038,7 +1035,6 @@ def run_bot_lock_loop():
             today_date_str = now_dt.strftime("%Y-%m-%d")
             current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
-            # ⏰ 8:50 AM PRE-LOAD SCHEDULER (8:50 AM = 530 minutes from midnight)
             target_preload_minutes = 8 * 60 + 50
             
             if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
@@ -1049,7 +1045,6 @@ def run_bot_lock_loop():
                     print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
-            # Active Symbol Ticker Sync (only when market is active or after 8:50 AM)
             if options_cache and current_total_minutes >= target_preload_minutes:
                 active_sym = current_active_symbol_ui
                 if active_sym:
