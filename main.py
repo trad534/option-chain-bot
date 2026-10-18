@@ -193,7 +193,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -220,7 +220,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -646,17 +646,28 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
-        .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; gap: 10px; }
-        .controls-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         
-        /* Greeks Hide/Show Toggle Button Styles */
+        /* Fixed Header Controls Wrapper for Mobile & Desktop */
+        .header { display: flex; flex-direction: column; gap: 10px; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        @media(min-width: 600px) {
+            .header { flex-direction: row; justify-content: space-between; align-items: center; }
+        }
+        
+        .title-container { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+        @media(min-width: 600px) { .title-container { width: auto; } }
+        
+        .controls-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+        @media(min-width: 600px) { .controls-group { width: auto; } }
+        
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 13px; }
+        
+        /* Greeks Hide/Show Button */
         .btn-greeks {
             background: #40c057;
             color: #ffffff;
             border: none;
-            padding: 8px 14px;
-            font-size: 14px;
+            padding: 7px 12px;
+            font-size: 13px;
             font-weight: bold;
             border-radius: 5px;
             cursor: pointer;
@@ -666,7 +677,7 @@ HTML_TEMPLATE = """
         .btn-greeks:hover { background: #37b24d; }
         .btn-greeks.active-hide { background: #f03e3e; }
 
-        select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        select { padding: 6px 8px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
@@ -782,13 +793,15 @@ HTML_TEMPLATE = """
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
 
-        /* Hide Greeks class */
+        /* Hide class for Greeks ONLY (IV excluded) */
         .hide-greeks-col { display: none !important; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2>⚡ Arush LTP Calculator</h2>
+        <div class="title-container">
+            <h2 style="margin:0; font-size: 18px;">⚡ Arush LTP Calculator</h2>
+        </div>
         <div class="controls-group">
             <button id="toggleGreeksBtn" class="btn-greeks" onclick="toggleGreeks()">📊 Hide Greeks</button>
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
@@ -812,11 +825,27 @@ HTML_TEMPLATE = """
                     <th id="peHeaderCol" colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
                 </tr>
                 <tr>
-                    <th class="greek-cell">Vega</th><th class="greek-cell">Theta</th><th class="greek-cell">Gamma</th><th class="greek-cell">Delta</th><th class="greek-cell">IV</th>
-                    <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
+                    <th class="greek-cell">Vega</th>
+                    <th class="greek-cell">Theta</th>
+                    <th class="greek-cell">Gamma</th>
+                    <th class="greek-cell">Delta</th>
+                    <th class="iv-cell">IV</th>
+                    <th>OI Chg</th>
+                    <th class="ce-oi-col">OI</th>
+                    <th class="ce-vol-col">Vol</th>
+                    <th>Change</th>
+                    <th>LTP</th>
                     <th class="strike-col">Price</th>
-                    <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
-                    <th class="greek-cell">IV</th><th class="greek-cell">Delta</th><th class="greek-cell">Gamma</th><th class="greek-cell">Theta</th><th class="greek-cell">Vega</th>
+                    <th>LTP</th>
+                    <th>Change</th>
+                    <th class="pe-vol-col">Vol</th>
+                    <th class="pe-oi-col">OI</th>
+                    <th>OI Chg</th>
+                    <th class="iv-cell">IV</th>
+                    <th class="greek-cell">Delta</th>
+                    <th class="greek-cell">Gamma</th>
+                    <th class="greek-cell">Theta</th>
+                    <th class="greek-cell">Vega</th>
                 </tr>
             </thead>
             <tbody id="gridBody">
@@ -842,8 +871,8 @@ HTML_TEMPLATE = """
             } else {
                 btn.innerText = "📊 Show Greeks";
                 btn.classList.add("active-hide");
-                ceHeader.colSpan = 5;
-                peHeader.colSpan = 5;
+                ceHeader.colSpan = 6;
+                peHeader.colSpan = 6;
             }
             applyGreeksVisibility();
         }
@@ -954,9 +983,9 @@ HTML_TEMPLATE = """
                             let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
 
-                            tr.innerHTML = `<td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td>`;
+                            tr.innerHTML = `<td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="iv-cell"></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td class="iv-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td><td class="greek-cell"></td>`;
                         } else {
-                            tr.innerHTML = `<td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="greek-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="iv-cell ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="iv-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="greek-cell ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
