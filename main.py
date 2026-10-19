@@ -543,7 +543,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
                 all_dash_quotes = []
                 for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 40):
+                    for i in range(0, len(t_list), 20):
                         try:
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data') and res.get('data').get('fetched'): 
