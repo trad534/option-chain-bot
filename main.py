@@ -606,34 +606,69 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
 
 
-# --- MASTER SCRIP MASTER DOWNLOADER & DATE PARSING MECHANISM ---
+# --- MASTER SCRIP MASTER DOWNLOADER WITH LOCAL NETWORK FALLBACK ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
+    scrip_data = None
+    
+    # Pehle Angel One ke server se try karna
     try:
         url = "https://angelbroking.com"
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=15)
         if resp.status_code == 200:
-            scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
-            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: full_scrip_df['token'] = full_scrip_df['symboltoken']
-            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
-            if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+            scrip_data = resp.json()
+            # Bhavishya ke fallback ke liye local copy save karke rakhna
+            with open("OpenAPIScripMaster_backup.json", "w") as f:
+                json.dump(scrip_data, f)
+            print("🌐 Master Scrip Master downloaded successfully from Angel server!")
+    except Exception as e:
+        print(f"⚠️ Network Download Failed, switching to local backup structure... Reason: {e}")
+
+    # Agar internet error ho, toh local system file se uthana
+    if not scrip_data:
+        try:
+            if os.path.exists("OpenAPIScripMaster_backup.json"):
+                with open("OpenAPIScripMaster_backup.json", "r") as f:
+                    scrip_data = json.load(f)
+                print("📁 Local backup JSON contract file loaded successfully!")
+            else:
+                print("❌ Fatal: No local OpenAPIScripMaster_backup.json found in project folder!")
+                return
+        except Exception as local_err:
+            print(f"❌ Backup Load Critical Error: {local_err}")
+            return
+
+    # DataFrame processing aur options dictionary memory map builder
+    try:
+        full_scrip_df = pd.DataFrame(scrip_data)
+        if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: 
+            full_scrip_df['token'] = full_scrip_df['symboltoken']
+        if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: 
+            full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
+        if 'strike' in full_scrip_df.columns: 
+            full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
+        
+        fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & ((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX'))].copy()
+        fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
+        fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+        
+        today_dt = pd.Timestamp(datetime.now().date())
+        for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
+            name_key = name.strip()
+            options_cache[name_key] = group
+            valid_group = group[group['parsed_expiry'] >= today_dt].copy()
+            valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
+            unique_expiries = []
+            for exp_dt in valid_group_sorted['parsed_expiry'].unique():
+                formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
+                if formatted_exp not in unique_expiries: 
+                    unique_expiries.append(formatted_exp)
+            symbol_expiries_cache[name_key] = unique_expiries
             
-            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & ((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX'))].copy()
-            fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
-            
-            today_dt = pd.Timestamp(datetime.now().date())
-            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
-                options_cache[name.strip()] = group
-                valid_group = group[group['parsed_expiry'] >= today_dt].copy()
-                valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
-                unique_expiries = []
-                for exp_dt in valid_group_sorted['parsed_expiry'].unique():
-                    formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
-                    if formatted_exp not in unique_expiries: unique_expiries.append(formatted_exp)
-                symbol_expiries_cache[name.strip()] = unique_expiries
-            print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols!")
-    except Exception as e: print(f"⚠ Scrip Master Error: {e}")
+        print(f"✅ Scrip Master Framework Configured! {len(options_cache)} Tickers Mapped.")
+    except Exception as process_err:
+        print(f"❌ Error while parsing master scrip panels: {process_err}")
+
 
 
 
