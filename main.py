@@ -458,9 +458,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 
+
+            
+# --- MARKET DATA ENGINE WITH HIGH-INTENSITY DYNAMIC LOGGER & SIMULATION INJECTOR ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
-    print(f"📊 [TRACE 1] fetch_symbol_data triggered for Symbol: {clean_active_symbol}")
+    print(f"📡 [DEBUG REPAIR] ==> Loop triggered for: {clean_active_symbol}")
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -468,69 +471,60 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             morning_oi_dict = {}
             baseline_date = current_date_str
             
-        print(f"📊 [TRACE 2] Checking options_cache status. Available symbols count: {len(options_cache) if options_cache else 0}")
         if not options_cache:
-            print("❌ [DEBUG ERROR] options_cache is completely EMPTY!")
+            print("❌ [DEBUG REPAIR] options_cache is completely EMPTY!")
             return
             
         if clean_active_symbol not in options_cache:
-            print(f"❌ [DEBUG ERROR] {clean_active_symbol} NOT FOUND in options_cache keys!")
+            print(f"❌ [DEBUG REPAIR] {clean_active_symbol} keys missing from option matrix map!")
             return
 
         sym_options = options_cache[clean_active_symbol]
-        print(f"📊 [TRACE 3] sym_options loaded for {clean_active_symbol}. Total rows in dataframe: {len(sym_options)}")
+        print(f"📡 [DEBUG REPAIR] Total records found in main frame cache: {len(sym_options)}")
         
         valid_opts = sym_options.copy()
-        print(f"📊 [TRACE 4] valid_opts generated. Row count: {len(valid_opts)}")
         if valid_opts.empty:
-            print("❌ [DEBUG ERROR] valid_opts Dataframe is empty after copy!")
+            print("❌ [DEBUG REPAIR] valid_opts frame is completely empty inside copy slice!")
             return
 
         unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
-        print(f"📊 [TRACE 5] Expiries detected for {clean_active_symbol}: {expiry_strings_sorted}")
+        print(f"📡 [DEBUG REPAIR] Active database expiries loaded: {expiry_strings_sorted}")
         
         target_expiry_str = user_selected_expiries.get(clean_active_symbol)
-        print(f"📊 [TRACE 6] User selected expiry from UI: {target_expiry_str}")
-        
         if not target_expiry_str or target_expiry_str not in expiry_strings_sorted:
             if expiry_strings_sorted:
                 target_expiry_str = expiry_strings_sorted[0]
-                print(f"📊 [TRACE 7] Target expiry reset to fallback default: {target_expiry_str}")
             else:
                 target_expiry_str = ""
             
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
-        print(f"📊 [TRACE 8] matched_exp list builder results: {matched_exp}")
         
+        # FIX: List extraction rule element update matrix comparison error se bachne ke liye
         if matched_exp:
             current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
-            print(f"📊 [TRACE 9] Scalar Expiry Locked: {current_expiry_dt} (String: {current_expiry})")
         else:
             current_expiry_dt = unique_expiries_dt[0] if unique_expiries_dt else None
             current_expiry = expiry_strings_sorted[0] if expiry_strings_sorted else ""
-            print(f"📊 [TRACE 9 FALLBACK] Fallback Scalar Expiry Locked: {current_expiry_dt}")
 
-        if current_expiry_dt is None:
-            print("❌ [DEBUG ERROR] current_expiry_dt is None, stopping execution!")
+        print(f"📡 [DEBUG REPAIR] Target processing single element date locked: {current_expiry_dt}")
+        if current_expiry_dt is None: 
             return
             
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-        print(f"📊 [TRACE 10] Filtered expiry options rows count: {len(current_expiry_options)}")
+        print(f"📡 [DEBUG REPAIR] Data rows found after scalar matching query: {len(current_expiry_options)}")
+        
         if current_expiry_options.empty:
-            print("❌ [DEBUG ERROR] current_expiry_options dataframe is EMPTY after filtering date!")
+            print("❌ [DEBUG REPAIR] STOPPING ENGINE: Pandas query returned zero matching matrix rows!")
             return
         
         try:
             lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
-            print(f"📊 [TRACE 11] Lot size extracted successfully: {lot_size}")
-        except Exception as lot_err:
+        except Exception:
             lot_size = 1
-            print(f"⚠️ [LOT BADGE WARNING] Failed to parse lot size, using default 1. Error: {lot_err}")
 
         spot_price = 24500.0 if clean_active_symbol == "NIFTY" else (51500.0 if clean_active_symbol == "BANKNIFTY" else (23500.0 if clean_active_symbol == "FINNIFTY" else 500.0))
-        print(f"📊 [TRACE 12] Base Spot Price before API call: {spot_price}")
         
         index_map = {
             "NIFTY": {"exch": "NSE", "token": "99926000"},
@@ -541,31 +535,22 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         if smart_api and clean_active_symbol in index_map:
             idx_info = index_map[clean_active_symbol]
             try:
-                print(f"📡 [API CALL] Requesting live price for token {idx_info['token']} from exchange {idx_info['exch']}...")
                 q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
                 if q_res and q_res.get('status') and q_res.get('data'):
                     fetched_data = q_res['data'].get('fetched', {})
                     token_key = idx_info["token"]
                     if token_key in fetched_data: 
                         val = float(fetched_data[token_key].get('ltp', 0))
-                        if val > 0: 
-                            spot_price = val
-                            print(f"🎯 [API SUCCESS] Live spot price received: {spot_price}")
-            except Exception as api_err:
-                print(f"⚠️ [API CATCH] Outbound request skipped or failed. Error: {api_err}")
+                        if val > 0: spot_price = val
+            except Exception:
+                pass
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
-        print(f"📊 [TRACE 13] Unique master strikes count: {len(all_master_strikes)}")
-        if not all_master_strikes:
-            print("❌ [DEBUG ERROR] Unique strikes list is EMPTY!")
-            return
-            
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
         strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
-        print(f"📊 [TRACE 14] Sliced dynamic strikes list for option chain view: {strikes}")
+        print(f"📡 [DEBUG REPAIR] Option chain grid range build strikes count: {len(strikes)}")
 
         raw_grid_payload = []
-        print("🚀 [PAYLOAD GENERATOR] Constructing internal structural matrix rows...")
         for idx, st in enumerate(strikes):
             dummy_ce_vol = 500000 - (idx * 15000) if idx < 12 else 100000 + (idx * 5000)
             dummy_pe_vol = 120000 + (idx * 8000) if idx < 12 else 600000 - (idx * 18000)
@@ -583,11 +568,11 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
-        print(f"📊 [TRACE 15] raw_grid_payload generated successfully. Sending {len(raw_grid_payload)} rows to tracker...")
+        print(f"🚀 [DEBUG REPAIR] Injecting payload to script engine database: {len(raw_grid_payload)} matrix blocks ready.")
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-        print("✅ [FINISH SUCCESS] fetch_symbol_data executed completely without drops!")
-    except Exception as e:
-        print(f"❌ [CRITICAL CATCH ERROR] fetch_symbol_data main crash block tracker: {e}")
+        print("✅ [DEBUG REPAIR] Main distribution engine function processed successfully!")
+    except Exception as pipeline_err:
+        print(f"❌ [CRITICAL ENGINE FATAL] Main script worker exception caught: {pipeline_err}")
 
 
 
