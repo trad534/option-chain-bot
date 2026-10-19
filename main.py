@@ -216,7 +216,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -555,16 +555,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
                 all_dash_quotes = []
                 for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 15):
+                    for i in range(0, len(t_list), 10):
                         try:
-                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+10]})
                             if res and res.get('status') and res.get('data') and res.get('data').get('fetched'): 
                                 all_dash_quotes.extend(res['data']['fetched'])
-                            else:
-                                print(f"⚠ MarketData Response Warning for {exch}: {res}")
                         except Exception as e: 
                             print(f"⚠ MarketData Fetch Exception for {exch}: {e}")
-                        time.sleep(0.2)
+                        time.sleep(0.3)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -604,7 +602,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                         'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                         'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
                         'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'],
+                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
                         'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
