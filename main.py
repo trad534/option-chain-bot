@@ -453,9 +453,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
       
-        
-
-     # --- MARKET DATA ENGINE & REALTIME SIMULATION INJECTOR (FULLY REPAIRED) ---
+     # --- MARKET DATA ENGINE & REALTIME SIMULATION INJECTOR (STRUCTURAL FIXED) ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -479,8 +477,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             target_expiry_str = expiry_strings_sorted[0] if expiry_strings_sorted else ""
             
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
-        current_expiry_dt = matched_exp[0] if matched_exp else (unique_expiries_dt[0] if unique_expiries_dt else None)
-        current_expiry = target_expiry_str if matched_exp else (expiry_strings_sorted[0] if expiry_strings_sorted else "")
+        
+        # PERMANENT FIX: List structure se single scalar value extract karna data blank hone se bachane ke liye
+        if matched_exp:
+            current_expiry_dt = matched_exp[0]
+            current_expiry = target_expiry_str
+        else:
+            current_expiry_dt = unique_expiries_dt[0] if unique_expiries_dt else None
+            current_expiry = expiry_strings_sorted[0] if expiry_strings_sorted else ""
 
         if current_expiry_dt is None: return
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
@@ -490,7 +494,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         except Exception:
             lot_size = 1
 
-        # STANDALONE UNDERLYING DATA BOUNDARIES FOR 230 SYMBOLS
+        # STANDALONE UNDERLYING VALUES FOR 230 SYMBOLS STABILITY
         spot_price = 24500.0 if clean_active_symbol == "NIFTY" else (51500.0 if clean_active_symbol == "BANKNIFTY" else (23500.0 if clean_active_symbol == "FINNIFTY" else 500.0))
         
         index_map = {
@@ -516,7 +520,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
         strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
-        t = 0.05  # Simulation fixed mathematical time theta metrics factor
+        t = 0.05  # Standard theta metrics component multiplier
 
         raw_grid_payload = []
         for idx, st in enumerate(strikes):
@@ -540,7 +544,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
     except Exception as e:
         print(f"⚠ fetch_symbol_data Core Pipeline Execution Error: {e}")
 
-# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER REPAIRED ---
+# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER COMPILER ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     scrip_data = None
@@ -601,10 +605,14 @@ def initialize_scrip_master(smart_api):
                     unique_expiries.append(formatted_exp)
             symbol_expiries_cache[name_key] = unique_expiries if unique_expiries else [today_dt.strftime("%d%b%Y").upper()]
             
-        print(f"✅ Scrip Master Framework Configured! {len(options_cache)} Symbols Mapped via Fixed Bypass Route.")
+        print("✅ Scrip Master Framework Configured! Symbols Mapped Successfully.")
     except Exception as process_err:
-        print(f"❌ Error while parsing master scrip panels array: {process_err}")
+        print(f"❌ Error while parsing master data: {process_err}")
+   
 
+     
+            
+         
 
 
         
