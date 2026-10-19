@@ -502,46 +502,32 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-                try:
-                    index_map = {
-                        "NIFTY": {"exch": "NSE", "token": "99926000"},
-                        "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
-                        "FINNIFTY": {"exch": "NSE", "token": "99926018"}
-                    }
+                index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
+                target_tok = index_tokens.get(clean_active_symbol, "")
+                
+                if target_tok:
+                    try:
+                        q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
+                        if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
+                            s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                            if s_val > 0: spot_price = s_val
+                    except Exception: pass
+                
+                if spot_price <= 0 and not target_tok:
+                    try:
+                        equity_row = full_scrip_df[(full_scrip_df['symbol'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                        if not equity_row.empty:
+                            eq_tok = str(equity_row['token'].values[0]).strip()
+                            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                            if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
+                                s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
+                    except Exception: pass
 
-                    if clean_active_symbol in index_map:
-                        idx_info = index_map[clean_active_symbol]
-                        try:
-                            q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
-                            if q_res and q_res.get('status') and q_res.get('data'):
-                                fetched_data = q_res['data'].get('fetched', {})
-                                token_key = idx_info["token"]
-                                if token_key in fetched_data: 
-                                    spot_price = float(fetched_data[token_key].get('ltp', 0))
-                                elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                                    spot_price = float(fetched_data[0].get('ltp', 0))
-                        except Exception as e:
-                            print(f"⚠ Spot Fetch Error (Index): {e}")
+                if spot_price <= 0:
+                    all_strikes_list = sorted(current_expiry_options['strike'].unique())
+                    spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
 
-                    if spot_price <= 0 and clean_active_symbol not in index_map:
-                        try:
-                            equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                            if not equity_row.empty:
-                                eq_tok = str(equity_row['token'].values[0]).strip()
-                                q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
-                                if q_res and q_res.get('status') and q_res.get('data'):
-                                    fetched_data = q_res['data'].get('fetched', {})
-                                    if eq_tok in fetched_data: 
-                                        spot_price = float(fetched_data[eq_tok].get('ltp', 0))
-                                    elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                                        spot_price = float(fetched_data[0].get('ltp', 0))
-                        except Exception as e:
-                            print(f"⚠ Spot Fetch Error (Equity): {e}")
-                except Exception as outer_e:
-                    print(f"⚠ Spot Block Error: {outer_e}")
-
-                print(f"🎯 Verified Spot Price: {spot_price}")
-                    
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
                 strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
@@ -555,16 +541,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
                 all_dash_quotes = []
                 for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 15):
+                    for i in range(0, len(t_list), 40):
                         try:
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
-                            if res and res.get('status') and res.get('data') and res.get('data').get('fetched'): 
-                                all_dash_quotes.extend(res['data']['fetched'])
-                            else:
-                                print(f"⚠ MarketData Response Warning for {exch}: {res}")
-                        except Exception as e: 
-                            print(f"⚠ MarketData Fetch Exception for {exch}: {e}")
-                        time.sleep(0.2)
+                            if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
+                        except Exception: pass
+                        time.sleep(0.4)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -610,8 +592,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                     })
 
                 execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-    except Exception as e:
-        print(f"⚠ fetch_symbol_data Exception: {e}")
+    except Exception: pass
 
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
@@ -961,6 +942,7 @@ def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     
+    # Pehle chhota sa delay taaki Flask server port bind hone ke liye poora waqt le le aur container restart na ho
     time.sleep(3)
     
     try: 
@@ -975,6 +957,7 @@ def run_bot_lock_loop():
             now_dt = datetime.now()
             today_date_str = now_dt.strftime("%Y-%m-%d")
             
+            # Agar session generate nahi hua ya naya din hai
             if last_session_date != today_date_str:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
@@ -983,6 +966,7 @@ def run_bot_lock_loop():
                     print("🔐 Session Generated Successfully! Loading Scrip Master...")
                     initialize_scrip_master(smart_api)
             
+            # Agar scrip master loaded hai toh active symbol ka data fetch karo
             if options_cache:
                 active_sym = current_active_symbol_ui
                 if active_sym:
@@ -995,5 +979,8 @@ def run_bot_lock_loop():
         time.sleep(3)
 
 if __name__ == "__main__":
+    # Flask server ko background thread mein daala taaki main startup block na ho aur Railway port turant bind kar le
     threading.Thread(target=run_flask, daemon=True).start()
+    
+    # Bot loop ko main thread mein chalne diya
     run_bot_lock_loop()
