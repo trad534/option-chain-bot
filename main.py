@@ -502,30 +502,65 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-                
-                try:
-                    # Scrip Master se exact symbol ka token aur exchange segment dhoondhein
-                    idx_row = full_scrip_df[(full_scrip_df['symbol'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                    if idx_row.empty:
-                        idx_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                    
-                    if not idx_row.empty:
-                        target_row = idx_row.iloc[0]
-                        spot_tok = str(target_row['token']).strip()
-                        spot_exch = str(target_row['exch_seg']).strip()
-                        
-                        q_res = smart_api.getMarketData("FULL", {spot_exch: [spot_tok]})
-                        if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
-                            s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
-                            if s_val > 0: 
-                                spot_price = s_val
-                except Exception as e:
-                    print(f"⚠ Spot Fetch Error: {e}")
 
-                # Fallback sirf tabhi jab live fetch fail ho
-                if spot_price <= 0 and not current_expiry_options.empty:
-                    all_strikes_list = sorted(current_expiry_options['strike'].unique())
-                    spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
+# 1. UPGRADED INDEX MAP: Naye working tokens ke sath
+index_map = {
+    "NIFTY": {"exch": "NSE", "token": "99926000"},       # Nifty 50 Spot Token Upgraded
+    "BANKNIFTY": {"exch": "NSE", "token": "99926009"},   # Bank Nifty Spot Token Upgraded
+    "FINNIFTY": {"exch": "NSE", "token": "99926018"}     # Fin Nifty Spot Token Upgraded
+}
+
+if clean_active_symbol in index_map:
+    idx_info = index_map[clean_active_symbol]
+    try:
+        # API Request bhejna
+        q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
+        
+        # Sahi Response extraction bina hardcoded index [0] ke
+        if q_res and q_res.get('status') and q_res.get('data'):
+            fetched_data = q_res['data'].get('fetched', {})
+            token_key = idx_info["token"]
+            
+            # SmartAPI dictionary response format ko check karna
+            if token_key in fetched_data:
+                s_val = float(fetched_data[token_key].get('ltp', 0))
+                if s_val > 0: 
+                    spot_price = s_val
+            # Agar purana format ya list format ho toh fallback mechanism
+            elif isinstance(fetched_data, list) and len(fetched_data) > 0:
+                s_val = float(fetched_data[0].get('ltp', 0))
+                if s_val > 0: 
+                    spot_price = s_val
+                    
+    except Exception as e:
+        print(f"⚠ Spot Fetch Error (Index): {e}")
+
+# Equity Stocks Spot Fetch (Agar Index nahi hai aur koi normal stock hai)
+if spot_price <= 0 and clean_active_symbol not in index_map:
+    try:
+        equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+        if not equity_row.empty:
+            eq_tok = str(equity_row['token'].values[0]).strip()
+            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+            
+            if q_res and q_res.get('status') and q_res.get('data'):
+                fetched_data = q_res['data'].get('fetched', {})
+                
+                if eq_tok in fetched_data:
+                    s_val = float(fetched_data[eq_tok].get('ltp', 0))
+                    if s_val > 0: 
+                        spot_price = s_val
+                elif isinstance(fetched_data, list) and len(fetched_data) > 0:
+                    s_val = float(fetched_data[0].get('ltp', 0))
+                    if s_val > 0: 
+                        spot_price = s_val
+                        
+    except Exception as e:
+        print(f"⚠ Spot Fetch Error (Equity): {e}")
+
+# Debugging ke liye print statement
+print(f"🎯 Verified Spot Price: {spot_price}")
+
                     
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
