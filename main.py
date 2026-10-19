@@ -193,7 +193,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -296,7 +296,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            # 🔒 9:15 AM EXACT EVENT TIMESTAMP FREEZE LOCK
             displayTime = get_memory("TIME_" + cacheKey)
             lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
@@ -506,7 +505,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
-                # ⚡ FAST INDEX SPOT FETCH (Direct Index Query - Single API Call)
                 if target_tok:
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
@@ -514,8 +512,18 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
+                
+                if spot_price <= 0 and not target_tok:
+                    try:
+                        equity_row = full_scrip_df[(full_scrip_df['symbol'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                        if not equity_row.empty:
+                            eq_tok = str(equity_row['token'].values[0]).strip()
+                            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                            if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
+                                s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
+                    except Exception: pass
 
-                # Fallback Spot Price if Index Token is unavailable
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
@@ -538,7 +546,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
-                        time.sleep(0.3)
+                        time.sleep(0.4)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -612,7 +620,7 @@ def initialize_scrip_master(smart_api):
                     if formatted_exp not in unique_expiries:
                         unique_expiries.append(formatted_exp)
                 symbol_expiries_cache[name.strip()] = unique_expiries
-            print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols at 8:50 AM!")
+            print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols!")
     except Exception as e: print(f"⚠ Scrip Master Error: {e}")
 
 HTML_TEMPLATE = """
@@ -932,35 +940,47 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting 8:50 AM Pre-Load & Multi-Symbol Engine...")
-    try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
-    except Exception as e: print(f"❌ Init Error: {e}"); return
+    print("🚀 Starting Background Bot Loop...")
+    
+    # Pehle chhota sa delay taaki Flask server port bind hone ke liye poora waqt le le aur container restart na ho
+    time.sleep(3)
+    
+    try: 
+        smart_api = SmartConnect(api_key=API_KEY)
+        smart_api_global = smart_api
+    except Exception as e: 
+        print(f"❌ Init Error: {e}")
+        return
     
     while True:
         try:
             now_dt = datetime.now()
             today_date_str = now_dt.strftime("%Y-%m-%d")
-            current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
-            target_preload_minutes = 8 * 60 + 50
-            
-            if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
+            # Agar session generate nahi hua ya naya din hai
+            if last_session_date != today_date_str:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
-                    print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
+                    print("🔐 Session Generated Successfully! Loading Scrip Master...")
                     initialize_scrip_master(smart_api)
             
-            if options_cache and current_total_minutes >= target_preload_minutes:
+            # Agar scrip master loaded hai toh active symbol ka data fetch karo
+            if options_cache:
                 active_sym = current_active_symbol_ui
                 if active_sym:
                     fetch_symbol_data(smart_api, active_sym)
 
-        except Exception:
+        except Exception as e:
+            print(f"⚠ Loop Error: {e}")
             pass
-        time.sleep(2.5)
+        
+        time.sleep(3)
 
 if __name__ == "__main__":
+    # Flask server ko background thread mein daala taaki main startup block na ho aur Railway port turant bind kar le
     threading.Thread(target=run_flask, daemon=True).start()
+    
+    # Bot loop ko main thread mein chalne diya
     run_bot_lock_loop()
