@@ -607,12 +607,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         print(f"⚠ fetch_symbol_data Core Tracker Error: {e}")
 
 
-
-
-
-            
-
-
 # --- MASTER SCRIP MASTER DOWNLOADER & DATE PARSING MECHANISM ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
