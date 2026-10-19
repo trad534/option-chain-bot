@@ -137,7 +137,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
             filtered.sort(key=lambda x: x['val'], reverse=True)
             
-            highest = filtered
+            highest = filtered[0]
             second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
             return {'highest': highest, 'second': second, 'pct': pct}
@@ -410,7 +410,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         print(f"❌ Scenario Tracker Error: {e}")
 
 
-# --- MARKET DATA ENGINE & DETAILED LOGS ---
+# --- MARKET DATA ENGINE (BUG FIXED HERE) ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -422,7 +422,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             baseline_date = current_date_str
             
         if not options_cache or clean_active_symbol not in options_cache:
-            print(f"⚠ Options Cache is empty or missing for {clean_active_symbol}. Master might not be loaded yet.")
+            print(f"⚠ Options Cache is empty or missing for {clean_active_symbol}.")
             return
 
         sym_options = options_cache[clean_active_symbol]
@@ -437,15 +437,16 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
+        # 📌 BUG FIX 1: Correct Timestamp assignment
         if matched_exp: 
-            current_expiry_dt = matched_exp
+            current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
         else: 
-            current_expiry_dt = unique_expiries_dt
+            current_expiry_dt = unique_expiries_dt[0]
             current_expiry = expiry_strings_sorted[0]
 
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-        lot_size = int(float(current_expiry_options['lotsize'].iloc)) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         spot_price = 0.0
         index_map = {
@@ -458,22 +459,21 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             idx_info = index_map[clean_active_symbol]
             try:
                 q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
-                print(f"📊 Spot Market Data Response for {clean_active_symbol}: {q_res}")
                 if q_res and q_res.get('status') and q_res.get('data'):
                     fetched_data = q_res['data'].get('fetched', {})
                     token_key = idx_info["token"]
-                    if token_key in fetched_data: 
+                    if isinstance(fetched_data, dict) and token_key in fetched_data: 
                         spot_price = float(fetched_data[token_key].get('ltp', 0))
                     elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                        spot_price = float(fetched_data.get('ltp', 0))
+                        spot_price = float(fetched_data[0].get('ltp', 0))
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
         if spot_price <= 0:
-            print(f"⚠ Spot price could not be fetched! Value: {spot_price}")
+            print(f"⚠ Spot price could not be fetched for {clean_active_symbol}! Value: {spot_price}")
             return
 
-        print(f"✅ Successfully Got Spot Price for {clean_active_symbol}: {spot_price}")
+        print(f"✅ Spot Price for {clean_active_symbol}: {spot_price}")
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -513,14 +513,18 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
             dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
-        t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+        # 📌 BUG FIX 2: Correct .iloc[0] indexing
+        expiry_dt_val = pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0])
+        t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
         raw_grid_payload = []
         for st in strikes:
             ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
             pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
-            ce_token = str(ce_sub['token'].values).strip() if not ce_sub.empty else ""
-            pe_token = str(pe_sub['token'].values).strip() if not pe_sub.empty else ""
+            
+            # 📌 BUG FIX 3: Correct token parsing
+            ce_token = str(ce_sub['token'].iloc[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].iloc[0]).strip() if not pe_sub.empty else ""
             
             ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
             pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
@@ -538,18 +542,18 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             })
 
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        print(f"🎉 Option Chain Data Processed Successfully for {clean_active_symbol}!")
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception: {e}")
 
 
-# --- CORRECTED SCRIP MASTER DOWNLOADER ---
+# --- SCRIP MASTER DOWNLOADER ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         print("📥 Downloading Scrip Master from Angel One...")
         resp = requests.get(url, timeout=30)
-        print(f"📥 Scrip Master HTTP Status: {resp.status_code}")
         if resp.status_code == 200:
             scrip_data = resp.json()
             full_scrip_df = pd.DataFrame(scrip_data)
@@ -682,7 +686,7 @@ HTML_TEMPLATE = """
                     let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; symSelect.appendChild(opt);
                 });
                 if(meta.symbols.length > 0) {
-                    symSelect.value = meta.active_symbol || meta.symbols;
+                    symSelect.value = meta.active_symbol || meta.symbols[0];
                     onSymbolChange();
                 }
             });
@@ -828,7 +832,6 @@ def run_bot_lock_loop():
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
                 print(f"🔐 Generating Session for Client ID: {CLIENT_ID}")
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
-                print(f"🔐 Session Response: {session_res}")
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
                     print("🔐 Session Generated Successfully! Loading Scrip Master...")
