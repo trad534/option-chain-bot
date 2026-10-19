@@ -452,8 +452,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 
-      
-     # --- MARKET DATA ENGINE & REALTIME SIMULATION INJECTOR (STRUCTURAL FIXED) ---
+      # --- MARKET DATA ENGINE & REALTIME SIMULATION INJECTOR (ARRAY FIX) ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -478,7 +477,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
-        # PERMANENT FIX: List structure se single scalar value extract karna data blank hone se bachane ke liye
+        # ABSOLUTE SCALAR FIX: List extraction error ko end karne ke liye array pos [0] use karna
         if matched_exp:
             current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
@@ -494,7 +493,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         except Exception:
             lot_size = 1
 
-        # STANDALONE UNDERLYING VALUES FOR 230 SYMBOLS STABILITY
+        # STANDALONE UNDERLYING SEGMENTS FOR 230 SYMBOLS STABILITY
         spot_price = 24500.0 if clean_active_symbol == "NIFTY" else (51500.0 if clean_active_symbol == "BANKNIFTY" else (23500.0 if clean_active_symbol == "FINNIFTY" else 500.0))
         
         index_map = {
@@ -520,9 +519,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
         strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
-        t = 0.05  # Standard theta metrics component multiplier
-
         raw_grid_payload = []
+        # Dynamic internal option indicators matrix construction
         for idx, st in enumerate(strikes):
             dummy_ce_vol = 500000 - (idx * 15000) if idx < 12 else 100000 + (idx * 5000)
             dummy_pe_vol = 120000 + (idx * 8000) if idx < 12 else 600000 - (idx * 18000)
@@ -543,6 +541,9 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
     except Exception as e:
         print(f"⚠ fetch_symbol_data Core Pipeline Execution Error: {e}")
+
+
+        
 
 # --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER COMPILER ---
 def initialize_scrip_master(smart_api):
