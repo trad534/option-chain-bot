@@ -13,6 +13,7 @@ from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
 
+# --- SERVER ALIVE & FLASK CONFIGURATION ---
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 def self_ping():
@@ -32,42 +33,45 @@ def print(*args, **kwargs):
 
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return render_template_string(HTML_TEMPLATE)
-
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
+
+# --- CREDENTIALS CONFIGURATION ---
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
 API_KEY = os.getenv("ANGEL_API_KEY")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
-script_memory = {}
+# --- GLOBAL CORE STORAGE PANELS ---
 global_run_date = ""
 persistent_quotes_cache = {}
-multi_symbol_runtime_states = {}
+multi_symbol_runtime_states = {}  
 symbol_expiries_cache = {}
 options_cache = {}
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
-current_active_symbol_for_memory = "NIFTY"
-current_active_symbol_ui = "NIFTY"
+current_active_symbol_ui = "NIFTY"  
 last_session_date = None
 user_selected_expiries = {}
 smart_api_global = None
 
-def get_memory(key, default=""):
-    global current_active_symbol_for_memory
-    return script_memory.get(f"{current_active_symbol_for_memory}_{key}", default)
+symbol_states_memory = {}
 
-def set_memory(key, value):
-    global current_active_symbol_for_memory
-    script_memory[f"{current_active_symbol_for_memory}_{key}"] = str(value)
+def get_symbol_memory(symbol, key, default=""):
+    if symbol not in symbol_states_memory:
+        symbol_states_memory[symbol] = {}
+    return symbol_states_memory[symbol].get(key, default)
 
+def set_symbol_memory(symbol, key, value):
+    if symbol not in symbol_states_memory:
+        symbol_states_memory[symbol] = {}
+    symbol_states_memory[symbol][key] = str(value)
+
+
+# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -92,18 +96,19 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-(d1 - sigma * np.sqrt(t)))) / 365
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
+
+# --- SCENARIO TRACKER SYSTEM ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
-    global global_run_date, multi_symbol_runtime_states, current_active_symbol_for_memory
+    global global_run_date, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
         today_str = now_dt.strftime("%Y-%m-%d")
         currentTimeStr = now_dt.strftime("%I:%M %p").lower()
 
         if global_run_date != today_str:
-            script_memory.clear()
+            symbol_states_memory.clear()
             global_run_date = today_str
 
-        current_active_symbol_for_memory = symbol_name
         if not raw_rows: return
 
         strikes_list = [float(r['strike']) for r in raw_rows]
@@ -159,9 +164,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         def get_full_status_string(top_obj, raw_state, cache_key):
             if not top_obj or not top_obj.get('highest') or top_obj['highest']['strike'] == 0: return "stable strong"
             strike = top_obj['highest']['strike']
-            prev_strike_str = get_memory("PREV_STRK_" + cache_key)
+            prev_strike_str = get_symbol_memory(symbol_name, "PREV_STRK_" + cache_key)
             prev_strike = float(prev_strike_str) if prev_strike_str else strike
-            current_weak_hist = get_memory("WEAK_HIST_" + cache_key, "")
+            current_weak_hist = get_symbol_memory(symbol_name, "WEAK_HIST_" + cache_key, "")
 
             if raw_state == "STRONG":
                 if current_weak_hist == "wtt": return "wtt to strong"
@@ -191,21 +196,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "VOL"
         else:
-            ceOiActiveRow = ceOiTop['highest']['row']
-            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0:
-                ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
-            ceVolActiveRow = ceVolTop['highest']['row']
-            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0:
-                ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
-            if ceVolActiveRow != ceOiActiveRow:
-                ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
-            else:
-                ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+            ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
@@ -214,30 +206,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "VOL"
         else:
-            peOiActiveRow = peOiTop['highest']['row']
-            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
-                peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
-            peVolActiveRow = peVolTop['highest']['row']
-            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0:
-                peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-            if peVolActiveRow != peOiActiveRow:
-                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
-            else:
-                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
-        if ceOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_OI", ceOiRawState)
-        if ceVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_CE_VOL", ceVolRawState)
-        if peOiRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_OI", peOiRawState)
-        if peVolRawState in ["wtt", "wtb"]: set_memory("WEAK_HIST_PE_VOL", peVolRawState)
+        if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
+        if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
+        if peOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
+        if peVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
 
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
@@ -247,24 +222,23 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             secondStrike = strike
             if topObj.get('second') and topObj['second']['val'] > 0: secondStrike = topObj['second']['strike']
 
-            prevStrikeStr = get_memory("PREV_STRK_" + cacheKey)
+            prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
             if not prevStrikeStr:
-                set_memory("PREV_STRK_" + cacheKey, str(strike))
+                set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
                 prevStrike = strike
 
             displayStatus = finalStatusText
             scenarioStatus = finalStatusText
             isShifting = False
-            shiftType = get_memory("SHIFT_TYPE_" + cacheKey, "")
-            shiftFromStrike = float(get_memory("SHIFT_FROM_" + cacheKey, 0))
-            lastTargetStrike = float(get_memory("SHIFT_TARGET_" + cacheKey, 0))
+            shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
+            shiftFromStrike = float(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
+            lastTargetStrike = float(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
 
-            if get_memory("IS_SHIFTED_" + cacheKey) == "true":
+            if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
                 if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
-                    set_memory("IS_SHIFTED_" + cacheKey, "false")
-                    set_memory("PREV_STRK_" + cacheKey, str(strike))
-                    script_memory.pop(f"{symbol_name}_SHIFT_TARGET_" + cacheKey, None)
+                    set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
+                    set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
 
             if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"):
                 if strike < prevStrike:
@@ -273,41 +247,41 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 else:
                     shiftType = "bottom to top"
                     scenarioStatus = "wtt"
-                set_memory("IS_SHIFTED_" + cacheKey, "true")
-                set_memory("SHIFT_TYPE_" + cacheKey, shiftType)
-                set_memory("SHIFT_FROM_" + cacheKey, str(prevStrike))
-                set_memory("SHIFT_TARGET_" + cacheKey, str(secondStrike))
+                set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
+                set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
+                set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(prevStrike))
+                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))
 
-            if get_memory("IS_SHIFTED_" + cacheKey) == "true":
+            if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
                 if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
-                    set_memory("IS_SHIFTED_" + cacheKey, "false")
-                    set_memory("PREV_STRK_" + cacheKey, str(strike))
+                    set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
+                    set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
                     isShifting = False
                     scenarioStatus = finalStatusText
                 else:
                     isShifting = True
-                    shiftType = get_memory("SHIFT_TYPE_" + cacheKey)
+                    shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey)
                     scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
             else:
-                set_memory("PREV_STRK_" + cacheKey, str(strike))
+                set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
                 scenarioStatus = finalStatusText
 
             if not isWinner and rawState != "STRONG":
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            displayTime = get_memory("TIME_" + cacheKey)
-            lastRecordedStatus = get_memory("LAST_STATUS_" + cacheKey, "")
+            displayTime = get_symbol_memory(symbol_name, "TIME_" + cacheKey)
+            lastRecordedStatus = get_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, "")
             isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
 
             if isTriggerStatus and displayStatus != lastRecordedStatus:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cacheKey, displayTime)
-                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
+                set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
+                set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
             elif not displayTime:
                 displayTime = currentTimeStr
-                set_memory("TIME_" + cacheKey, displayTime)
-                set_memory("LAST_STATUS_" + cacheKey, displayStatus)
+                set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
+                set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
             if isShifting:
                 line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
@@ -354,47 +328,17 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
+        else: k3Text = f"{symbol_name} is Active Trend"
 
-        finalD5 = "<div>-----</div>"
-        finalH5 = "<div>-----</div>"
-        finalQ5 = "<div>-----</div>"
-        finalU5 = "<div>-----</div>"
+        finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>"
 
-        if ceWinner == "BOTH": 
-            finalD5 = ceOiResult['text']
-            finalH5 = ceVolResult['text']
-        elif ceWinner == "VOL": 
-            finalD5 = "<div>-----</div>"
-            finalH5 = ceVolResult['text']
-        elif ceWinner == "OI": 
-            finalD5 = ceOiResult['text']
-            finalH5 = "<div>-----</div>"
+        if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
+        elif ceWinner == "VOL": finalH5 = ceVolResult['text']
+        elif ceWinner == "OI": finalD5 = ceOiResult['text']
 
-        if peWinner == "BOTH": 
-            finalU5 = peOiResult['text']
-            finalQ5 = peVolResult['text']
-        elif peWinner == "VOL": 
-            finalU5 = "<div>-----</div>"
-            finalQ5 = peVolResult['text']
-        elif peWinner == "OI": 
-            finalU5 = peOiResult['text']
-            finalH5 = "<div>-----</div>"
+        if peWinner == "BOTH": finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
+        elif peWinner == "VOL": finalQ5 = peVolResult['text']
+        elif peWinner == "OI": finalU5 = peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
@@ -404,17 +348,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["Q5_TEXT"] = finalQ5
         vault["K3_TEXT"] = k3Text
         vault["lot_size"] = lot_size
-        vault["spot_price"] = spot_price
+        vault["spot_price"] = round(spot_price, 2)
         vault["active_expiry"] = active_expiry
 
-        c_oi_1 = ceOiTop['highest']['strike']
-        c_oi_2 = ceOiTop['second']['strike']
-        c_vol_1 = ceVolTop['highest']['strike']
-        c_vol_2 = ceVolTop['second']['strike']
-        p_vol_1 = peVolTop['highest']['strike']
-        p_vol_2 = peVolTop['second']['strike']
-        p_oi_1 = peOiTop['highest']['strike']
-        p_oi_2 = peOiTop['second']['strike']
+        c_oi_1, c_oi_2 = ceOiTop['highest']['strike'], ceOiTop['second']['strike']
+        c_vol_1, c_vol_2 = ceVolTop['highest']['strike'], ceVolTop['second']['strike']
+        p_vol_1, p_vol_2 = peVolTop['highest']['strike'], peVolTop['second']['strike']
+        p_oi_1, p_oi_2 = peOiTop['highest']['strike'], peOiTop['second']['strike']
 
         max_ce_oi = ceOiTop['highest']['val'] or 1
         max_ce_vol = ceVolTop['highest']['val'] or 1
@@ -435,8 +375,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         for idx, r_dict in enumerate(raw_rows):
             if not spot_inserted and idx == spot_insert_idx:
                 grid_rows_built.append({
-                    'is_spot_row': True, 
-                    'spot_price': round(spot_price, 2),
+                    'is_spot_row': True, 'spot_price': round(spot_price, 2),
                     'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
                     'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
                     'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
@@ -455,13 +394,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
-
             grid_rows_built.append(r_copy)
 
         if not spot_inserted:
             grid_rows_built.append({
-                'is_spot_row': True, 
-                'spot_price': round(spot_price, 2),
+                'is_spot_row': True, 'spot_price': round(spot_price, 2),
                 'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
                 'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
                 'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
@@ -469,155 +406,157 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             })
 
         vault["grid_rows"] = grid_rows_built
-        vault["spot_price"] = round(spot_price, 2)
-    except Exception:
-        pass
+    except Exception as e: 
+        print(f"❌ Scenario Tracker Error: {e}")
 
+
+# --- MARKET DATA ENGINE (BUG FIXED HERE) ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
+        print(f"🔄 Fetching Data for Symbol: {clean_active_symbol}")
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
-        if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
-        if not options_cache: return
+        if baseline_date != current_date_str: 
+            morning_oi_dict = {}
+            baseline_date = current_date_str
+            
+        if not options_cache or clean_active_symbol not in options_cache:
+            print(f"⚠ Options Cache is empty or missing for {clean_active_symbol}.")
+            return
 
-        if clean_active_symbol in options_cache:
-            sym_options = options_cache[clean_active_symbol]
-            valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-            if not valid_opts.empty:
-                unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
-                expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
-                
-                target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
-                
-                matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
-                if matched_exp:
-                    current_expiry_dt = matched_exp[0]
-                    current_expiry = target_expiry_str
-                else:
-                    current_expiry_dt = unique_expiries_dt[0]
-                    current_expiry = expiry_strings_sorted[0]
+        sym_options = options_cache[clean_active_symbol]
+        valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
+        if valid_opts.empty:
+            print(f"⚠ No valid expiries found for {clean_active_symbol}")
+            return
 
-                current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-                lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+        unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
+        expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
+        
+        target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
+        matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
+        
+        # 📌 BUG FIX 1: Correct Timestamp assignment
+        if matched_exp: 
+            current_expiry_dt = matched_exp[0]
+            current_expiry = target_expiry_str
+        else: 
+            current_expiry_dt = unique_expiries_dt[0]
+            current_expiry = expiry_strings_sorted[0]
 
-                spot_price = 0.0
+        current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
+        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+
+        spot_price = 0.0
+        index_map = {
+            "NIFTY": {"exch": "NSE", "token": "99926000"},
+            "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
+            "FINNIFTY": {"exch": "NSE", "token": "99926018"}
+        }
+
+        if clean_active_symbol in index_map:
+            idx_info = index_map[clean_active_symbol]
+            try:
+                q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
+                if q_res and q_res.get('status') and q_res.get('data'):
+                    fetched_data = q_res['data'].get('fetched', {})
+                    token_key = idx_info["token"]
+                    if isinstance(fetched_data, dict) and token_key in fetched_data: 
+                        spot_price = float(fetched_data[token_key].get('ltp', 0))
+                    elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
+                        spot_price = float(fetched_data[0].get('ltp', 0))
+            except Exception as e:
+                print(f"⚠ Spot Fetch Error (Index): {e}")
+
+        if spot_price <= 0:
+            print(f"⚠ Spot price could not be fetched for {clean_active_symbol}! Value: {spot_price}")
+            return
+
+        print(f"✅ Spot Price for {clean_active_symbol}: {spot_price}")
+
+        all_master_strikes = sorted(current_expiry_options['strike'].unique())
+        closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
+        strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
+
+        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
+        exch_map = {}
+        for _, row in filtered_opts.iterrows():
+            exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip()
+            if exch not in exch_map: exch_map[exch] = []
+            exch_map[exch].append(tok)
+
+        all_dash_quotes = []
+        for exch, t_list in exch_map.items():
+            for i in range(0, len(t_list), 40):
                 try:
-                    index_map = {
-                        "NIFTY": {"exch": "NSE", "token": "99926000"},
-                        "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
-                        "FINNIFTY": {"exch": "NSE", "token": "99926018"}
-                    }
+                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                    if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
+                        all_dash_quotes.extend(res['data']['fetched'])
+                except Exception as ex: 
+                    print(f"⚠ Chunk Fetch Error: {ex}")
+                time.sleep(0.05)
 
-                    if clean_active_symbol in index_map:
-                        idx_info = index_map[clean_active_symbol]
-                        try:
-                            q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
-                            if q_res and q_res.get('status') and q_res.get('data'):
-                                fetched_data = q_res['data'].get('fetched', {})
-                                token_key = idx_info["token"]
-                                if token_key in fetched_data: 
-                                    spot_price = float(fetched_data[token_key].get('ltp', 0))
-                                elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                                    spot_price = float(fetched_data[0].get('ltp', 0))
-                        except Exception as e:
-                            print(f"⚠ Spot Fetch Error (Index): {e}")
+        dash_quotes_dict = {}
+        for item in all_dash_quotes:
+            tok = str(item.get('symbolToken', item.get('token', ''))).strip()
+            persistent_quotes_cache[tok] = {
+                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))),
+                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))),
+                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0)))
+            }
 
-                    if spot_price <= 0 and clean_active_symbol not in index_map:
-                        try:
-                            equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                            if not equity_row.empty:
-                                eq_tok = str(equity_row['token'].values[0]).strip()
-                                q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
-                                if q_res and q_res.get('status') and q_res.get('data'):
-                                    fetched_data = q_res['data'].get('fetched', {})
-                                    if eq_tok in fetched_data: 
-                                        spot_price = float(fetched_data[eq_tok].get('ltp', 0))
-                                    elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                                        spot_price = float(fetched_data[0].get('ltp', 0))
-                        except Exception as e:
-                            print(f"⚠ Spot Fetch Error (Equity): {e}")
-                except Exception as outer_e:
-                    print(f"⚠ Spot Block Error: {outer_e}")
+        for tok, q_data in persistent_quotes_cache.items():
+            if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: 
+                morning_oi_dict[tok] = q_data['oi']
+            base_oi = morning_oi_dict.get(tok, q_data['oi'])
+            calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
+            dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
-                print(f"🎯 Verified Spot Price: {spot_price}")
-                    
-                all_master_strikes = sorted(current_expiry_options['strike'].unique())
-                closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-                strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
+        # 📌 BUG FIX 2: Correct .iloc[0] indexing
+        expiry_dt_val = pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0])
+        t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
-                filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
-                exch_map = {}
-                for _, row in filtered_opts.iterrows():
-                    exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip()
-                    if exch not in exch_map: exch_map[exch] = []
-                    exch_map[exch].append(tok)
+        raw_grid_payload = []
+        for st in strikes:
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
+            
+            # 📌 BUG FIX 3: Correct token parsing
+            ce_token = str(ce_sub['token'].iloc[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].iloc[0]).strip() if not pe_sub.empty else ""
+            
+            ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
+            pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
 
-                all_dash_quotes = []
-                for exch, t_list in exch_map.items():
-                    for i in range(0, len(t_list), 10):
-                        try:
-                            res = smart_api.getMarketData("FULL", {exch: t_list[i:i+10]})
-                            if res and res.get('status') and res.get('data') and res.get('data').get('fetched'): 
-                                all_dash_quotes.extend(res['data']['fetched'])
-                        except Exception as e: 
-                            print(f"⚠ MarketData Fetch Exception for {exch}: {e}")
-                        time.sleep(0.3)
+            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
+            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
+            
+            raw_grid_payload.append({
+                'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
+                'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
+                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
+                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
+            })
 
-                dash_quotes_dict = {}
-                for item in all_dash_quotes:
-                    tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-                    ltp = float(item.get('ltp', 0))
-                    volume = float(item.get('tradeVolume', item.get('volume', 0)))
-                    oi = float(item.get('opnInterest', item.get('oi', 0)))
-                    change = float(item.get('netChange', item.get('change', 0)))
-                    oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
-                    if ltp > 0 or oi > 0: 
-                        persistent_quotes_cache[tok] = {'ltp': ltp, 'volume': volume, 'oi': oi, 'net_change': change, 'oi_chg': oi_chg}
-
-                for tok, q_data in persistent_quotes_cache.items():
-                    if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi']
-                    base_oi = morning_oi_dict.get(tok, q_data['oi'])
-                    calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
-                    dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
-
-                t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
-
-                raw_grid_payload = []
-
-                for st in strikes:
-                    ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
-                    pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
-                    ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
-                    pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
-                    
-                    ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-                    pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-
-                    ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
-                    pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
-                    
-                    raw_grid_payload.append({
-                        'strike': st,
-                        'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
-                        'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
-                        'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
-                        'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
-                        'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
-                    })
-
-                execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        print(f"🎉 Option Chain Data Processed Successfully for {clean_active_symbol}!")
     except Exception as e:
-        print(f"⚠ fetch_symbol_data Exception: {e}")
+        print(f"❌ fetch_symbol_data Exception: {e}")
 
+
+# --- SCRIP MASTER DOWNLOADER ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        print("📥 Downloading Scrip Master from Angel One...")
         resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
-            scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
+            scrip_data = resp.json()
+            full_scrip_df = pd.DataFrame(scrip_data)
             if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: full_scrip_df['token'] = full_scrip_df['symboltoken']
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
@@ -634,12 +573,14 @@ def initialize_scrip_master(smart_api):
                 unique_expiries = []
                 for exp_dt in valid_group_sorted['parsed_expiry'].unique():
                     formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
-                    if formatted_exp not in unique_expiries:
-                        unique_expiries.append(formatted_exp)
+                    if formatted_exp not in unique_expiries: unique_expiries.append(formatted_exp)
                 symbol_expiries_cache[name.strip()] = unique_expiries
-            print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols!")
-    except Exception as e: print(f"⚠ Scrip Master Error: {e}")
+            print(f"✅ Scrip Master Pre-loaded Successfully for {len(options_cache)} Symbols!")
+    except Exception as e: 
+        print(f"❌ Scrip Master Error: {e}")
 
+
+# --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -653,110 +594,29 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; gap: 15px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
-        
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
-        
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
-        
-        .yellow-pill-badge { 
-            background: #ffd43b; 
-            color: #000000; 
-            font-size: 11px; 
-            font-weight: 700; 
-            padding: 2px 10px; 
-            border-radius: 12px; 
-            border: 1px solid #fab005; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.08); 
-            display: inline-block; 
-            margin-top: 4px; 
-        }
-
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
-        
-        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col {
-            min-width: 87px !important;
-            width: 87px !important;
-        }
-
+        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 87px !important; width: 87px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
-        .spot-row td::after { 
-            content: ""; 
-            position: absolute; 
-            left: 0; 
-            right: 0; 
-            top: 50%; 
-            height: 3px; 
-            background-color: #f03e3e; 
-            z-index: 2; 
-            transform: translateY(-50%);
-        }
-        
+        .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
-        .spot-price-cell { 
-            background: #ffffff !important; 
-            text-align: center; 
-            z-index: 4; 
-            padding: 2px 2px !important;
-            border-left: 2px solid #dee2e6 !important;
-            border-right: 2px solid #dee2e6 !important;
-        }
-        
-        .spot-tag-red { 
-            background: #e53935; 
-            color: #ffffff; 
-            font-size: 9px; 
-            font-weight: 800; 
-            padding: 1px 6px; 
-            border-radius: 10px; 
-            display: inline-block; 
-            margin-bottom: 1px;
-            letter-spacing: 0.5px;
-        }
-        .spot-value-green {
-            color: #2e7d32;
-            font-weight: 800;
-            font-size: 13px;
-            display: block;
-        }
-
-        .spot-badges-wrapper {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-            pointer-events: none;
-            width: max-content;
-        }
-
-        .state-badge-pill {
-            background: #ffffff;
-            border: 1.8px solid #333333;
-            border-radius: 12px;
-            padding: 2px 7px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
+        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; }
+        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 10px; display: inline-block; margin-bottom: 1px; }
+        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 13px; display: block; }
+        .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
+        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
-
         .itm-ce { background: rgba(240, 62, 62, 0.06); }
         .itm-pe { background: rgba(43, 138, 62, 0.06); }
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
@@ -813,7 +673,6 @@ HTML_TEMPLATE = """
                 allExpiriesData = meta.expiries;
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
-                
                 let priorityIndices = ["NIFTY", "BANKNIFTY", "FINNIFTY"];
                 let sortedSymbols = meta.symbols.sort((a, b) => {
                     let aIdx = priorityIndices.indexOf(a);
@@ -823,11 +682,9 @@ HTML_TEMPLATE = """
                     if (bIdx !== -1) return 1;
                     return a.localeCompare(b);
                 });
-
                 sortedSymbols.forEach(sym => {
                     let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; symSelect.appendChild(opt);
                 });
-                
                 if(meta.symbols.length > 0) {
                     symSelect.value = meta.active_symbol || meta.symbols[0];
                     onSymbolChange();
@@ -850,35 +707,27 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/set-symbol/' + sym + (exp ? '/' + exp : ''), {method: 'POST'}).then(() => fetchData());
         }
-
         function createSinglePillBadgeHtml(badgeObj) {
             if (!badgeObj || !badgeObj.show_badge) return "";
             let cls = badgeObj.state === 'WTT' ? 'state-wtt' : (badgeObj.state === 'WTB' ? 'state-wtb' : 'state-strong');
             let pctColor = badgeObj.state === 'WTB' ? '#c62828' : '#2e7d32';
             return `<div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div>`;
         }
-
         function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                
                 document.getElementById("d5Val").innerHTML = data.D5;
                 document.getElementById("h5Val").innerHTML = data.H5;
                 document.getElementById("q5Val").innerHTML = data.Q5;
                 document.getElementById("u5Val").innerHTML = data.U5;
-                
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
-                if(k3TextLower.includes("bull")) {
-                    k3Div.style.color = "#0000FF";
-                } else if(k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) {
-                    k3Div.style.color = "#FF0000";
-                } else {
-                    k3Div.style.color = "#000000";
-                }
+                if(k3TextLower.includes("bull")) k3Div.style.color = "#0000FF";
+                else if(k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
+                else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
                 if (data.grid_rows && data.grid_rows.length > 0) {
@@ -887,22 +736,18 @@ HTML_TEMPLATE = """
                         if (row.is_spot_row) {
                             tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
-                            
                             let ceBadges = [];
                             let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
                             let ceVolHtml = createSinglePillBadgeHtml(row.ce_vol_badge);
                             if(ceOiHtml) ceBadges.push(ceOiHtml);
                             if(ceVolHtml) ceBadges.push(ceVolHtml);
-
                             let peBadges = [];
                             let peVolHtml = createSinglePillBadgeHtml(row.pe_vol_badge);
                             let peOiHtml = createSinglePillBadgeHtml(row.pe_oi_badge);
                             if(peVolHtml) peBadges.push(peVolHtml);
                             if(peOiHtml) peBadges.push(peOiHtml);
-
                             let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
-
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
@@ -918,10 +763,20 @@ HTML_TEMPLATE = """
 </html>
 """
 
+
+# --- FLASK API ROUTES ---
+@app.route('/')
+def home(): 
+    return render_template_string(HTML_TEMPLATE)
+
 @app.route('/api/init-meta')
 def get_initial_metadata():
     global current_active_symbol_ui
-    return jsonify({"symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY"], "expiries": symbol_expiries_cache, "active_symbol": current_active_symbol_ui})
+    return jsonify({
+        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY"], 
+        "expiries": symbol_expiries_cache, 
+        "active_symbol": current_active_symbol_ui
+    })
 
 @app.route('/api/set-symbol/<symbol>', defaults={'expiry': None}, methods=['POST'])
 @app.route('/api/set-symbol/<symbol>/<expiry>', methods=['POST'])
@@ -930,8 +785,7 @@ def set_symbol_api(symbol, expiry):
     sym = symbol.upper()
     current_active_symbol_ui = sym
     try:
-        if expiry:
-            user_selected_expiries[sym] = expiry.upper()
+        if expiry: user_selected_expiries[sym] = expiry.upper()
         if smart_api_global and sym in options_cache:
             threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
     except Exception: pass
@@ -955,10 +809,11 @@ def get_symbol_runtime_data(symbol):
         "spot_price": vault.get("spot_price", 0)
     })
 
+
+# --- BACKGROUND PROCESS ENGINE ---
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
     print("🚀 Starting Background Bot Loop...")
-    
     time.sleep(3)
     
     try: 
@@ -975,6 +830,7 @@ def run_bot_lock_loop():
             
             if last_session_date != today_date_str:
                 totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
+                print(f"🔐 Generating Session for Client ID: {CLIENT_ID}")
                 session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
                 if session_res and session_res.get('status'):
                     last_session_date = today_date_str
@@ -983,13 +839,16 @@ def run_bot_lock_loop():
             
             if options_cache:
                 active_sym = current_active_symbol_ui
-                if active_sym:
+                if active_sym: 
                     fetch_symbol_data(smart_api, active_sym)
+                
+                for background_sym in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
+                    if background_sym != active_sym and background_sym in options_cache:
+                        fetch_symbol_data(smart_api, background_sym)
+                        time.sleep(0.1)
 
-        except Exception as e:
+        except Exception as e: 
             print(f"⚠ Loop Error: {e}")
-            pass
-        
         time.sleep(3)
 
 if __name__ == "__main__":
