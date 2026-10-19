@@ -73,29 +73,30 @@ def set_symbol_memory(symbol, key, value):
 
 
 # --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
-def calculate_iv_and_greeks(flag, S, K, t, r, ltp): [cite: 1]
-    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05: [cite: 1]
-        delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0)) [cite: 1]
-        return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0} [cite: 1]
-    intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S) [cite: 1]
-    if ltp < intrinsic: ltp = intrinsic + 0.05 [cite: 1]
-    def objective_function(sigma): [cite: 1]
-        if sigma <= 0: sigma = 1e-4 [cite: 1]
-        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t)) [cite: 1]
-        d2 = d1 - sigma * np.sqrt(t) [cite: 1]
-        return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)) - ltp [cite: 1]
-    try: sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100) [cite: 1]
-    except Exception: sigma = 0.20 [cite: 1]
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t)) [cite: 1]
-    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t)) [cite: 1]
-    vega_val = S * norm.pdf(d1) * np.sqrt(t) / 100 [cite: 1]
-    if flag == 'CE': [cite: 1]
-        delta = norm.cdf(d1) [cite: 1]
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d1 - sigma * np.sqrt(t))) / 365 [cite: 1]
-    else: [cite: 1]
-        delta = norm.cdf(d1) - 1 [cite: 1]
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-(d1 - sigma * np.sqrt(t)))) / 365 [cite: 1]
-    return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)} [cite: 1]
+def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
+    if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
+        delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
+        return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
+    intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S)
+    if ltp < intrinsic: ltp = intrinsic + 0.05
+    def objective_function(sigma):
+        if sigma <= 0: sigma = 1e-4
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+        d2 = d1 - sigma * np.sqrt(t)
+        return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)) - ltp
+    try: sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
+    except Exception: sigma = 0.20
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
+    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
+    vega_val = S * norm.pdf(d1) * np.sqrt(t) / 100
+    if flag == 'CE':
+        delta = norm.cdf(d1)
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d1 - sigma * np.sqrt(t))) / 365
+    else:
+        delta = norm.cdf(d1) - 1
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-(d1 - sigma * np.sqrt(t)))) / 365
+    return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
+
 
 
 # --- SCENARIO TRACKER SYSTEM & PEAK RESISTANCE / SUPPORT EXTRACTOR ---
@@ -463,7 +464,7 @@ and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['s
         vault["grid_rows"] = grid_rows_built [cite: 1]
     except Exception: pass [cite: 1]
 
-# --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION (PART 8 & 9 FIXED) ---
+# --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -477,14 +478,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         sym_options = options_cache[clean_active_symbol]
         
-        # FIX 1: Timestamp parsing ko safely manage karna taaki empty series ya string error na aaye
         valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
         if valid_opts.empty: return
 
         unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
         
-        # Fix: String direct check karna list ke sath dict array mismatch se bachne ke liye
         target_expiry_str = user_selected_expiries.get(clean_active_symbol)
         if not target_expiry_str or target_expiry_str not in expiry_strings_sorted:
             target_expiry_str = expiry_strings_sorted[0]
@@ -500,7 +499,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
         
-        # FIX 2: Lotsize integer extraction structure ko standard value map dena
         try:
             lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
         except Exception:
@@ -508,7 +506,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         spot_price = 0.0
         
-        # UPGRADED ACTIVE PERMANENT INDEX TOKENS MAP
         index_map = {
             "NIFTY": {"exch": "NSE", "token": "99926000"},
             "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
@@ -546,7 +543,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         if spot_price <= 0: return
 
-        # FIX 3: ATM Strikes array indexing error prevention logic
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
         strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
@@ -584,7 +580,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
             dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
-        # FIX 4: Expire element row reference index correction `.iloc` to `.iloc[0]`
         t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
         raw_grid_payload = []
@@ -612,6 +607,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
     except Exception as e:
         print(f"⚠ fetch_symbol_data Core Tracker Error: {e}")
+
+
 
 
 
