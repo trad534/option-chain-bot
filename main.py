@@ -501,7 +501,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                 spot_price = 0.0
+                spot_price = 0.0
                 
                 try:
                     # Scrip Master se exact symbol ka token aur exchange segment dhoondhein
