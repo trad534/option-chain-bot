@@ -13,7 +13,7 @@ from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
 
-# --- SERVER ALIVE & FLASK CONFIGURATION ---
+# --- SERVER KEEP-ALIVE TUNING ---
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 def self_ping():
@@ -38,6 +38,8 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
+
+
 # --- CREDENTIALS CONFIGURATION ---
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -47,18 +49,18 @@ TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 # --- GLOBAL CORE STORAGE PANELS ---
 global_run_date = ""
 persistent_quotes_cache = {}
-multi_symbol_runtime_states = {}  # Har symbol ke active matrix data ke liye
+multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
 options_cache = {}
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
 baseline_date = None
-current_active_symbol_ui = "NIFTY"  # Frontend display control
+current_active_symbol_ui = "NIFTY"
 last_session_date = None
 user_selected_expiries = {}
 smart_api_global = None
 
-# ISOLATED DEEP MEMORY MATRIX: Yeh har symbol ki pichli subah se chal rahi scenarios ko freeze rakhega
+# ISOLATED MULTI-SYMBOL DEEP MEMORY MATRIX
 symbol_states_memory = {}
 
 def get_symbol_memory(symbol, key, default=""):
@@ -70,6 +72,8 @@ def set_symbol_memory(symbol, key, value):
     if symbol not in symbol_states_memory:
         symbol_states_memory[symbol] = {}
     symbol_states_memory[symbol][key] = str(value)
+
+
 
 
 # --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
@@ -99,7 +103,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
 
 
-# --- SCENARIO TRACKER SYSTEM & PEAK RESISTANCE / SUPPORT EXTRACTOR ---
+
+# --- SCENARIO TRACKER SYSTEM & SUPPORT / RESISTANCE CALCULATOR ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
     global global_run_date, multi_symbol_runtime_states
     try:
@@ -107,7 +112,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         today_str = now_dt.strftime("%Y-%m-%d")
         currentTimeStr = now_dt.strftime("%I:%M %p").lower()
 
-        # Naye din par memory clean up karna
         if global_run_date != today_str:
             symbol_states_memory.clear()
             global_run_date = today_str
@@ -153,6 +157,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return
 
 
+
+
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
             if is_put_side:
@@ -189,66 +195,45 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # CALL SIDE WINNER SEARCH ENGINE
         ceWinner = "VOL"
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "VOL"
+        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "OI"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): ceWinner = "VOL"
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "OI"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
-            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0:
-                ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
+            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
             ceVolActiveRow = ceVolTop['highest']['row']
-            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0:
-                ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
-            if ceVolActiveRow != ceOiActiveRow:
-                ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
-            else:
-                ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0: ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
+            if ceVolActiveRow != ceOiActiveRow: ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
+            else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # PUT SIDE WINNER SEARCH ENGINE
         peWinner = "VOL"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
-            peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
-            peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "VOL"
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "OI"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): peWinner = "VOL"
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "OI"
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
-            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
-                peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
+            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
             peVolActiveRow = peVolTop['highest']['row']
-            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0:
-                peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
-            if peVolActiveRow != peOiActiveRow:
-                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
-            else:
-                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+            if peVolActiveRow != peOiActiveRow: peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
+            else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
         if peOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
         if peVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
+
+
+
 
 
         # --- SHIFTING STATE CONTROLLER & CELLS RENDERING GENERATOR ---
@@ -352,6 +337,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
+
+
 
 
         checkCe = finalCeState
@@ -462,6 +449,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         vault["grid_rows"] = grid_rows_built
     except Exception: pass
 
+
+
+
+
 # --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
@@ -484,7 +475,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         
         target_expiry_str = user_selected_expiries.get(clean_active_symbol)
         if not target_expiry_str or target_expiry_str not in expiry_strings_sorted:
-            target_expiry_str = expiry_strings_sorted[0]
+            target_expiry_str = expiry_strings_sorted[0] if expiry_strings_sorted else ""
             
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
@@ -492,9 +483,10 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
         else: 
-            current_expiry_dt = unique_expiries_dt[0]
-            current_expiry = expiry_strings_sorted[0]
+            current_expiry_dt = unique_expiries_dt[0] if unique_expiries_dt else None
+            current_expiry = expiry_strings_sorted[0] if expiry_strings_sorted else ""
 
+        if current_expiry_dt is None: return
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
         
         try:
@@ -540,6 +532,10 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 print(f"⚠ Spot Fetch Error (Equity): {e}")
 
         if spot_price <= 0: return
+
+
+
+
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -607,11 +603,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         print(f"⚠ fetch_symbol_data Core Tracker Error: {e}")
 
 
+
+
+
 # --- MASTER SCRIP MASTER DOWNLOADER & DATE PARSING MECHANISM ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
-        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+        url = "https://angelbroking.com"
         resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
@@ -635,6 +634,10 @@ def initialize_scrip_master(smart_api):
                 symbol_expiries_cache[name.strip()] = unique_expiries
             print(f"✅ Scrip Master Pre-loaded for {len(options_cache)} Symbols!")
     except Exception as e: print(f"⚠ Scrip Master Error: {e}")
+
+
+
+
 
 
 # --- WEB DASHBOARD CORE COMPONENT HTML TEMPLATE FRAMEWORK ---
@@ -687,7 +690,8 @@ HTML_TEMPLATE = """
         .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 13px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
         
-        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,
+        0,0,0.15); font-size: 11px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
@@ -706,6 +710,9 @@ HTML_TEMPLATE = """
 </head>
 
 
+
+
+
 <body>
     <div class="header">
         <h2>⚡ Arush LTP Calculator</h2>
@@ -717,7 +724,7 @@ HTML_TEMPLATE = """
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
     
-    <!-- 4 MAIN DYNAMIC MATRIX STATUS BLOCKS WITH INTEGRATED TIME RETENTION -->
+    <!-- 4 CORE HIGHLIGHTED PANEL CARDS -->
     <div class="status-box">
         <div class="card card-ce"><div id="d5Val">-</div></div>
         <div class="card card-ce"><div id="h5Val">-</div></div>
@@ -746,6 +753,9 @@ HTML_TEMPLATE = """
             </tbody>
         </table>
     </div>
+
+
+
 
 
     <script>
@@ -808,7 +818,6 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                // DATA REFILL HOOK: Background memory arrays se data inhi boxes par backfill hoga
                 document.getElementById("d5Val").innerHTML = data.D5;
                 document.getElementById("h5Val").innerHTML = data.H5;
                 document.getElementById("q5Val").innerHTML = data.Q5;
@@ -857,7 +866,10 @@ HTML_TEMPLATE = """
     </script>
 </body>
 </html>
-"""
+\"\"\"
+
+
+
 
 
 # --- FLASK API ROUTES CORE ROUTING ---
