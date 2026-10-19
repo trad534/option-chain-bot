@@ -463,24 +463,32 @@ and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['s
         vault["grid_rows"] = grid_rows_built [cite: 1]
     except Exception: pass [cite: 1]
 
-
-# --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION ---
+# --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION (PART 8 & 9 FIXED) ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
-        if baseline_date != current_date_str: morning_oi_dict = {}; baseline_date = current_date_str
+        if baseline_date != current_date_str: 
+            morning_oi_dict = {}
+            baseline_date = current_date_str
+            
         if not options_cache or clean_active_symbol not in options_cache: return
 
         sym_options = options_cache[clean_active_symbol]
+        
+        # FIX 1: Timestamp parsing ko safely manage karna taaki empty series ya string error na aaye
         valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
         if valid_opts.empty: return
 
         unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
         
-        target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
+        # Fix: String direct check karna list ke sath dict array mismatch se bachne ke liye
+        target_expiry_str = user_selected_expiries.get(clean_active_symbol)
+        if not target_expiry_str or target_expiry_str not in expiry_strings_sorted:
+            target_expiry_str = expiry_strings_sorted[0]
+            
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
         if matched_exp: 
@@ -491,7 +499,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             current_expiry = expiry_strings_sorted[0]
 
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+        
+        # FIX 2: Lotsize integer extraction structure ko standard value map dena
+        try:
+            lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
+        except Exception:
+            lot_size = 1
 
         spot_price = 0.0
         
@@ -516,7 +529,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # Equity Stocks Spot Fetch (Agar dropdown me normal stock active ho)
         if spot_price <= 0 and clean_active_symbol not in index_map:
             try:
                 equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
@@ -534,71 +546,76 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         if spot_price <= 0: return
 
+        # FIX 3: ATM Strikes array indexing error prevention logic
+        all_master_strikes = sorted(current_expiry_options['strike'].unique())
+        closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
+        strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
-        # ATM Strikes Boundaries Definition
-        all_master_strikes = sorted(current_expiry_options['strike'].unique()) [cite: 1]
-        closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price)) [cite: 1]
-        strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)] [cite: 1]
+        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
+        exch_map = {}
+        for _, row in filtered_opts.iterrows():
+            exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip()
+            if exch not in exch_map: exch_map[exch] = []
+            exch_map[exch].append(tok)
 
-        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy() [cite: 1]
-        exch_map = {} [cite: 1]
-        for _, row in filtered_opts.iterrows(): [cite: 1]
-            exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip() [cite: 1]
-            if exch not in exch_map: exch_map[exch] = [] [cite: 1]
-            exch_map[exch].append(tok) [cite: 1]
+        all_dash_quotes = []
+        for exch, t_list in exch_map.items():
+            for i in range(0, len(t_list), 40):
+                try:
+                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                    if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
+                        all_dash_quotes.extend(res['data']['fetched'])
+                except Exception: pass
+                time.sleep(0.05)
 
-        # Full Chunk Market Data Fetcher Loop
-        all_dash_quotes = [] [cite: 1]
-        for exch, t_list in exch_map.items(): [cite: 1]
-            for i in range(0, len(t_list), 40): [cite: 1]
-                try: [cite: 1]
-                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]}) [cite: 1]
-                    if res and res.get('status') and res.get('data') and res.get('data').get('fetched'): [cite: 1]
-                        all_dash_quotes.extend(res['data']['fetched']) [cite: 1]
-                except Exception: pass [cite: 1]
-                time.sleep(0.05) [cite: 1]
+        dash_quotes_dict = {}
+        for item in all_dash_quotes:
+            tok = str(item.get('symbolToken', item.get('token', ''))).strip()
+            persistent_quotes_cache[tok] = {
+                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))),
+                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))),
+                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0)))
+            }
 
-        dash_quotes_dict = {} [cite: 1]
-        for item in all_dash_quotes: [cite: 1]
-            tok = str(item.get('symbolToken', item.get('token', ''))).strip() [cite: 1]
-            persistent_quotes_cache[tok] = { [cite: 1]
-                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))), [cite: 1]
-                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))), [cite: 1]
-                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0))) [cite: 1]
-            } [cite: 1]
+        for tok, q_data in persistent_quotes_cache.items():
+            if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: 
+                morning_oi_dict[tok] = q_data['oi']
+            base_oi = morning_oi_dict.get(tok, q_data['oi'])
+            calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
+            dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
-        for tok, q_data in persistent_quotes_cache.items(): [cite: 1]
-            if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: morning_oi_dict[tok] = q_data['oi'] [cite: 1]
-            base_oi = morning_oi_dict.get(tok, q_data['oi']) [cite: 1]
-            calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0) [cite: 1]
-            dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']} [cite: 1]
+        # FIX 4: Expire element row reference index correction `.iloc` to `.iloc[0]`
+        t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0]).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
-        t = max((pd.Timestamp(current_expiry_options['parsed_expiry'].iloc).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001) [cite: 1]
-
-        raw_grid_payload = [] [cite: 1]
-        for st in strikes: [cite: 1]
-            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))] [cite: 1]
-            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))] [cite: 1]
-            ce_token = str(ce_sub['token'].values).strip() if not ce_sub.empty else "" [cite: 1]
-            pe_token = str(pe_sub['token'].values).strip() if not pe_sub.empty else "" [cite: 1]
+        raw_grid_payload = []
+        for st in strikes:
+            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
+            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
+            ce_token = str(ce_sub['token'].values[0]).strip() if not ce_sub.empty else ""
+            pe_token = str(pe_sub['token'].values[0]).strip() if not pe_sub.empty else ""
             
-            ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0}) [cite: 1]
-            pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0}) [cite: 1]
+            ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
+            pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
 
-            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp']) [cite: 1]
-            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp']) [cite: 1]
+            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
+            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
             
-            raw_grid_payload.append({ [cite: 1]
-                'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'], [cite: 1]
-                'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0, [cite: 1]
-                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'], [cite: 1]
-                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'], [cite: 1]
-                'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'], [cite: 1]
-                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price) [cite: 1]
-            }) [cite: 1]
+            raw_grid_payload.append({
+                'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
+                'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
+                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
+                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
+            })
 
-        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol) [cite: 1]
-    except Exception: pass [cite: 1]
+        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+    except Exception as e:
+        print(f"⚠ fetch_symbol_data Core Tracker Error: {e}")
+
+
+
+            
 
 
 # --- MASTER SCRIP MASTER DOWNLOADER & DATE PARSING MECHANISM ---
