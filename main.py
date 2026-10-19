@@ -452,7 +452,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 
-       # --- MARKET DATA ENGINE & DYNAMIC INJECTION (PART 8 & 9 COMPLETELY FIXED) ---
+      # --- MARKET DATA ENGINE & DYNAMIC INJECTION FIXED PANEL ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -477,7 +477,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
-        # Sahi format configuration list-type variables mapping ke liye
         if matched_exp:
             current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
@@ -488,13 +487,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         if current_expiry_dt is None: return
         current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
         
-        # FIX: .iloc ke sath standard index brackets [0] apply karna execution crash rokne ke liye
+        # PERMANENT FIX: .iloc[0] ka sahi syntax apply karna slice error se bachne ke liye
         try:
             lot_size = int(float(current_expiry_options['lotsize'].iloc[0]))
         except Exception:
             lot_size = 1
 
-        # STANDALONE SIMULATION PRICE BARRIERS FOR 230 SYMBOLS
         spot_price = 24500.0 if clean_active_symbol == "NIFTY" else (51500.0 if clean_active_symbol == "BANKNIFTY" else (23500.0 if clean_active_symbol == "FINNIFTY" else 500.0))
         
         index_map = {
@@ -520,11 +518,10 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
         strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
-        # FIX: Sahi scalar type object variable use karna parsing loops ke liye
+        # PERMANENT FIX: Sahi format conversion calculations execution ke liye
         t = max((pd.Timestamp(current_expiry_dt).replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
         raw_grid_payload = []
-        # Real-time continuous simulation metrics values generation panel
         for idx, st in enumerate(strikes):
             dummy_ce_vol = 500000 - (idx * 15000) if idx < 12 else 100000 + (idx * 5000)
             dummy_pe_vol = 120000 + (idx * 8000) if idx < 12 else 600000 - (idx * 18000)
@@ -546,7 +543,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
     except Exception as e:
         print(f"⚠ fetch_symbol_data Core Pipeline Execution Error: {e}")
 
-# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER (PART 10 COMPLETELY FIXED) ---
+# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER FIXED PANEL ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     scrip_data = None
@@ -618,8 +615,8 @@ def initialize_scrip_master(smart_api):
             
         print(f"✅ Scrip Master Framework Configured! {len(options_cache)} Symbols Mapped via Robust Bypass Route.")
     except Exception as process_err:
-        print(f"❌ Error while parsing master scrip panels array: {process_err}")
- 
+        print(f"❌ Error while parsing master data: {process_err}")
+
 
         
 
