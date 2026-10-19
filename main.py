@@ -501,10 +501,10 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
-                spot_price = 0.0
+spot_price = 0.0
 
 # 1. UPGRADED INDEX MAP: Naye working tokens ke sath
-index_map = {
+     index_map = {
     "NIFTY": {"exch": "NSE", "token": "99926000"},       # Nifty 50 Spot Token Upgraded
     "BANKNIFTY": {"exch": "NSE", "token": "99926009"},   # Bank Nifty Spot Token Upgraded
     "FINNIFTY": {"exch": "NSE", "token": "99926018"}     # Fin Nifty Spot Token Upgraded
