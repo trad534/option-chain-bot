@@ -502,6 +502,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
+                
+                # 1. Index Spot Fetching
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
@@ -513,6 +515,21 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
                 
+                # 2. Futures Index/Stock Spot Fetching (Index ke turant baad reliable alternative)
+                if spot_price <= 0:
+                    try:
+                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))].copy()
+                        if not fut_sub.empty:
+                            fut_row = fut_sub.iloc[0]
+                            fut_tok = str(fut_row['token'])
+                            fut_exch = str(fut_row['exch_seg'])
+                            fut_quote = smart_api.getMarketData("FULL", {fut_exch: [fut_tok]})
+                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
+                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
+                    except Exception: pass
+
+                # 3. Equity Cash Check
                 if spot_price <= 0:
                     try:
                         eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')].copy()
@@ -527,18 +544,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                                 if s_val > 0: spot_price = s_val
                     except Exception: pass
 
-                if spot_price <= 0:
-                    try:
-                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))]
-                        if not fut_sub.empty:
-                            fut_tok = str(fut_sub['token'].values[0])
-                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
-                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
-                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
-
-                if spot_price <= 0:
+                # 4. Final Fallback (Sirf tab jab sabhi live APIs fail ho jayein)
+                if spot_price <= 0 and not current_expiry_options.empty:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
                     
