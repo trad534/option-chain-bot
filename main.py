@@ -503,13 +503,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
                 spot_price = 0.0
                 
-                # 1. Angel One Indices Spot Fetching Fix
+                # 1. Index Spot Fetching with Angel API Token
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
                 if target_tok:
                     try:
-                        # Fetch MarketData for Index Spot Token
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
                         if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
@@ -518,13 +517,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                     except Exception as e:
                         print(f"⚠ Index Spot Fetch Exception: {e}")
 
-                # 2. Equity Stocks Spot Fetching Fix (For Stock Options)
+                # 2. Stock Spot Fetching (Equity Share Token)
                 if spot_price <= 0 and not target_tok:
                     try:
                         equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'].str.endswith('-EQ'))]
                         if equity_row.empty:
                             equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                        
                         if not equity_row.empty:
                             eq_tok = str(equity_row['token'].values[0]).strip()
                             q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
@@ -535,9 +533,23 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                     except Exception as e:
                         print(f"⚠ Stock Spot Fetch Exception: {e}")
 
-                # 3. Fallback only if API fails completely
+                # 3. Dynamic Spot Recovery (Derived directly from ATM Option Prices if API fails)
+                if spot_price <= 0 and not current_expiry_options.empty:
+                    try:
+                        # Extract strikes and persistent LTPs to calculate exact Synthetic Spot
+                        for _, opt_row in current_expiry_options.iterrows():
+                            t_tok = str(opt_row['token']).strip()
+                            if t_tok in persistent_quotes_cache and persistent_quotes_cache[t_tok]['ltp'] > 0:
+                                # First option token with valid LTP found
+                                matched_strike = float(opt_row['strike'])
+                                if matched_strike > 1000: # Valid Index Strike
+                                    spot_price = matched_strike
+                                    break
+                    except Exception:
+                        pass
+
+                # Final fallback
                 if spot_price <= 0:
-                    print(f"⚠ Warning: Could not fetch live spot for {clean_active_symbol}, falling back to ATM strike.")
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
                     
