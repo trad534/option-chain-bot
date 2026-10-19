@@ -38,8 +38,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-
-
 # --- CREDENTIALS CONFIGURATION ---
 CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
 PIN = os.getenv("ANGEL_PIN")
@@ -60,7 +58,6 @@ last_session_date = None
 user_selected_expiries = {}
 smart_api_global = None
 
-# ISOLATED MULTI-SYMBOL DEEP MEMORY MATRICES
 symbol_states_memory = {}
 
 def get_symbol_memory(symbol, key, default=""):
@@ -72,9 +69,6 @@ def set_symbol_memory(symbol, key, value):
     if symbol not in symbol_states_memory:
         symbol_states_memory[symbol] = {}
     symbol_states_memory[symbol][key] = str(value)
-
-
-
 
 
 # --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
@@ -103,10 +97,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
-
-
-
-# --- SCENARIO TRACKER SYSTEM & SUPPORT / RESISTANCE CALCULATOR ---
+# --- SCENARIO TRACKER SYSTEM ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
     global global_run_date, multi_symbol_runtime_states
     try:
@@ -231,11 +222,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_OI", peOiRawState)
         if peVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_PE_VOL", peVolRawState)
 
-
-
-
-
-        # --- SHIFTING STATE CONTROLLER & CELLS RENDERING GENERATOR ---
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
                 return {'text': "<div>-----</div>", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
@@ -337,10 +323,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
-
-
-
-
         checkCe = finalCeState
         checkPe = finalPeState
 
@@ -354,22 +336,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
+        else: k3Text = f"{symbol_name} is Active Trend"
 
         finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>"
 
@@ -447,15 +414,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             })
 
         vault["grid_rows"] = grid_rows_built
-    except Exception: pass
+    except Exception as e:
+        print(f"❌ Scenario Tracker Error: {e}")
 
 
-
-
-
-
-            
-# --- MARKET DATA ENGINE WITH HIGH-INTENSITY DYNAMIC LOGGER & SIMULATION INJECTOR ---
+# --- MARKET DATA ENGINE WITH HIGH-INTENSITY DYNAMIC LOGGER ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     print(f"📡 [DEBUG REPAIR] ==> Loop triggered for: {clean_active_symbol}")
@@ -475,7 +438,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             return
 
         sym_options = options_cache[clean_active_symbol]
-        print(f"📡 [DEBUG REPAIR] Total records found in main frame cache: {len(sym_options)}")
+        print(f"📡 [DEBUG REPAIR] Total records found in main frame cache for {clean_active_symbol}: {len(sym_options)}")
         
         valid_opts = sym_options.copy()
         if valid_opts.empty:
@@ -533,11 +496,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 if q_res and q_res.get('status') and q_res.get('data'):
                     fetched_data = q_res['data'].get('fetched', {})
                     token_key = idx_info["token"]
-                    if token_key in fetched_data: 
+                    if isinstance(fetched_data, dict) and token_key in fetched_data: 
                         val = float(fetched_data[token_key].get('ltp', 0))
                         if val > 0: spot_price = val
-            except Exception:
-                pass
+                    elif isinstance(fetched_data, list) and len(fetched_data) > 0:
+                        val = float(fetched_data[0].get('ltp', 0))
+                        if val > 0: spot_price = val
+            except Exception as e:
+                print(f"⚠ Spot Fetch Error: {e}")
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -569,34 +535,29 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         print(f"❌ [CRITICAL ENGINE FATAL] Main script worker exception caught: {pipeline_err}")
 
 
-
-
-
-
-
-# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER (ALL SYMBOLS SUPPORTED) ---
+# --- MASTER SCRIP MASTER DYNAMIC SIMULATION BUILDER (ALL 230+ SYMBOLS SUPPORTED) ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     scrip_data = None
     
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=10)
+        print("📥 Downloading Scrip Master from Angel One OpenAPI...")
+        resp = requests.get(url, timeout=15)
         if resp.status_code == 200:
             scrip_data = resp.json()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠ Scrip Master Download Error: {e}")
 
     if not scrip_data:
         try:
             alt_url = "https://ankitsangwan.in/OpenAPIScripMaster.json"
-            resp = requests.get(alt_url, timeout=10)
+            resp = requests.get(alt_url, timeout=15)
             if resp.status_code == 200:
                 scrip_data = resp.json()
         except Exception:
             pass
 
-    # Network failure fallback with complete F&O symbols list
     if not scrip_data:
         priority_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
         generated_master = []
@@ -629,7 +590,7 @@ def initialize_scrip_master(smart_api):
             if full_scrip_df['strike'].max() > 100000:
                 full_scrip_df['strike'] = full_scrip_df['strike'] / 100.0
 
-        # FIX: Including all F&O and Index option segments (all 230+ symbols)
+        # FIX: Saare F&O aur Index symbols (230+ symbols) ko properly map karne ke liye filtering
         fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX']))].copy()
         if fno_opts.empty:
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0)].copy()
@@ -652,11 +613,6 @@ def initialize_scrip_master(smart_api):
         print(f"✅ Scrip Master Framework Configured! Total Mapped Symbols: {len(options_cache)}")
     except Exception as process_err:
         print(f"❌ Error while parsing master data: {process_err}")
-
-
-
-
-
 
 
 # --- WEB DASHBOARD CORE COMPONENT HTML TEMPLATE FRAMEWORK ---
@@ -765,10 +721,6 @@ HTML_TEMPLATE = """
             </tbody>
         </table>
     </div>
-
-
-
-
 
     <script>
         let allExpiriesData = {};
@@ -879,8 +831,6 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
-
-
 
 
 # --- FLASK API ROUTES CORE ROUTING ---
