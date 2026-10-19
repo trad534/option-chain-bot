@@ -502,70 +502,45 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-        try:
-            index_map = {
-                "NIFTY": {"exch": "NSE", "token": "99926000"},
-                "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
-                "FINNIFTY": {"exch": "NSE", "token": "99926018"}
-            }
-
-            if clean_active_symbol in index_map:
-                idx_info = index_map[clean_active_symbol]
                 try:
-                    q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
-                    if q_res and q_res.get('status') and q_res.get('data'):
-                        fetched_data = q_res['data'].get('fetched', {})
-                        token_key = idx_info["token"]
-                        if token_key in fetched_data: 
-                            spot_price = float(fetched_data[token_key].get('ltp', 0))
-                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                            spot_price = float(fetched_data[0].get('ltp', 0))
-                except Exception as e:
-                    print(f"⚠ Spot Fetch Error (Index): {e}")
+                    index_map = {
+                        "NIFTY": {"exch": "NSE", "token": "99926000"},
+                        "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
+                        "FINNIFTY": {"exch": "NSE", "token": "99926018"}
+                    }
 
-            if spot_price <= 0 and clean_active_symbol not in index_map:
-                try:
-                    equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                    if not equity_row.empty:
-                        eq_tok = str(equity_row['token'].values[0]).strip()
-                        q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
-                        if q_res and q_res.get('status') and q_res.get('data'):
-                            fetched_data = q_res['data'].get('fetched', {})
-                            if eq_tok in fetched_data: 
-                                spot_price = float(fetched_data[eq_tok].get('ltp', 0))
-                            elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                                spot_price = float(fetched_data[0].get('ltp', 0))
-                except Exception as e:
-                    print(f"⚠ Spot Fetch Error (Equity): {e}")
-        except Exception as outer_e:
-            print(f"⚠ Spot Block Error: {outer_e}")
+                    if clean_active_symbol in index_map:
+                        idx_info = index_map[clean_active_symbol]
+                        try:
+                            q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
+                            if q_res and q_res.get('status') and q_res.get('data'):
+                                fetched_data = q_res['data'].get('fetched', {})
+                                token_key = idx_info["token"]
+                                if token_key in fetched_data: 
+                                    spot_price = float(fetched_data[token_key].get('ltp', 0))
+                                elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
+                                    spot_price = float(fetched_data[0].get('ltp', 0))
+                        except Exception as e:
+                            print(f"⚠ Spot Fetch Error (Index): {e}")
 
+                    if spot_price <= 0 and clean_active_symbol not in index_map:
+                        try:
+                            equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                            if not equity_row.empty:
+                                eq_tok = str(equity_row['token'].values[0]).strip()
+                                q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                                if q_res and q_res.get('status') and q_res.get('data'):
+                                    fetched_data = q_res['data'].get('fetched', {})
+                                    if eq_tok in fetched_data: 
+                                        spot_price = float(fetched_data[eq_tok].get('ltp', 0))
+                                    elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
+                                        spot_price = float(fetched_data[0].get('ltp', 0))
+                        except Exception as e:
+                            print(f"⚠ Spot Fetch Error (Equity): {e}")
+                except Exception as outer_e:
+                    print(f"⚠ Spot Block Error: {outer_e}")
 
-# Equity Stocks Spot Fetch (Agar Index nahi hai aur koi normal stock hai)
-if spot_price <= 0 and clean_active_symbol not in index_map:
-    try:
-        equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-        if not equity_row.empty:
-            eq_tok = str(equity_row['token'].values[0]).strip()
-            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
-            
-            if q_res and q_res.get('status') and q_res.get('data'):
-                fetched_data = q_res['data'].get('fetched', {})
-                
-                if eq_tok in fetched_data:
-                    s_val = float(fetched_data[eq_tok].get('ltp', 0))
-                    if s_val > 0: 
-                        spot_price = s_val
-                elif isinstance(fetched_data, list) and len(fetched_data) > 0:
-                    s_val = float(fetched_data[0].get('ltp', 0))
-                    if s_val > 0: 
-                        spot_price = s_val
-                        
-    except Exception as e:
-        print(f"⚠ Spot Fetch Error (Equity): {e}")
-
-# Debugging ke liye print statement
-print(f"🎯 Verified Spot Price: {spot_price}")
+                print(f"🎯 Verified Spot Price: {spot_price}")
                     
                 all_master_strikes = sorted(current_expiry_options['strike'].unique())
                 closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -629,7 +604,7 @@ print(f"🎯 Verified Spot Price: {spot_price}")
                         'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                         'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
                         'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                        'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'],
                         'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                         'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
                     })
