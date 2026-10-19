@@ -39,24 +39,24 @@ def run_flask():
 
 
 # --- CREDENTIALS CONFIGURATION ---
-CLIENT_ID = os.getenv("ANGEL_CLIENT_ID") [cite: 1]
-PIN = os.getenv("ANGEL_PIN") [cite: 1]
-API_KEY = os.getenv("ANGEL_API_KEY") [cite: 1]
-TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET") [cite: 1]
+CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
+PIN = os.getenv("ANGEL_PIN")
+API_KEY = os.getenv("ANGEL_API_KEY")
+TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 # --- GLOBAL CORE STORAGE PANELS ---
-global_run_date = "" [cite: 1]
-persistent_quotes_cache = {} [cite: 1]
-multi_symbol_runtime_states = {}  # Har symbol ke active matrix data ke liye [cite: 1]
-symbol_expiries_cache = {} [cite: 1]
-options_cache = {} [cite: 1]
-full_scrip_df = pd.DataFrame() [cite: 1]
-morning_oi_dict = {} [cite: 1]
-baseline_date = None [cite: 1]
-current_active_symbol_ui = "NIFTY"  # Frontend display control [cite: 1]
-last_session_date = None [cite: 1]
-user_selected_expiries = {} [cite: 1]
-smart_api_global = None [cite: 1]
+global_run_date = ""
+persistent_quotes_cache = {}
+multi_symbol_runtime_states = {}  # Har symbol ke active matrix data ke liye
+symbol_expiries_cache = {}
+options_cache = {}
+full_scrip_df = pd.DataFrame()
+morning_oi_dict = {}
+baseline_date = None
+current_active_symbol_ui = "NIFTY"  # Frontend display control
+last_session_date = None
+user_selected_expiries = {}
+smart_api_global = None
 
 # ISOLATED DEEP MEMORY MATRIX: Yeh har symbol ki pichli subah se chal rahi scenarios ko freeze rakhega
 symbol_states_memory = {}
@@ -100,152 +100,150 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
 
 # --- SCENARIO TRACKER SYSTEM & PEAK RESISTANCE / SUPPORT EXTRACTOR ---
-def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"): [cite: 1]
-    global global_run_date, multi_symbol_runtime_states [cite: 1]
-    try: [cite: 1]
-        now_dt = datetime.now() [cite: 1]
-        today_str = now_dt.strftime("%Y-%m-%d") [cite: 1]
-        currentTimeStr = now_dt.strftime("%I:%M %p").lower() [cite: 1]
+def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
+    global global_run_date, multi_symbol_runtime_states
+    try:
+        now_dt = datetime.now()
+        today_str = now_dt.strftime("%Y-%m-%d")
+        currentTimeStr = now_dt.strftime("%I:%M %p").lower()
 
         # Naye din par memory clean up karna
-        if global_run_date != today_str: [cite: 1]
-            symbol_states_memory.clear() [cite: 1]
-            global_run_date = today_str [cite: 1]
+        if global_run_date != today_str:
+            symbol_states_memory.clear()
+            global_run_date = today_str
 
-        if not raw_rows: return [cite: 1]
+        if not raw_rows: return
 
-        strikes_list = [float(r['strike']) for r in raw_rows] [cite: 1]
-        spot_idx = 0 [cite: 1]
-        if strikes_list: [cite: 1]
-            spot_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price)) [cite: 1]
+        strikes_list = [float(r['strike']) for r in raw_rows]
+        spot_idx = 0
+        if strikes_list:
+            spot_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price))
 
-        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], [] [cite: 1]
+        ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
 
-        for idx, r_dict in enumerate(raw_rows): [cite: 1]
-            row_idx = 8 + idx [cite: 1]
-            strike = float(r_dict['strike']) [cite: 1]
-            if not strike: continue [cite: 1]
+        for idx, r_dict in enumerate(raw_rows):
+            row_idx = 8 + idx
+            strike = float(r_dict['strike'])
+            if not strike: continue
 
-            if idx >= (spot_idx - 3) and idx < len(raw_rows): [cite: 1]
-                ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx}) [cite: 1]
-                ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx}) [cite: 1]
+            if idx >= (spot_idx - 3) and idx < len(raw_rows):
+                ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
+                ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            if idx <= (spot_idx + 3): [cite: 1]
-                peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx}) [cite: 1]
-                peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx}) [cite: 1]
+            if idx <= (spot_idx + 3):
+                peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
+                peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
-        def extract_top_two(data_array): [cite: 1]
-            if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0} [cite: 1]
-            filtered = [item for item in data_array if item['val'] > 0] [cite: 1]
-            if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0} [cite: 1]
-            filtered.sort(key=lambda x: x['val'], reverse=True) [cite: 1]
+        def extract_top_two(data_array):
+            if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            filtered = [item for item in data_array if item['val'] > 0]
+            if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            filtered.sort(key=lambda x: x['val'], reverse=True)
             
-            highest = filtered[0] [cite: 1]
-            second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']} [cite: 1]
-            pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0 [cite: 1]
-            return {'highest': highest, 'second': second, 'pct': pct} [cite: 1]
+            highest = filtered[0]
+            second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
+            pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
+            return {'highest': highest, 'second': second, 'pct': pct}
 
-        ceVolTop = extract_top_two(ceVolArray) [cite: 1]
-        ceOiTop = extract_top_two(ceOiArray) [cite: 1]
-        peVolTop = extract_top_two(peVolArray) [cite: 1]
-        peOiTop = extract_top_two(peOiArray) [cite: 1]
+        ceVolTop = extract_top_two(ceVolArray)
+        ceOiTop = extract_top_two(ceOiArray)
+        peVolTop = extract_top_two(peVolArray)
+        peOiTop = extract_top_two(peOiArray)
 
-        if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return [cite: 1]
+        if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return
 
 
-        def detect_live_state_advanced(top_obj, is_put_side): [cite: 1]
-            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG" [cite: 1]
-            if is_put_side: [cite: 1]
-                return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt" [cite: 1]
-            else: [cite: 1]
-                return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb" [cite: 1]
+        def detect_live_state_advanced(top_obj, is_put_side):
+            if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
+            if is_put_side:
+                return "wtb" if top_obj['second']['strike'] < top_obj['highest']['strike'] else "wtt"
+            else:
+                return "wtt" if top_obj['second']['strike'] > top_obj['highest']['strike'] else "wtb"
 
-        ceVolRawState = detect_live_state_advanced(ceVolTop, False) [cite: 1]
-        ceOiRawState = detect_live_state_advanced(ceOiTop, False) [cite: 1]
-        peVolRawState = detect_live_state_advanced(peVolTop, True) [cite: 1]
-        peOiRawState = detect_live_state_advanced(peOiTop, True) [cite: 1]
+        ceVolRawState = detect_live_state_advanced(ceVolTop, False)
+        ceOiRawState = detect_live_state_advanced(ceOiTop, False)
+        peVolRawState = detect_live_state_advanced(peVolTop, True)
+        peOiRawState = detect_live_state_advanced(peOiTop, True)
 
-        def get_full_status_string(top_obj, raw_state, cache_key): [cite: 1]
-            if not top_obj or not top_obj.get('highest') or top_obj['highest']['strike'] == 0: return "stable strong" [cite: 1]
-            strike = top_obj['highest']['strike'] [cite: 1]
+        def get_full_status_string(top_obj, raw_state, cache_key):
+            if not top_obj or not top_obj.get('highest') or top_obj['highest']['strike'] == 0: return "stable strong"
+            strike = top_obj['highest']['strike']
             prev_strike_str = get_symbol_memory(symbol_name, "PREV_STRK_" + cache_key)
-            prev_strike = float(prev_strike_str) if prev_strike_str else strike [cite: 1]
+            prev_strike = float(prev_strike_str) if prev_strike_str else strike
             current_weak_hist = get_symbol_memory(symbol_name, "WEAK_HIST_" + cache_key, "")
 
-            if raw_state == "STRONG": [cite: 1]
-                if current_weak_hist == "wtt": return "wtt to strong" [cite: 1]
-                if current_weak_hist == "wtb": return "wtb to strong" [cite: 1]
-                if strike != prev_strike: return "strong" [cite: 1]
-                return "stable strong" [cite: 1]
-            return raw_state [cite: 1]
+            if raw_state == "STRONG":
+                if current_weak_hist == "wtt": return "wtt to strong"
+                if current_weak_hist == "wtb": return "wtb to strong"
+                if strike != prev_strike: return "strong"
+                return "stable strong"
+            return raw_state
 
-        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL") [cite: 1]
-        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI") [cite: 1]
-        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, "PE_VOL") [cite: 1]
-        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, "PE_OI") [cite: 1]
+        ceVolStatusText = get_full_status_string(ceVolTop, ceVolRawState, "CE_VOL")
+        ceOiStatusText = get_full_status_string(ceOiTop, ceOiRawState, "CE_OI")
+        peVolStatusText = get_full_status_string(peVolTop, peVolRawState, "PE_VOL")
+        peOiStatusText = get_full_status_string(peOiTop, peOiRawState, "PE_OI")
 
-        ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText [cite: 1]
-        ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText [cite: 1]
-        peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText [cite: 1]
-        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText [cite: 1]
+        ceOiIsStable100 = ceOiRawState == "STRONG" or "to strong" in ceOiStatusText
+        ceVolIsStable100 = ceVolRawState == "STRONG" or "to strong" in ceVolStatusText
+        peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
+        peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
         # CALL SIDE WINNER SEARCH ENGINE
-        ceWinner = "VOL" [cite: 1]
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": [cite: 1]
-            ceWinner = "BOTH" [cite: 1]
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): [cite: 1]
-            ceWinner = "BOTH" [cite: 1]
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: [cite: 1]
-            ceWinner = "BOTH" [cite: 1]
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): [cite: 1]
-            ceWinner = "OI" [cite: 1]
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']): [cite: 1]
-            ceWinner = "VOL" [cite: 1]
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): [cite: 1]
-            ceWinner = "OI" [cite: 1]
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']): [cite: 1]
-            ceWinner = "VOL" [cite: 1]
-        else: [cite: 1]
-            ceOiActiveRow = ceOiTop['highest']['row'] [cite: 1]
-            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: [cite: 1]
-                ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row']) [cite: 1]
-            ceVolActiveRow = ceVolTop['highest']['row'] [cite: 1]
-            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0: [cite: 1]
-                ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row']) [cite: 1]
-            if ceVolActiveRow != ceOiActiveRow: [cite: 1]
-                ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI" [cite: 1]
-            else: [cite: 1]
-                ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI" [cite: 1]
+        ceWinner = "VOL"
+        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
+            ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+            ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
+            ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+            ceWinner = "OI"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+            ceWinner = "VOL"
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+            ceWinner = "OI"
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+            ceWinner = "VOL"
+        else:
+            ceOiActiveRow = ceOiTop['highest']['row']
+            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0:
+                ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
+            ceVolActiveRow = ceVolTop['highest']['row']
+            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0:
+                ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
+            if ceVolActiveRow != ceOiActiveRow:
+                ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
+            else:
+                ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
         # PUT SIDE WINNER SEARCH ENGINE
-        peWinner = "VOL" [cite: 1]
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": [cite: 1]
-            peWinner = "BOTH" [cite: 1]
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']): [cite: 1]
-            peWinner = "BOTH" [cite: 1]
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: [cite: 1]
-            peWinner = "BOTH" [cite: 1]
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): [cite: 1]
-            peWinner = "OI" [cite: 1]
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']): [cite: 1]
-            peWinner = "VOL" [cite: 1]
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): [cite: 1]
-            peWinner = "OI" [cite: 1]
-        elif peVolIsStable100 and not peOiIsStable100
-
-and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']): [cite: 1]
-            peWinner = "VOL" [cite: 1]
-        else: [cite: 1]
-            peOiActiveRow = peOiTop['highest']['row'] [cite: 1]
-            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: [cite: 1]
-                peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row']) [cite: 1]
-            peVolActiveRow = peVolTop['highest']['row'] [cite: 1]
-            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: [cite: 1]
-                peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row']) [cite: 1]
-            if peVolActiveRow != peOiActiveRow: [cite: 1]
-                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI" [cite: 1]
-            else: [cite: 1]
-                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI" [cite: 1]
+        peWinner = "VOL"
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
+            peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+            peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
+            peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+            peWinner = "OI"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+            peWinner = "VOL"
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+            peWinner = "OI"
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+            peWinner = "VOL"
+        else:
+            peOiActiveRow = peOiTop['highest']['row']
+            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
+                peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
+            peVolActiveRow = peVolTop['highest']['row']
+            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0:
+                peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+            if peVolActiveRow != peOiActiveRow:
+                peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
+            else:
+                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
@@ -254,215 +252,215 @@ and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['s
 
 
         # --- SHIFTING STATE CONTROLLER & CELLS RENDERING GENERATOR ---
-        def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText): [cite: 1]
-            if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0: [cite: 1]
-                return {'text': "<div>-----</div>", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"} [cite: 1]
+        def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
+            if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
+                return {'text': "<div>-----</div>", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
-            strike = topObj['highest']['strike'] [cite: 1]
-            secondStrike = strike [cite: 1]
-            if topObj.get('second') and topObj['second']['val'] > 0: secondStrike = topObj['second']['strike'] [cite: 1]
+            strike = topObj['highest']['strike']
+            secondStrike = strike
+            if topObj.get('second') and topObj['second']['val'] > 0: secondStrike = topObj['second']['strike']
 
             prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
-            prevStrike = float(prevStrikeStr) if prevStrikeStr else strike [cite: 1]
-            if not prevStrikeStr: [cite: 1]
+            prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
+            if not prevStrikeStr:
                 set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                prevStrike = strike [cite: 1]
+                prevStrike = strike
 
-            displayStatus = finalStatusText [cite: 1]
-            scenarioStatus = finalStatusText [cite: 1]
-            isShifting = False [cite: 1]
+            displayStatus = finalStatusText
+            scenarioStatus = finalStatusText
+            isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
             shiftFromStrike = float(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
             lastTargetStrike = float(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
 
             if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
-                if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike): [cite: 1]
+                if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
                     set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
                     set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
 
-            if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"): [cite: 1]
-                if strike < prevStrike: [cite: 1]
-                    shiftType = "top to bottom" [cite: 1]
-                    scenarioStatus = "wtb" [cite: 1]
-                else: [cite: 1]
-                    shiftType = "bottom to top" [cite: 1]
-                    scenarioStatus = "wtt" [cite: 1]
+            if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"):
+                if strike < prevStrike:
+                    shiftType = "top to bottom"
+                    scenarioStatus = "wtb"
+                else:
+                    shiftType = "bottom to top"
+                    scenarioStatus = "wtt"
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
                 set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
                 set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(prevStrike))
                 set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))
 
             if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
-                if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText: [cite: 1]
+                if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
                     set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
                     set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                    isShifting = False [cite: 1]
-                    scenarioStatus = finalStatusText [cite: 1]
-                else: [cite: 1]
-                    isShifting = True [cite: 1]
+                    isShifting = False
+                    scenarioStatus = finalStatusText
+                else:
+                    isShifting = True
                     shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey)
-                    scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt" [cite: 1]
-            else: [cite: 1]
+                    scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
+            else:
                 set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                scenarioStatus = finalStatusText [cite: 1]
+                scenarioStatus = finalStatusText
 
-            if not isWinner and rawState != "STRONG": [cite: 1]
-                displayStatus = "stable strong" [cite: 1]
-                scenarioStatus = "stable strong" [cite: 1]
+            if not isWinner and rawState != "STRONG":
+                displayStatus = "stable strong"
+                scenarioStatus = "stable strong"
 
             displayTime = get_symbol_memory(symbol_name, "TIME_" + cacheKey)
             lastRecordedStatus = get_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, "")
-            isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting [cite: 1]
+            isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
 
-            if isTriggerStatus and displayStatus != lastRecordedStatus: [cite: 1]
-                displayTime = currentTimeStr [cite: 1]
+            if isTriggerStatus and displayStatus != lastRecordedStatus:
+                displayTime = currentTimeStr
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
-            elif not displayTime: [cite: 1]
-                displayTime = currentTimeStr [cite: 1]
+            elif not displayTime:
+                displayTime = currentTimeStr
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
-            if isShifting: [cite: 1]
-                line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}" [cite: 1]
-                line2 = f"shifted {shiftType}" [cite: 1]
-                outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>" [cite: 1]
-            else: [cite: 1]
-                if displayStatus == "stable strong": [cite: 1]
-                    line1 = f"{displayTime}-{sideLabel}-{strike}" [cite: 1]
-                    line2 = "stable strong" [cite: 1]
-                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>" [cite: 1]
-                elif "to strong" in displayStatus: [cite: 1]
-                    line1 = f"{displayTime}-{sideLabel}-{strike}" [cite: 1]
-                    line2 = displayStatus [cite: 1]
-                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>" [cite: 1]
-                else: [cite: 1]
-                    weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom" [cite: 1]
-                    line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}" [cite: 1]
-                    line2 = weakDir [cite: 1]
-                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>" [cite: 1]
+            if isShifting:
+                line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                line2 = f"shifted {shiftType}"
+                outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
+            else:
+                if displayStatus == "stable strong":
+                    line1 = f"{displayTime}-{sideLabel}-{strike}"
+                    line2 = "stable strong"
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
+                elif "to strong" in displayStatus:
+                    line1 = f"{displayTime}-{sideLabel}-{strike}"
+                    line2 = displayStatus
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
+                else:
+                    weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
+                    line1 = f"{displayTime}-{sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                    line2 = weakDir
+                    outputText = f"<div>{line1}</div><div class='yellow-pill-badge'>{line2}</div>"
 
-            return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState} [cite: 1]
+            return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
-        ceOiResult  = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner == "OI" or ceWinner == "BOTH", ceOiRawState, ceOiStatusText) [cite: 1]
-        ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor vol", ceWinner == "VOL" or ceWinner == "BOTH", ceVolRawState, ceVolStatusText) [cite: 1]
-        peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos vol", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText) [cite: 1]
-        peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText) [cite: 1]
+        ceOiResult  = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner == "OI" or ceWinner == "BOTH", ceOiRawState, ceOiStatusText)
+        ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor vol", ceWinner == "VOL" or ceWinner == "BOTH", ceVolRawState, ceVolStatusText)
+        peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos vol", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText)
+        peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
-        finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus'] [cite: 1]
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus'] [cite: 1]
+        finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
-        if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus'] [cite: 1]
-        if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus'] [cite: 1]
+        if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
+        if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
 
 
-        checkCe = finalCeState [cite: 1]
-        checkPe = finalPeState [cite: 1]
+        checkCe = finalCeState
+        checkPe = finalPeState
 
-        k3Text = f"{symbol_name} is Neutral" [cite: 1]
-        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky" [cite: 1]
-        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky" [cite: 1]
-        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral" [cite: 1]
-        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish" [cite: 1]
-        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish" [cite: 1]
-        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish" [cite: 1]
-        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish" [cite: 1]
-        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun" [cite: 1]
-        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath" [cite: 1]
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath" [cite: 1]
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath" [cite: 1]
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)" [cite: 1]
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)" [cite: 1]
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run" [cite: 1]
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run" [cite: 1]
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)" [cite: 1]
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)" [cite: 1]
-        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish" [cite: 1]
-        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish" [cite: 1]
-        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish" [cite: 1]
-        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish" [cite: 1]
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade" [cite: 1]
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade" [cite: 1]
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run" [cite: 1]
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath" [cite: 1]
+        k3Text = f"{symbol_name} is Neutral"
+        if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "stable strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
 
-        finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>" [cite: 1]
+        finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>"
 
-        if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text'] [cite: 1]
-        elif ceWinner == "VOL": finalH5 = ceVolResult['text'] [cite: 1]
-        elif ceWinner == "OI": finalD5 = ceOiResult['text'] [cite: 1]
+        if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
+        elif ceWinner == "VOL": finalH5 = ceVolResult['text']
+        elif ceWinner == "OI": finalD5 = ceOiResult['text']
 
-        if peWinner == "BOTH": finalU5, finalQ5 = peOiResult['text'], peVolResult['text'] [cite: 1]
-        elif peWinner == "VOL": finalQ5 = peVolResult['text'] [cite: 1]
-        elif peWinner == "OI": finalU5 = peOiResult['text'] [cite: 1]
+        if peWinner == "BOTH": finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
+        elif peWinner == "VOL": finalQ5 = peVolResult['text']
+        elif peWinner == "OI": finalU5 = peOiResult['text']
 
-        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {} [cite: 1]
-        vault = multi_symbol_runtime_states[symbol_name] [cite: 1]
-        vault["D5_TEXT"] = finalD5 [cite: 1]
-        vault["H5_TEXT"] = finalH5 [cite: 1]
-        vault["U5_TEXT"] = finalU5 [cite: 1]
-        vault["Q5_TEXT"] = finalQ5 [cite: 1]
-        vault["K3_TEXT"] = k3Text [cite: 1]
-        vault["lot_size"] = lot_size [cite: 1]
-        vault["spot_price"] = round(spot_price, 2) [cite: 1]
-        vault["active_expiry"] = active_expiry [cite: 1]
+        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
+        vault = multi_symbol_runtime_states[symbol_name]
+        vault["D5_TEXT"] = finalD5
+        vault["H5_TEXT"] = finalH5
+        vault["U5_TEXT"] = finalU5
+        vault["Q5_TEXT"] = finalQ5
+        vault["K3_TEXT"] = k3Text
+        vault["lot_size"] = lot_size
+        vault["spot_price"] = round(spot_price, 2)
+        vault["active_expiry"] = active_expiry
 
-        c_oi_1, c_oi_2 = ceOiTop['highest']['strike'], ceOiTop['second']['strike'] [cite: 1]
-        c_vol_1, c_vol_2 = ceVolTop['highest']['strike'], ceVolTop['second']['strike'] [cite: 1]
-        p_vol_1, p_vol_2 = peVolTop['highest']['strike'], peVolTop['second']['strike'] [cite: 1]
-        p_oi_1, p_oi_2 = peOiTop['highest']['strike'], peOiTop['second']['strike'] [cite: 1]
+        c_oi_1, c_oi_2 = ceOiTop['highest']['strike'], ceOiTop['second']['strike']
+        c_vol_1, c_vol_2 = ceVolTop['highest']['strike'], ceVolTop['second']['strike']
+        p_vol_1, p_vol_2 = peVolTop['highest']['strike'], peVolTop['second']['strike']
+        p_oi_1, p_oi_2 = peOiTop['highest']['strike'], peOiTop['second']['strike']
 
-        max_ce_oi = ceOiTop['highest']['val'] or 1 [cite: 1]
-        max_ce_vol = ceVolTop['highest']['val'] or 1 [cite: 1]
-        max_pe_vol = peVolTop['highest']['val'] or 1 [cite: 1]
-        max_pe_oi = peOiTop['highest']['val'] or 1 [cite: 1]
+        max_ce_oi = ceOiTop['highest']['val'] or 1
+        max_ce_vol = ceVolTop['highest']['val'] or 1
+        max_pe_vol = peVolTop['highest']['val'] or 1
+        max_pe_oi = peOiTop['highest']['val'] or 1
 
-        grid_rows_built = [] [cite: 1]
-        spot_inserted = False [cite: 1]
-        spot_insert_idx = spot_idx [cite: 1]
-        if strikes_list and spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1: [cite: 1]
-            spot_insert_idx += 1 [cite: 1]
+        grid_rows_built = []
+        spot_inserted = False
+        spot_insert_idx = spot_idx
+        if strikes_list and spot_price > strikes_list[spot_insert_idx] and spot_insert_idx < len(strikes_list) - 1:
+            spot_insert_idx += 1
 
-        def build_badge_payload(top_obj, raw_state): [cite: 1]
-            if not top_obj or top_obj['highest']['strike'] == 0: return {} [cite: 1]
-            s_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG" [cite: 1]
-            return {"state": s_type, "pct": round(top_obj['pct'], 2), "show_badge": True} [cite: 1]
+        def build_badge_payload(top_obj, raw_state):
+            if not top_obj or top_obj['highest']['strike'] == 0: return {}
+            s_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
+            return {"state": s_type, "pct": round(top_obj['pct'], 2), "show_badge": True}
 
-        for idx, r_dict in enumerate(raw_rows): [cite: 1]
-            if not spot_inserted and idx == spot_insert_idx: [cite: 1]
+        for idx, r_dict in enumerate(raw_rows):
+            if not spot_inserted and idx == spot_insert_idx:
                 grid_rows_built.append({
                     'is_spot_row': True, 'spot_price': round(spot_price, 2),
                     'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
                     'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
                     'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
                     'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
-                }) [cite: 1]
-                spot_inserted = True [cite: 1]
+                })
+                spot_inserted = True
 
-            st = r_dict['strike'] [cite: 1]
-            r_copy = r_dict.copy() [cite: 1]
-            r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2) [cite: 1]
-            r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2) [cite: 1]
-            r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2) [cite: 1]
-            r_copy['pe_oi_pct'] = round((r_dict.get('pe_oi', 0) / max_pe_oi) * 100, 2) [cite: 1]
+            st = r_dict['strike']
+            r_copy = r_dict.copy()
+            r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2)
+            r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2)
+            r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2)
+            r_copy['pe_oi_pct'] = round((r_dict.get('pe_oi', 0) / max_pe_oi) * 100, 2)
 
-            r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '') [cite: 1]
-            r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '') [cite: 1]
-            r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '') [cite: 1]
-            r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '') [cite: 1]
-            grid_rows_built.append(r_copy) [cite: 1]
+            r_copy['ce_oi_color'] = 'bg-100' if st == c_oi_1 else ('bg-75' if st == c_oi_2 and ceOiTop['pct'] >= 75.0 else '')
+            r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
+            r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
+            r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
+            grid_rows_built.append(r_copy)
 
-        if not spot_inserted: [cite: 1]
+        if not spot_inserted:
             grid_rows_built.append({
                 'is_spot_row': True, 'spot_price': round(spot_price, 2),
                 'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
                 'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
                 'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
                 'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
-            }) [cite: 1]
+            })
 
-        vault["grid_rows"] = grid_rows_built [cite: 1]
-    except Exception: pass [cite: 1]
+        vault["grid_rows"] = grid_rows_built
+    except Exception: pass
 
 # --- MARKET DATA ENGINE & UPGRADED SPOT PRICE FETCH CONFIGURATION ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
@@ -619,7 +617,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
-        url = "https://angelbroking.com"
+        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
             scrip_data = resp.json(); full_scrip_df = pd.DataFrame(scrip_data)
@@ -865,7 +863,7 @@ HTML_TEMPLATE = """
     </script>
 </body>
 </html>
-\"\"\"
+"""
 
 
 # --- FLASK API ROUTES CORE ROUTING ---
