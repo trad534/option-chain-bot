@@ -506,6 +506,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
                 target_tok = index_tokens.get(clean_active_symbol, "")
                 
+                # ⚡ FAST INDEX SPOT FETCH (Direct Index Query - Single API Call)
                 if target_tok:
                     try:
                         q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
@@ -513,32 +514,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception: pass
-                
-                if spot_price <= 0:
-                    try:
-                        eq_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')].copy()
-                        if not eq_sub.empty:
-                            exact_match = eq_sub[eq_sub['symbol'].str.upper().isin([clean_active_symbol, clean_active_symbol + "-EQ"])]
-                            target_row = exact_match.iloc[0] if not exact_match.empty else eq_sub.iloc[0]
-                            eq_tok = str(target_row['token'])
-                            eq_exch = str(target_row['exch_seg'])
-                            eq_quote = smart_api.getMarketData("FULL", {eq_exch: [eq_tok]})
-                            if eq_quote and eq_quote.get('status') and eq_quote.get('data') and eq_quote['data'].get('fetched'):
-                                s_val = float(eq_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
 
-                if spot_price <= 0:
-                    try:
-                        fut_sub = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['instrumenttype'].isin(['FUTSTK', 'FUTIDX']))]
-                        if not fut_sub.empty:
-                            fut_tok = str(fut_sub['token'].values[0])
-                            fut_quote = smart_api.getMarketData("FULL", {"NFO": [fut_tok]})
-                            if fut_quote and fut_quote.get('status') and fut_quote.get('data') and fut_quote['data'].get('fetched'):
-                                s_val = float(fut_quote['data']['fetched'][0].get('ltp', 0))
-                                if s_val > 0: spot_price = s_val
-                    except Exception: pass
-
+                # Fallback Spot Price if Index Token is unavailable
                 if spot_price <= 0:
                     all_strikes_list = sorted(current_expiry_options['strike'].unique())
                     spot_price = float(all_strikes_list[len(all_strikes_list) // 2]) if all_strikes_list else 100.0
@@ -561,6 +538,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
                             if res and res.get('status') and res.get('data'): all_dash_quotes.extend(res['data']['fetched'])
                         except Exception: pass
+                        time.sleep(0.3)
 
                 dash_quotes_dict = {}
                 for item in all_dash_quotes:
@@ -954,7 +932,7 @@ def get_symbol_runtime_data(symbol):
 
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
-    print("🚀 Starting 8:50 AM Pre-Load & Active Lazy Engine...")
+    print("🚀 Starting 8:50 AM Pre-Load & Multi-Symbol Engine...")
     try: smart_api = SmartConnect(api_key=API_KEY); smart_api_global = smart_api
     except Exception as e: print(f"❌ Init Error: {e}"); return
     
@@ -964,7 +942,6 @@ def run_bot_lock_loop():
             today_date_str = now_dt.strftime("%Y-%m-%d")
             current_total_minutes = now_dt.hour * 60 + now_dt.minute
             
-            # ⏰ 8:50 AM PRE-LOAD SCHEDULER (8:50 AM = 530 minutes from midnight)
             target_preload_minutes = 8 * 60 + 50
             
             if (last_session_date != today_date_str and current_total_minutes >= target_preload_minutes) or not options_cache:
@@ -975,7 +952,6 @@ def run_bot_lock_loop():
                     print("⏰ 8:50 AM Reached: Pre-loading all Scrip Master tokens and expiries...")
                     initialize_scrip_master(smart_api)
             
-            # Active Symbol Ticker Sync (only when market is active or after 8:50 AM)
             if options_cache and current_total_minutes >= target_preload_minutes:
                 active_sym = current_active_symbol_ui
                 if active_sym:
@@ -983,7 +959,7 @@ def run_bot_lock_loop():
 
         except Exception:
             pass
-        time.sleep(1.0)
+        time.sleep(2.5)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
