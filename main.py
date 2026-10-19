@@ -502,17 +502,34 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-                index_tokens = {"NIFTY": "99992000", "BANKNIFTY": "99992009", "FINNIFTY": "99992018"}
-                target_tok = index_tokens.get(clean_active_symbol, "")
+                index_map = {
+                    "NIFTY": {"exch": "NSE", "token": "99992000"},
+                    "BANKNIFTY": {"exch": "NSE", "token": "99992009"},
+                    "FINNIFTY": {"exch": "NSE", "token": "99992018"}
+                }
                 
-                if target_tok:
+                if clean_active_symbol in index_map:
+                    idx_info = index_map[clean_active_symbol]
                     try:
-                        q_res = smart_api.getMarketData("FULL", {"NSE": [target_tok]})
+                        q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
                         if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
                             if s_val > 0: spot_price = s_val
                     except Exception as e:
                         print(f"⚠ Spot Fetch Error (Index): {e}")
+                
+                # Equity Stocks Spot Fetch (F&O Stocks ke liye)
+                if spot_price <= 0 and clean_active_symbol not in index_map:
+                    try:
+                        equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                        if not equity_row.empty:
+                            eq_tok = str(equity_row['token'].values[0]).strip()
+                            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                            if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
+                                s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: spot_price = s_val
+                    except Exception as e:
+                        print(f"⚠ Spot Fetch Error (Equity): {e}")
                 
                 if spot_price <= 0 and not target_tok:
                     try:
