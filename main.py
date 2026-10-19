@@ -909,19 +909,18 @@ def get_symbol_runtime_data(symbol):
         "spot_price": vault.get("spot_price", 0)
     })
 
-# --- DUAL CORE BACKGROUND PROCESS ENGINE & INTERNET BYPASS ---
+# --- DUAL CORE BACKGROUND PROCESS ENGINE & INTERNET BYPASS (PART 14) ---
 def run_bot_lock_loop():
     global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     time.sleep(3)
     
-    # Internet blocks bypass execution structure
     smart_api = None
     try: 
         smart_api = SmartConnect(api_key=API_KEY)
         smart_api_global = smart_api
-    except Exception as e: 
-        print(f"⚠️ API initialization bypassed, running on Local Simulation Engine: {e}")
+    except Exception: 
+        pass
     
     while True:
         try:
@@ -938,7 +937,7 @@ def run_bot_lock_loop():
                 except Exception:
                     pass
             
-                        if last_session_date != today_date_str:
+            if last_session_date != today_date_str:
                 last_session_date = today_date_str
                 initialize_scrip_master(smart_api)
             
@@ -952,11 +951,9 @@ def run_bot_lock_loop():
                         fetch_symbol_data(smart_api, background_sym)
                         time.sleep(0.1)
 
-
         except Exception as e: 
             print(f"⚠ Loop Processing Error: {e}")
         time.sleep(3)
-
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
