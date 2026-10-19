@@ -502,21 +502,41 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
                 spot_price = 0.0
-                index_map = {
-                    "NIFTY": {"exch": "NSE", "token": "99992000"},
-                    "BANKNIFTY": {"exch": "NSE", "token": "99992009"},
-                    "FINNIFTY": {"exch": "NSE", "token": "99992018"}
-                }
                 
-                if clean_active_symbol in index_map:
-                    idx_info = index_map[clean_active_symbol]
+                # Direct Angel One Spot Mapping
+                index_tokens = {
+                    "NIFTY": "99992000",
+                    "BANKNIFTY": "99992009",
+                    "FINNIFTY": "99992018"
+                }
+
+                if clean_active_symbol in index_tokens:
+                    tok = index_tokens[clean_active_symbol]
                     try:
-                        q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
+                        # Index spot for Angel API requires NSE exchange mapping
+                        q_res = smart_api.getMarketData("FULL", {"NSE": [tok]})
                         if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
                             s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
-                            if s_val > 0: spot_price = s_val
+                            if s_val > 0: 
+                                spot_price = s_val
                     except Exception as e:
-                        print(f"⚠ Spot Fetch Error (Index): {e}")
+                        print(f"⚠ Index Spot Fetch Error: {e}")
+
+                # Stocks (Underlying Equity Cash Tokens)
+                if spot_price <= 0 and clean_active_symbol not in index_tokens:
+                    try:
+                        eq_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE') & (full_scrip_df['symbol'].str.endswith('-EQ'))]
+                        if eq_rows.empty:
+                            eq_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                        if not eq_rows.empty:
+                            eq_tok = str(eq_rows['token'].values[0]).strip()
+                            q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                            if q_res and q_res.get('status') and q_res.get('data') and q_res['data'].get('fetched'):
+                                s_val = float(q_res['data']['fetched'][0].get('ltp', 0))
+                                if s_val > 0: 
+                                    spot_price = s_val
+                    except Exception as e:
+                        print(f"⚠ Stock Spot Fetch Error: {e}")
                 
                 # Equity Stocks Spot Fetch (F&O Stocks ke liye)
                 if spot_price <= 0 and clean_active_symbol not in index_map:
