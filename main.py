@@ -217,7 +217,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -248,7 +248,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
-                return {'text': "(-----)", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
+                return {'text': "-----", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
             strike = topObj['highest']['strike']
             secondStrike = strike
@@ -315,24 +315,37 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
-            # HTML formatted layout output for exact 2nd photo UI look
+            # --- DYNAMIC COLOR CLASSES BASED ON MARKET PRESSURE ---
+            # wtt -> Green (Bullish Pressure)
+            # wtb -> Red (Bearish Pressure)
+            # stable strong -> Blue (Neutral/Strong)
+            badge_class = "pill-blue"
+            if displayStatus == "wtt" or (isShifting and shiftType == "bottom to top"):
+                badge_class = "pill-green"
+            elif displayStatus == "wtb" or (isShifting and shiftType == "top to bottom"):
+                badge_class = "pill-red"
+            elif displayStatus == "stable strong":
+                badge_class = "pill-blue"
+            elif "to strong" in displayStatus:
+                badge_class = "pill-green" if "wtt" in displayStatus else "pill-red"
+
             if isShifting:
-                line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
-                line2 = f"<span class='yellow-pill-badge'>shifted {shiftType}</span>"
+                line1 = f"{displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                line2 = f"<span class='pill-badge {badge_class}'>shifted {shiftType}</span>"
                 outputText = f"<div>{line1}</div><div>{line2}</div>"
             else:
                 if displayStatus == "stable strong":
-                    line1 = f"({displayTime} - {sideLabel} - {strike})"
-                    line2 = "<span class='yellow-pill-badge'>stable strong</span>"
+                    line1 = f"{displayTime} - {sideLabel} - {strike}"
+                    line2 = f"<span class='pill-badge {badge_class}'>stable strong</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
                 elif "to strong" in displayStatus:
-                    line1 = f"({displayTime} - {sideLabel} - {strike})"
-                    line2 = f"<span class='yellow-pill-badge'>{displayStatus}</span>"
+                    line1 = f"{displayTime} - {sideLabel} - {strike}"
+                    line2 = f"<span class='pill-badge {badge_class}'>{displayStatus}</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
-                    line2 = f"<span class='yellow-pill-badge'>{weakDir}</span>"
+                    line1 = f"{displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike}"
+                    line2 = f"<span class='pill-badge {badge_class}'>{weakDir}</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
@@ -383,7 +396,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
-        finalD5, finalH5, finalQ5, finalU5 = "(-----)", "(-----)", "(-----)", "(-----)"
+        finalD5, finalH5, finalQ5, finalU5 = "-----", "-----", "-----", "-----"
 
         if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
         elif ceWinner == "VOL": finalH5 = ceVolResult['text']
@@ -658,7 +671,13 @@ HTML_TEMPLATE = """
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 48px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
+        
+        /* DYNAMIC MARKET PRESSURE BADGES */
+        .pill-badge { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; display: inline-block; margin-top: 4px; }
+        .pill-green { background: #d3f9d8; color: #2b8a3e; border: 1px solid #40c057; }  /* Bullish / WTT */
+        .pill-red { background: #ffe3e3; color: #c92a2a; border: 1px solid #ff6b6b; }    /* Bearish / WTB */
+        .pill-blue { background: #e7f5ff; color: #1864ab; border: 1px solid #339af0; }   /* Stable Strong */
+        
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
@@ -700,10 +719,10 @@ HTML_TEMPLATE = """
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
     <div class="status-box">
-        <div class="card card-ce"><div id="d5Val">(-----)</div></div>
-        <div class="card card-ce"><div id="h5Val">(-----)</div></div>
-        <div class="card card-pe"><div id="q5Val">(-----)</div></div>
-        <div class="card card-pe"><div id="u5Val">(-----)</div></div>
+        <div class="card card-ce"><div id="d5Val">-----</div></div>
+        <div class="card card-ce"><div id="h5Val">-----</div></div>
+        <div class="card card-pe"><div id="q5Val">-----</div></div>
+        <div class="card card-pe"><div id="u5Val">-----</div></div>
     </div>
     <div class="table-container">
         <table id="optionChainTable">
@@ -860,10 +879,10 @@ def get_symbol_runtime_data(symbol):
         
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
-        "D5": vault.get("D5_TEXT", "(-----)"),
-        "H5": vault.get("H5_TEXT", "(-----)"),
-        "Q5": vault.get("Q5_TEXT", "(-----)"),
-        "U5": vault.get("U5_TEXT", "(-----)"),
+        "D5": vault.get("D5_TEXT", "-----"),
+        "H5": vault.get("H5_TEXT", "-----"),
+        "Q5": vault.get("Q5_TEXT", "-----"),
+        "U5": vault.get("U5_TEXT", "-----"),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
         "spot_price": vault.get("spot_price", 0)
