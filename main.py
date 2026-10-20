@@ -410,7 +410,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         print(f"❌ Scenario Tracker Error: {e}")
 
 
-# --- MARKET DATA ENGINE (BUG FIXED HERE) ---
+# --- MARKET DATA ENGINE ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -437,7 +437,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
         matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
         
-        # 📌 BUG FIX 1: Correct Timestamp assignment
         if matched_exp: 
             current_expiry_dt = matched_exp[0]
             current_expiry = target_expiry_str
@@ -453,7 +452,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             "NIFTY": {"exch": "NSE", "token": "99926000"},
             "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
             "FINNIFTY": {"exch": "NSE", "token": "99926018"},
-            "SENSEX": {"exch": "BSE", "token": "99919000"},  # BSE Sensex Index Token
+            "SENSEX": {"exch": "BSE", "token": "99919000"},  # BSE Sensex Index Token Added
         }
 
         if clean_active_symbol in index_map:
@@ -469,6 +468,21 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                         spot_price = float(fetched_data[0].get('ltp', 0))
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
+
+        if spot_price <= 0 and clean_active_symbol not in index_map:
+            try:
+                equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
+                if not equity_row.empty:
+                    eq_tok = str(equity_row['token'].iloc[0]).strip()
+                    q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
+                    if q_res and q_res.get('status') and q_res.get('data'):
+                        fetched_data = q_res['data'].get('fetched', {})
+                        if isinstance(fetched_data, dict) and eq_tok in fetched_data: 
+                            spot_price = float(fetched_data[eq_tok].get('ltp', 0))
+                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
+                            spot_price = float(fetched_data[0].get('ltp', 0))
+            except Exception as e:
+                print(f"⚠ Spot Fetch Error (Equity): {e}")
 
         if spot_price <= 0:
             print(f"⚠ Spot price could not be fetched for {clean_active_symbol}! Value: {spot_price}")
@@ -514,7 +528,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
             dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
 
-        # 📌 BUG FIX 2: Correct .iloc[0] indexing
         expiry_dt_val = pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0])
         t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
@@ -523,7 +536,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
             pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
             
-            # 📌 BUG FIX 3: Correct token parsing
             ce_token = str(ce_sub['token'].iloc[0]).strip() if not ce_sub.empty else ""
             pe_token = str(pe_sub['token'].iloc[0]).strip() if not pe_sub.empty else ""
             
@@ -562,7 +574,7 @@ def initialize_scrip_master(smart_api):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & ((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX'))].copy()
+            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & ((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX') | (full_scrip_df['exch_seg'] == 'BSE'))].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
             
@@ -674,7 +686,7 @@ HTML_TEMPLATE = """
                 allExpiriesData = meta.expiries;
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
-                let priorityIndices = ["NIFTY", "BANKNIFTY", "FINNIFTY"];
+                let priorityIndices = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"];
                 let sortedSymbols = meta.symbols.sort((a, b) => {
                     let aIdx = priorityIndices.indexOf(a);
                     let bIdx = priorityIndices.indexOf(b);
@@ -774,7 +786,7 @@ def home():
 def get_initial_metadata():
     global current_active_symbol_ui
     return jsonify({
-        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY"], 
+        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "SENSEX"], 
         "expiries": symbol_expiries_cache, 
         "active_symbol": current_active_symbol_ui
     })
@@ -843,7 +855,7 @@ def run_bot_lock_loop():
                 if active_sym: 
                     fetch_symbol_data(smart_api, active_sym)
                 
-                for background_sym in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
+                for background_sym in ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"]:
                     if background_sym != active_sym and background_sym in options_cache:
                         fetch_symbol_data(smart_api, background_sym)
                         time.sleep(0.1)
