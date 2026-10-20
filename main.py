@@ -452,8 +452,8 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         index_map = {
             "NIFTY": {"exch": "NSE", "token": "99926000"},
             "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
-            "FINNIFTY": {"exch": "NSE", "token": "99926018"}
-            "SENSEX": {"exch": "BSE", "token": "99919000"}  # BSE Sensex Index Token
+            "FINNIFTY": {"exch": "NSE", "token": "99926018"},
+            "SENSEX": {"exch": "BSE", "token": "99919000"},  # BSE Sensex Index Token
         }
 
         if clean_active_symbol in index_map:
