@@ -185,7 +185,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 📌 EXACT CALL (CE) SIDE WINNER ENGINE
+        # 📌 CALL (CE) SIDE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -213,7 +213,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 📌 EXACT PUT (PE) SIDE WINNER ENGINE
+        # 📌 PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -315,24 +315,25 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
+            # HTML formatted layout output for exact 2nd photo UI look
             if isShifting:
                 line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
-                line2 = f"   (shifted {shiftType})"
-                outputText = f"{line1}\n{line2}"
+                line2 = f"<span class='yellow-pill-badge'>shifted {shiftType}</span>"
+                outputText = f"<div>{line1}</div><div>{line2}</div>"
             else:
                 if displayStatus == "stable strong":
                     line1 = f"({displayTime} - {sideLabel} - {strike})"
-                    line2 = f"    (stable strong)"
-                    outputText = f"{line1}\n{line2}"
+                    line2 = "<span class='yellow-pill-badge'>stable strong</span>"
+                    outputText = f"<div>{line1}</div><div>{line2}</div>"
                 elif "to strong" in displayStatus:
                     line1 = f"({displayTime} - {sideLabel} - {strike})"
-                    line2 = f"   ({displayStatus})"
-                    outputText = f"{line1}\n{line2}"
+                    line2 = f"<span class='yellow-pill-badge'>{displayStatus}</span>"
+                    outputText = f"<div>{line1}</div><div>{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
                     line1 = f"({displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike})"
-                    line2 = f"({weakDir})"
-                    outputText = f"{line1}\n{line2}"
+                    line2 = f"<span class='yellow-pill-badge'>{weakDir}</span>"
+                    outputText = f"<div>{line1}</div><div>{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
@@ -378,8 +379,8 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish confirm Bullrun"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish conferm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish Reversal Trend"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
         finalD5, finalH5, finalQ5, finalU5 = "(-----)", "(-----)", "(-----)", "(-----)"
@@ -603,7 +604,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         print(f"❌ fetch_symbol_data Exception: {e}")
 
 
-# --- SCRIP MASTER DOWNLOADER (EXPLICIT FORMAT SPECIFIED) ---
+# --- SCRIP MASTER DOWNLOADER ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
@@ -654,7 +655,7 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); white-space: pre-line; }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 48px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
@@ -699,10 +700,10 @@ HTML_TEMPLATE = """
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
     <div class="status-box">
-        <div class="card card-ce"><div id="d5Val">-</div></div>
-        <div class="card card-ce"><div id="h5Val">-</div></div>
-        <div class="card card-pe"><div id="q5Val">-</div></div>
-        <div class="card card-pe"><div id="u5Val">-</div></div>
+        <div class="card card-ce"><div id="d5Val">(-----)</div></div>
+        <div class="card card-ce"><div id="h5Val">(-----)</div></div>
+        <div class="card card-pe"><div id="q5Val">(-----)</div></div>
+        <div class="card card-pe"><div id="u5Val">(-----)</div></div>
     </div>
     <div class="table-container">
         <table id="optionChainTable">
@@ -777,10 +778,10 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                document.getElementById("d5Val").innerText = data.D5;
-                document.getElementById("h5Val").innerText = data.H5;
-                document.getElementById("q5Val").innerText = data.Q5;
-                document.getElementById("u5Val").innerText = data.U5;
+                document.getElementById("d5Val").innerHTML = data.D5;
+                document.getElementById("h5Val").innerHTML = data.H5;
+                document.getElementById("q5Val").innerHTML = data.Q5;
+                document.getElementById("u5Val").innerHTML = data.U5;
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
