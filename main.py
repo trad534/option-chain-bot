@@ -623,7 +623,7 @@ def initialize_scrip_master(smart_api):
             
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='mixed', errors='coerce')
             
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
