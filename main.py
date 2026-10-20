@@ -97,7 +97,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
-# --- PRECISION SCENARIO TRACKER & COMPLETE 27 SCENARIOS MATRIX ---
+# --- PRECISION SCENARIO TRACKER SYSTEM ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
     global global_run_date, multi_symbol_runtime_states
     try:
@@ -322,39 +322,36 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # 📌 FULL 27 MARKET SCENARIOS MATRIX MAP (EXACT 1-TO-27 DEFINITION)
+        # 📌 SCENARIOS TEXT (WITHOUT "Scenario X" SUFFIX)
         k3Text = f"{symbol_name} is Neutral"
         
-        # Basic Scenarios
-        if checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral (Scenario 1)"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is Bullish (Scenario 2)"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is Bearish (Scenario 3)"
-        elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Bullish (Scenario 4)"
-        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bull Run (Scenario 5)"
-        elif checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky (Scenario 6)"
-        elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Bearish (Scenario 7)"
-        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky (Scenario 8)"
-        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is Bloodbath (Scenario 9)"
-        
-        # Advanced Shifted & Weak-to-Strong Scenarios (10 to 27)
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Slightly Bearish (Scenario 10)"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Slightly Bullish (Scenario 11)"
-        elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Slightly Bearish (Scenario 12)"
-        elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Slightly Bullish (Scenario 13)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is Slightly Bullish (Both Side Trade) (Scenario 14)"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Slightly Bullish (Both Side Trade) (Scenario 15)"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is Slightly Bearish (Both Side Trade) (Scenario 16)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Slightly Bearish (Both Side Trade) (Scenario 17)"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is Confirm Bloodbath (Scenario 18)"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Confirm Bloodbath (Scenario 19)"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is Confirm Bull Run (Scenario 20)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Confirm Bull Run (Scenario 21)"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade (Scenario 22)"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade (Scenario 23)"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Confirm Bull Run (Scenario 24)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Confirm Bloodbath (Scenario 25)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish Reversal Trend (Scenario 26)"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend (Scenario 27)"
+        if checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is Bullish"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is Bearish"
+        elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Bullish"
+        elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
+        elif checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Bearish"
+        elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
+        elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Slightly Bearish"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Slightly Bearish"
+        elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is Slightly Bullish (Both Side Trade)"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Slightly Bullish (Both Side Trade)"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is Slightly Bearish (Both Side Trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Slightly Bearish (Both Side Trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is Confirm Bloodbath"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Confirm Bloodbath"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is Confirm Bull Run"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish Reversal Trend"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
         finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>"
@@ -437,7 +434,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         print(f"❌ Scenario Tracker Error: {e}")
 
 
-# --- MARKET DATA ENGINE (KEYERROR FIX HERE) ---
+# --- MARKET DATA ENGINE ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -564,7 +561,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
             
-            # 📌 FIX: pe_oi_chg key error fixed to pe_q['oi_chg']
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                 'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
@@ -595,6 +591,7 @@ def initialize_scrip_master(smart_api):
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
+
             
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
