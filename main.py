@@ -254,6 +254,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             secondStrike = strike
             if topObj.get('second') and topObj['second']['val'] > 0: secondStrike = topObj['second']['strike']
 
+            # Strike Formatting: Convert float to clean int string (e.g. 75000 instead of 75000.0)
+            strike_str = str(int(strike)) if strike == int(strike) else str(strike)
+            second_strike_str = str(int(secondStrike)) if secondStrike == int(secondStrike) else str(secondStrike)
+
             prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
             if not prevStrikeStr:
@@ -315,37 +319,23 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
-            # --- DYNAMIC COLOR CLASSES BASED ON MARKET PRESSURE ---
-            # wtt -> Green (Bullish Pressure)
-            # wtb -> Red (Bearish Pressure)
-            # stable strong -> Blue (Neutral/Strong)
-            badge_class = "pill-blue"
-            if displayStatus == "wtt" or (isShifting and shiftType == "bottom to top"):
-                badge_class = "pill-green"
-            elif displayStatus == "wtb" or (isShifting and shiftType == "top to bottom"):
-                badge_class = "pill-red"
-            elif displayStatus == "stable strong":
-                badge_class = "pill-blue"
-            elif "to strong" in displayStatus:
-                badge_class = "pill-green" if "wtt" in displayStatus else "pill-red"
-
             if isShifting:
-                line1 = f"{displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike}"
-                line2 = f"<span class='pill-badge {badge_class}'>shifted {shiftType}</span>"
+                line1 = f"{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}"
+                line2 = f"<span class='yellow-pill-badge'>shifted {shiftType}</span>"
                 outputText = f"<div>{line1}</div><div>{line2}</div>"
             else:
                 if displayStatus == "stable strong":
-                    line1 = f"{displayTime} - {sideLabel} - {strike}"
-                    line2 = f"<span class='pill-badge {badge_class}'>stable strong</span>"
+                    line1 = f"{displayTime} - {sideLabel} - {strike_str}"
+                    line2 = "<span class='yellow-pill-badge'>stable strong</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
                 elif "to strong" in displayStatus:
-                    line1 = f"{displayTime} - {sideLabel} - {strike}"
-                    line2 = f"<span class='pill-badge {badge_class}'>{displayStatus}</span>"
+                    line1 = f"{displayTime} - {sideLabel} - {strike_str}"
+                    line2 = f"<span class='yellow-pill-badge'>{displayStatus}</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    line1 = f"{displayTime} - {sideLabel}-{strike}-{displayStatus}-{secondStrike}"
-                    line2 = f"<span class='pill-badge {badge_class}'>{weakDir}</span>"
+                    line1 = f"{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}"
+                    line2 = f"<span class='yellow-pill-badge'>{weakDir}</span>"
                     outputText = f"<div>{line1}</div><div>{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
@@ -451,6 +441,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             st = r_dict['strike']
             r_copy = r_dict.copy()
+            r_copy['strike_display'] = int(st) if st == int(st) else st
             r_copy['ce_oi_pct'] = round((r_dict.get('ce_oi', 0) / max_ce_oi) * 100, 2)
             r_copy['ce_vol_pct'] = round((r_dict.get('ce_vol', 0) / max_ce_vol) * 100, 2)
             r_copy['pe_vol_pct'] = round((r_dict.get('pe_vol', 0) / max_pe_vol) * 100, 2)
@@ -667,16 +658,15 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; gap: 15px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        
+        /* CARD & WINNER STATUS BOX STYLING */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 48px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 13px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
-        /* DYNAMIC MARKET PRESSURE BADGES */
-        .pill-badge { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; display: inline-block; margin-top: 4px; }
-        .pill-green { background: #d3f9d8; color: #2b8a3e; border: 1px solid #40c057; }  /* Bullish / WTT */
-        .pill-red { background: #ffe3e3; color: #c92a2a; border: 1px solid #ff6b6b; }    /* Bearish / WTB */
-        .pill-blue { background: #e7f5ff; color: #1864ab; border: 1px solid #339af0; }   /* Stable Strong */
+        /* YELLOW PILL BADGE */
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 12px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
         
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
@@ -829,7 +819,8 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            let displayStrike = row.strike_display || row.strike;
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${displayStrike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
