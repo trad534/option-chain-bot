@@ -202,7 +202,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -448,11 +448,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         spot_price = 0.0
+        # FIX: Accurate Spot Index Map for NIFTY, FINNIFTY, BANKNIFTY & SENSEX
         index_map = {
             "NIFTY": {"exch": "NSE", "token": "99926000"},
             "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
             "FINNIFTY": {"exch": "NSE", "token": "99926018"},
-            "SENSEX": {"exch": "BSE", "token": "99919000"},  # BSE Sensex Index Token Added
+            "SENSEX": {"exch": "BSE", "token": "99919000"},
+            "BSX": {"exch": "BSE", "token": "99919000"},
+            "BSEX": {"exch": "BSE", "token": "99919000"}
         }
 
         if clean_active_symbol in index_map:
@@ -503,9 +506,9 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         all_dash_quotes = []
         for exch, t_list in exch_map.items():
-            for i in range(0, len(t_list), 40):
+            for i in range(0, len(t_list), 20):
                 try:
-                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+40]})
+                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+20]})
                     if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
                         all_dash_quotes.extend(res['data']['fetched'])
                 except Exception as ex: 
@@ -560,7 +563,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         print(f"❌ fetch_symbol_data Exception: {e}")
 
 
-# --- SCRIP MASTER DOWNLOADER ---
+# --- SCRIP MASTER DOWNLOADER (SENSEX / BFO PARSING FIX) ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
@@ -574,20 +577,32 @@ def initialize_scrip_master(smart_api):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & ((full_scrip_df['exch_seg'] == 'NFO') | (full_scrip_df['exch_seg'] == 'MCX') | (full_scrip_df['exch_seg'] == 'BSE'))].copy()
+            # FIX: Filter NFO, MCX, BFO & BSE (SENSEX BSE/BFO segments included)
+            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
             
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
-                options_cache[name.strip()] = group
+                clean_name = name.strip()
+                # Alias BSE/BSX to SENSEX for UI dropdown consistency
+                if clean_name in ['BSX', 'BSEX']:
+                    clean_name = 'SENSEX'
+                
+                options_cache[clean_name] = group
                 valid_group = group[group['parsed_expiry'] >= today_dt].copy()
                 valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
                 unique_expiries = []
                 for exp_dt in valid_group_sorted['parsed_expiry'].unique():
                     formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
                     if formatted_exp not in unique_expiries: unique_expiries.append(formatted_exp)
-                symbol_expiries_cache[name.strip()] = unique_expiries
+                symbol_expiries_cache[clean_name] = unique_expiries
+
+            # Manual Guarantee for SENSEX key if mapped differently in scrip master
+            if "SENSEX" not in options_cache and "BSX" in options_cache:
+                options_cache["SENSEX"] = options_cache["BSX"]
+                symbol_expiries_cache["SENSEX"] = symbol_expiries_cache.get("BSX", [])
+
             print(f"✅ Scrip Master Pre-loaded Successfully for {len(options_cache)} Symbols!")
     except Exception as e: 
         print(f"❌ Scrip Master Error: {e}")
@@ -686,7 +701,7 @@ HTML_TEMPLATE = """
                 allExpiriesData = meta.expiries;
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
-                let priorityIndices = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"];
+                let priorityIndices = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"];
                 let sortedSymbols = meta.symbols.sort((a, b) => {
                     let aIdx = priorityIndices.indexOf(a);
                     let bIdx = priorityIndices.indexOf(b);
@@ -786,7 +801,7 @@ def home():
 def get_initial_metadata():
     global current_active_symbol_ui
     return jsonify({
-        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "SENSEX"], 
+        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"], 
         "expiries": symbol_expiries_cache, 
         "active_symbol": current_active_symbol_ui
     })
@@ -855,7 +870,7 @@ def run_bot_lock_loop():
                 if active_sym: 
                     fetch_symbol_data(smart_api, active_sym)
                 
-                for background_sym in ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"]:
+                for background_sym in ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]:
                     if background_sym != active_sym and background_sym in options_cache:
                         fetch_symbol_data(smart_api, background_sym)
                         time.sleep(0.1)
