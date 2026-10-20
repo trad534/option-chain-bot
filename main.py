@@ -254,7 +254,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             secondStrike = strike
             if topObj.get('second') and topObj['second']['val'] > 0: secondStrike = topObj['second']['strike']
 
-            # Strike Formatting: Convert float to clean int string (e.g. 75000 instead of 75000.0)
             strike_str = str(int(strike)) if strike == int(strike) else str(strike)
             second_strike_str = str(int(secondStrike)) if secondStrike == int(secondStrike) else str(secondStrike)
 
@@ -319,24 +318,25 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
+            # Single-line header styling prevents line break for 23500
             if isShifting:
-                line1 = f"{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}"
-                line2 = f"<span class='yellow-pill-badge'>shifted {shiftType}</span>"
-                outputText = f"<div>{line1}</div><div>{line2}</div>"
+                line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
+                line2 = f"<div><span class='yellow-pill-badge'>shifted {shiftType}</span></div>"
+                outputText = f"{line1}{line2}"
             else:
                 if displayStatus == "stable strong":
-                    line1 = f"{displayTime} - {sideLabel} - {strike_str}"
-                    line2 = "<span class='yellow-pill-badge'>stable strong</span>"
-                    outputText = f"<div>{line1}</div><div>{line2}</div>"
+                    line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
+                    line2 = "<div><span class='yellow-pill-badge'>stable strong</span></div>"
+                    outputText = f"{line1}{line2}"
                 elif "to strong" in displayStatus:
-                    line1 = f"{displayTime} - {sideLabel} - {strike_str}"
-                    line2 = f"<span class='yellow-pill-badge'>{displayStatus}</span>"
-                    outputText = f"<div>{line1}</div><div>{line2}</div>"
+                    line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
+                    line2 = f"<div><span class='yellow-pill-badge'>{displayStatus}</span></div>"
+                    outputText = f"{line1}{line2}"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
-                    line1 = f"{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}"
-                    line2 = f"<span class='yellow-pill-badge'>{weakDir}</span>"
-                    outputText = f"<div>{line1}</div><div>{line2}</div>"
+                    line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
+                    line2 = f"<div><span class='yellow-pill-badge'>{weakDir}</span></div>"
+                    outputText = f"{line1}{line2}"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
@@ -661,12 +661,15 @@ HTML_TEMPLATE = """
         
         /* CARD & WINNER STATUS BOX STYLING */
         .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 13px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 12px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
+        /* SINGLE LINE HEADER TEXT CSS TO PREVENT STRIKE BREAKING */
+        .card-header-line { font-size: 12px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
+        
         /* YELLOW PILL BADGE */
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 12px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
         
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
