@@ -97,7 +97,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': round(sigma * 100, 2), 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
-# --- SCENARIO TRACKER SYSTEM ---
+# --- PRECISION SCENARIO TRACKER & 27 SCENARIOS ENGINE ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
     global global_run_date, multi_symbol_runtime_states
     try:
@@ -185,29 +185,33 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
+        # 📌 PRECISE WINNER LOGIC FOR CALL SIDE (CE)
         ceWinner = "VOL"
-        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
-            ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
-            ceWinner = "VOL"
+        if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb": ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100: ceWinner = "BOTH"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100: ceWinner = "OI"
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100: ceWinner = "VOL"
         else:
-            ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
+            ceOiActiveRow = ceOiTop['highest']['row']
+            if ceOiTop['second'] and ceOiTop['second']['row'] > 0 and ceOiTop['pct'] >= 75.0: ceOiActiveRow = min(ceOiActiveRow, ceOiTop['second']['row'])
+            ceVolActiveRow = ceVolTop['highest']['row']
+            if ceVolTop['second'] and ceVolTop['second']['row'] > 0 and ceVolTop['pct'] >= 75.0: ceVolActiveRow = min(ceVolActiveRow, ceVolTop['second']['row'])
+            if ceVolActiveRow != ceOiActiveRow: ceWinner = "VOL" if ceVolActiveRow < ceOiActiveRow else "OI"
+            else: ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
+        # 📌 PRECISE WINNER LOGIC FOR PUT SIDE (PE)
         peWinner = "VOL"
-        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
-            peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
-            peWinner = "BOTH"
+        if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt": peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100: peWinner = "BOTH"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100: peWinner = "OI"
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100: peWinner = "VOL"
         else:
-            peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+            peOiActiveRow = peOiTop['highest']['row']
+            if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0: peOiActiveRow = max(peOiActiveRow, peOiTop['second']['row'])
+            peVolActiveRow = peVolTop['highest']['row']
+            if peVolTop['second'] and peVolTop['second']['row'] > 0 and peVolTop['pct'] >= 75.0: peVolActiveRow = max(peVolActiveRow, peVolTop['second']['row'])
+            if peVolActiveRow != peOiActiveRow: peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
+            else: peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
@@ -318,6 +322,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkCe = finalCeState
         checkPe = finalPeState
 
+        # 📌 27 MARKET SCENARIOS MATRIX MAPPING
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -328,7 +333,22 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "stable strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
-        else: k3Text = f"{symbol_name} is Active Trend"
+        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
+        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
+        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
+        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
+        elif checkCe == "wtb to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "stable strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == "stable strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "stable strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
+        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
+        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
 
         finalD5, finalH5, finalQ5, finalU5 = "<div>-----</div>", "<div>-----</div>", "<div>-----</div>", "<div>-----</div>"
 
@@ -414,22 +434,17 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
-        print(f"🔄 Fetching Data for Symbol: {clean_active_symbol}")
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
         if baseline_date != current_date_str: 
             morning_oi_dict = {}
             baseline_date = current_date_str
             
-        if not options_cache or clean_active_symbol not in options_cache:
-            print(f"⚠ Options Cache is empty or missing for {clean_active_symbol}.")
-            return
+        if not options_cache or clean_active_symbol not in options_cache: return
 
         sym_options = options_cache[clean_active_symbol]
         valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-        if valid_opts.empty:
-            print(f"⚠ No valid expiries found for {clean_active_symbol}")
-            return
+        if valid_opts.empty: return
 
         unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
         expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
@@ -448,7 +463,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
 
         spot_price = 0.0
-        # FIX: Accurate Spot Index Map for NIFTY, FINNIFTY, BANKNIFTY & SENSEX
         index_map = {
             "NIFTY": {"exch": "NSE", "token": "99926000"},
             "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
@@ -487,11 +501,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Equity): {e}")
 
-        if spot_price <= 0:
-            print(f"⚠ Spot price could not be fetched for {clean_active_symbol}! Value: {spot_price}")
-            return
-
-        print(f"✅ Spot Price for {clean_active_symbol}: {spot_price}")
+        if spot_price <= 0: return
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
@@ -511,8 +521,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                     res = smart_api.getMarketData("FULL", {exch: t_list[i:i+20]})
                     if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
                         all_dash_quotes.extend(res['data']['fetched'])
-                except Exception as ex: 
-                    print(f"⚠ Chunk Fetch Error: {ex}")
+                except Exception: pass
                 time.sleep(0.05)
 
         dash_quotes_dict = {}
@@ -552,23 +561,21 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                 'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
                 'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'],
                 'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-        print(f"🎉 Option Chain Data Processed Successfully for {clean_active_symbol}!")
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception: {e}")
 
 
-# --- SCRIP MASTER DOWNLOADER (SENSEX / BFO PARSING FIX) ---
+# --- SCRIP MASTER DOWNLOADER ---
 def initialize_scrip_master(smart_api):
     global full_scrip_df, options_cache, symbol_expiries_cache
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        print("📥 Downloading Scrip Master from Angel One...")
         resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
             scrip_data = resp.json()
@@ -577,7 +584,6 @@ def initialize_scrip_master(smart_api):
             if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
             if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
             
-            # FIX: Filter NFO, MCX, BFO & BSE (SENSEX BSE/BFO segments included)
             fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
             fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
             fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='%d%b%Y', errors='coerce').fillna(pd.to_datetime(fno_opts['expiry'], errors='coerce'))
@@ -585,10 +591,7 @@ def initialize_scrip_master(smart_api):
             today_dt = pd.Timestamp(datetime.now().date())
             for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
                 clean_name = name.strip()
-                # Alias BSE/BSX to SENSEX for UI dropdown consistency
-                if clean_name in ['BSX', 'BSEX']:
-                    clean_name = 'SENSEX'
-                
+                if clean_name in ['BSX', 'BSEX']: clean_name = 'SENSEX'
                 options_cache[clean_name] = group
                 valid_group = group[group['parsed_expiry'] >= today_dt].copy()
                 valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
@@ -598,14 +601,10 @@ def initialize_scrip_master(smart_api):
                     if formatted_exp not in unique_expiries: unique_expiries.append(formatted_exp)
                 symbol_expiries_cache[clean_name] = unique_expiries
 
-            # Manual Guarantee for SENSEX key if mapped differently in scrip master
             if "SENSEX" not in options_cache and "BSX" in options_cache:
                 options_cache["SENSEX"] = options_cache["BSX"]
                 symbol_expiries_cache["SENSEX"] = symbol_expiries_cache.get("BSX", [])
-
-            print(f"✅ Scrip Master Pre-loaded Successfully for {len(options_cache)} Symbols!")
-    except Exception as e: 
-        print(f"❌ Scrip Master Error: {e}")
+    except Exception: pass
 
 
 # --- HTML TEMPLATE ---
