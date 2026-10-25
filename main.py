@@ -191,7 +191,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -654,14 +654,14 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; overflow: hidden; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
         .controls-group { display: flex; gap: 15px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
         select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         /* CARD & WINNER STATUS BOX STYLING */
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; flex-shrink: 0; }
         .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 12px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
@@ -672,14 +672,19 @@ HTML_TEMPLATE = """
         /* YELLOW PILL BADGE */
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
         
-        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
+        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* FIXED TABLE CONTAINER WITH SMOOTH SCROLLING SUPPORT */
-        .table-container { margin-top: 10px; overflow-x: auto; overflow-y: auto; max-height: 70vh; border: 1px solid #dee2e6; border-radius: 6px; position: relative; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+        /* 📌 STICKY HEADERS & FIXED SCROLL CONTAINER CONTAINER */
+        .table-container { margin-top: 10px; flex-grow: 1; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
-        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
+        
+        /* STICKY TABLE HEADERS (CALLS/PUTS + COLUMN TITLES) */
+        thead th { background: #f8f9fa; color: #212529; position: sticky; z-index: 20; }
+        thead tr:nth-child(1) th { top: 0; }
+        thead tr:nth-child(2) th { top: 27px; } /* Adjust height based on first header row */
+        
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; z-index: 25; }
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 87px !important; width: 87px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
@@ -725,13 +730,13 @@ HTML_TEMPLATE = """
             <thead>
                 <tr>
                     <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 13px;">CALLS (CE)</th>
-                    <th class="strike-col">STRIKE</th>
+                    <th class="strike-col" style="z-index: 30;">STRIKE</th>
                     <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
                 </tr>
                 <tr>
                     <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
                     <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
-                    <th class="strike-col">Price</th>
+                    <th class="strike-col" style="z-index: 30;">Price</th>
                     <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
                     <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
                 </tr>
@@ -776,7 +781,7 @@ HTML_TEMPLATE = """
             list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
-            isFirstLoad = true; // symbol badalne par wapis center karega
+            isFirstLoad = true;
             updateSelectedSymbolSheet();
         }
         function updateSelectedSymbolSheet() {
