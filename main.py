@@ -241,7 +241,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -660,7 +660,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (REMOVED CALLS/PUTS BANNER, GREEN/RED HEADERS, WHITE IN-LINE WINNER CARDS) ---
+# --- HTML TEMPLATE (WINNER CARDS PLACED AT THE VERY TOP IN PLACE OF CALLS/PUTS HEADERS, 1 COLUMN AWAY FROM STRIKE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -683,22 +683,25 @@ HTML_TEMPLATE = """
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         
-        /* 📌 Column headers with Call=Green, Put=Red */
         th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
         .th-ce { background: #d4edda !important; color: #155724 !important; }
         .th-pe { background: #f8d7da !important; color: #721c24 !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        th { position: sticky; top: 0; z-index: 11; }
+        th { position: sticky; z-index: 11; }
+        #row-winners th { top: 0; z-index: 13; background: #ffffff !important; }
+        #row-columns th { top: 40px; z-index: 12; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        th.strike-col { position: sticky; top: 0; z-index: 14; }
+        th.strike-col { position: sticky; z-index: 15; }
+        #row-winners th.strike-col { top: 0; background: #f1f3f5 !important; color: #000000 !important; }
+        #row-columns th.strike-col { top: 40px; background: #ff922b !important; color: #ffffff !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Pure White Background Cards placed in line after 1 column from Strike */
-        .winner-card-inline { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 5px; padding: 4px 8px; text-align: center; font-size: 11px; font-weight: bold; color: #000000; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: inline-block; min-width: 140px; }
+        /* 📌 Pure White Background Winner Card inside Top Header Row */
+        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 3px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-block; width: 100%; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
@@ -737,7 +740,17 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Calls=Green background & Puts=Red background -->
+                <!-- 📌 Top Row in place of Calls/Puts: Winner Cards positioned 1 column away from Strike -->
+                <tr id="row-winners">
+                    <th colspan="6"></th>
+                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
+                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
+                    <th class="strike-col">OUTPUT</th>
+                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
+                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
+                    <th colspan="6"></th>
+                </tr>
+                <!-- 📌 Column Headers with Call=Green and Put=Red -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
@@ -807,6 +820,12 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
+                /* 📌 Update top header winner cards */
+                document.getElementById("d5HeaderVal").innerHTML = data.D5;
+                document.getElementById("h5HeaderVal").innerHTML = data.H5;
+                document.getElementById("q5HeaderVal").innerHTML = data.Q5;
+                document.getElementById("u5HeaderVal").innerHTML = data.U5;
+
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
@@ -815,18 +834,6 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
-                
-                /* 📌 Top Winner Row inside table placed 1 column away from Strike with pure white background */
-                let winnerRow = document.createElement("tr");
-                winnerRow.innerHTML = `
-                    <td colspan="8"></td>
-                    <td colspan="2" style="padding:4px;"><div class="winner-card-inline">${data.D5}<br>${data.H5}</div></td>
-                    <td class="strike-col" style="background:#f1f3f5 !important; color:#000 !important; font-size:10px;">OUTPUT</td>
-                    <td colspan="2" style="padding:4px;"><div class="winner-card-inline">${data.Q5}<br>${data.U5}</div></td>
-                    <td colspan="8"></td>
-                `;
-                tbody.appendChild(winnerRow);
-
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
