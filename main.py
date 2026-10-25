@@ -660,7 +660,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT REFERENCE 1000310291_2.PNG PROFESSIONAL STYLE) ---
+# --- HTML TEMPLATE (EXACT REFERENCE 1000310291_3.PNG LAYOUT) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -676,7 +676,6 @@ HTML_TEMPLATE = """
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
         
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 3px; }
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
@@ -700,7 +699,7 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 100% Uniform, Professional White Cards exactly like the reference image */
+        /* 📌 Exact Reference Image White Status Boxes Styling */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.1); width: 100%; min-height: 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -740,19 +739,19 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Professional Layout matching 1000310291_2.png -->
+                <!-- 📌 Exact Reference Image Layout matching 1000310291_3.png -->
                 <tr id="row-winners">
-                    <th colspan="1" style="background: #2b8a3e; color: #ffffff; font-weight: 800; font-size: 11px;">CALL SIDE</th>
-                    <th colspan="4" style="background: #2b8a3e;"></th>
+                    <th colspan="1" style="background: #2b8a3e; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
+                    <th colspan="2" style="background: #2b8a3e;"></th>
                     <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
                     <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
-                    <th colspan="1" style="background: #2b8a3e;"></th>
+                    <th colspan="3" style="background: #2b8a3e;"></th>
                     <th class="strike-col">OUTPUT</th>
-                    <th colspan="1" style="background: #c92a2a;"></th>
+                    <th colspan="3" style="background: #c92a2a;"></th>
                     <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
                     <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
-                    <th colspan="4" style="background: #c92a2a;"></th>
-                    <th colspan="1" style="background: #c92a2a; color: #ffffff; font-weight: 800; font-size: 11px;">PUT SIDE</th>
+                    <th colspan="2" style="background: #c92a2a;"></th>
+                    <th colspan="1" style="background: #c92a2a; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
                 <!-- 📌 Column Headers with Call=Green and Put=Red -->
                 <tr id="row-columns">
@@ -824,7 +823,7 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                /* 📌 Update top header winner cards with uniform sizing */
+                /* 📌 Update top header winner cards */
                 document.getElementById("d5HeaderVal").innerHTML = data.D5;
                 document.getElementById("h5HeaderVal").innerHTML = data.H5;
                 document.getElementById("q5HeaderVal").innerHTML = data.Q5;
@@ -858,7 +857,7 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
