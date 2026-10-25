@@ -640,7 +640,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (FIXED SCROLL BOX & 10-STRIKE VIEWPORT) ---
+# --- HTML TEMPLATE (12 STRIKES ABOVE & 12 STRIKES BELOW VIEWPORT) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -662,8 +662,8 @@ HTML_TEMPLATE = """
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 3px; }
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
-        /* 📌 EXACT 10 STRIKES VIEWPORT & SCROLL CONTAINER */
-        .table-container { margin-top: 6px; max-height: 520px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        /* 📌 12 STRIKES UP & 12 STRIKES DOWN VIEWPORT HEIGHT */
+        .table-container { margin-top: 6px; max-height: 740px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
@@ -868,6 +868,7 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
 
 
 
