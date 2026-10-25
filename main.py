@@ -656,7 +656,7 @@ HTML_TEMPLATE = """
         * { box-sizing: border-box; }
         html, body { width: 100%; height: 100dvh; margin: 0; padding: 4px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
         
-        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100dvh; max-height: 100dvh; overflow: hidden; }
+        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100dvh; overflow: hidden; }
         
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 6px; border: 1px solid #ced4da; flex-shrink: 0; }
         .controls-group { display: flex; gap: 8px; align-items: center; }
@@ -674,8 +674,8 @@ HTML_TEMPLATE = """
         
         .k3-banner { background: #e6fcf5; padding: 5px; margin-top: 4px; text-align: center; font-size: 12px; font-weight: bold; border-radius: 4px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* 📌 STRICT TABLE CONTAINER WITH 100% FLEX SCROLL */
-        .table-container { margin-top: 4px; flex: 1 1 auto; height: 0; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        /* 📌 FIXED CALCULATED HEIGHT TABLE CONTAINER FOR MOBILE */
+        .table-container { margin-top: 4px; height: calc(100dvh - 150px); overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; }
         
@@ -873,6 +873,8 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+
 
 
 
