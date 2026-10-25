@@ -402,15 +402,25 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
-        finalD5, finalH5, finalQ5, finalU5 = "-----", "-----", "-----", "-----"
+        finalD5, finalH5, finalQ5, finalU5 = "", "", "", ""
 
-        if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
-        elif ceWinner == "VOL": finalH5 = ceVolResult['text']
-        elif ceWinner == "OI": finalD5 = ceOiResult['text']
+        if ceWinner == "BOTH": 
+            finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
+        elif ceWinner == "VOL": 
+            finalD5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalH5 = ceVolResult['text']
+        elif ceWinner == "OI": 
+            finalD5 = ceOiResult['text']
+            finalH5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
 
-        if peWinner == "BOTH": finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
-        elif peWinner == "VOL": finalQ5 = peVolResult['text']
-        elif peWinner == "OI": finalU5 = peOiResult['text']
+        if peWinner == "BOTH": 
+            finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
+        elif peWinner == "VOL": 
+            finalQ5 = peVolResult['text']
+            finalU5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+        elif peWinner == "OI": 
+            finalQ5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalU5 = peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
@@ -660,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT REFERENCE 1000310291_4.PNG PROFESSIONAL LAYOUT) ---
+# --- HTML TEMPLATE (SOFT LIGHT BACKGROUNDS & MERGED UNIFORM WINNER CARDS) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -683,13 +693,17 @@ HTML_TEMPLATE = """
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         
         th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
-        .th-ce { background: #d4edda !important; color: #155724 !important; }
-        .th-pe { background: #f8d7da !important; color: #721c24 !important; }
+        
+        /* 📌 Soft Light Background Colors */
+        .th-ce { background: #e8f5e9 !important; color: #1b5e20 !important; }
+        .th-pe { background: #ffebee !important; color: #b71c1c !important; }
+        .bg-call-side { background: #e8f5e9 !important; }
+        .bg-put-side { background: #ffebee !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         th { position: sticky; z-index: 11; }
-        #row-winners th { top: 0; z-index: 13; padding: 6px 4px; height: 50px; vertical-align: middle; border: none !important; }
+        #row-winners th { top: 0; z-index: 13; padding: 6px 4px; height: 50px; vertical-align: middle; border: 1px solid #dee2e6 !important; }
         #row-columns th { top: 50px; z-index: 12; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
@@ -699,8 +713,8 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Clean White Status Boxes without extra borders or lines */
-        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.1); width: 100%; min-height: 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
+        /* 📌 Uniform Clean Winner Cards */
+        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; min-height: 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
@@ -739,21 +753,19 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Exact Professional Layout matching 1000310291_4.png -->
+                <!-- 📌 Soft Light Backgrounds & Merged Uniform Winner Cards -->
                 <tr id="row-winners">
-                    <th colspan="1" style="background: #2b8a3e; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="3" style="background: #2b8a3e;"></th>
-                    <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
-                    <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
-                    <th colspan="2" style="background: #2b8a3e;"></th>
+                    <th colspan="1" class="bg-call-side" style="color: #1b5e20; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
+                    <th colspan="3" class="bg-call-side"></th>
+                    <th colspan="4" class="bg-call-side"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
+                    <th colspan="2" class="bg-call-side"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
                     <th class="strike-col">OUTPUT</th>
-                    <th colspan="2" style="background: #c92a2a;"></th>
-                    <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
-                    <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
-                    <th colspan="3" style="background: #c92a2a;"></th>
-                    <th colspan="1" style="background: #c92a2a; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                    <th colspan="2" class="bg-put-side"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
+                    <th colspan="4" class="bg-put-side"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
+                    <th colspan="3" class="bg-put-side"></th>
+                    <th colspan="1" class="bg-put-side" style="color: #b71c1c; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
-                <!-- 📌 Column Headers with Call=Green and Put=Red -->
+                <!-- 📌 Column Headers with Call=Soft Green and Put=Soft Red -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
@@ -857,7 +869,7 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
