@@ -645,7 +645,6 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (FIXED HEADERS, CENTER LOCK & TOUCH SCROLL) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -655,47 +654,47 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        html, body { height: 100vh; margin: 0; padding: 5px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 4px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
         
-        .page-wrapper { display: flex; flex-direction: column; height: 100vh; }
+        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100vh; max-height: 100vh; overflow: hidden; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 12px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
-        .controls-group { display: flex; gap: 10px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: bold; font-size: 12px; }
-        select { padding: 4px; font-size: 13px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 6px; border: 1px solid #ced4da; flex-shrink: 0; }
+        .controls-group { display: flex; gap: 8px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
+        select { padding: 4px; font-size: 12px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
         
         /* CARD & WINNER STATUS BOX STYLING */
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; flex-shrink: 0; }
-        .card { padding: 4px 6px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px; flex-shrink: 0; }
+        .card { padding: 4px 6px; border-radius: 4px; border: 1px solid #ced4da; text-align: center; font-size: 10px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
-        .card-header-line { font-size: 11px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 1px; white-space: nowrap; }
+        .card-header-line { font-size: 10px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 1px; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 8px; border: 1px solid #fab005; display: inline-block; margin-top: 1px; white-space: nowrap; }
         
-        .k3-banner { background: #e6fcf5; padding: 6px; margin-top: 4px; text-align: center; font-size: 13px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
+        .k3-banner { background: #e6fcf5; padding: 5px; margin-top: 4px; text-align: center; font-size: 12px; font-weight: bold; border-radius: 4px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* 📌 STICKY TABLE CONTAINER & SCROLL LOCK */
-        .table-container { margin-top: 4px; flex: 1; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        /* 📌 STRICT RIGID TABLE CONTAINER FOR MOBILE & PC */
+        .table-container { margin-top: 4px; flex-grow: 1; height: 100%; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
-        th { border-top: 1px solid #dee2e6; }
+        th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; }
         
-        /* 📌 HEADERS FREEZE (STRICT STICKY LOCK) */
-        thead tr:nth-child(1) th { position: sticky; top: 0; z-index: 40; background: #f8f9fa; }
-        thead tr:nth-child(2) th { position: sticky; top: 26px; z-index: 40; background: #f8f9fa; }
+        /* 📌 100% BULLET-PROOF STICKY HEADERS LOCK */
+        thead th { position: sticky; z-index: 50; background-color: #f8f9fa; }
+        #row-calls-puts th { top: 0; z-index: 52; }
+        #row-columns th { top: 23px; z-index: 51; }
         
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 45 !important; }
-        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 55 !important; }
+        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 75px !important; width: 75px !important; }
         
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; }
-        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
-        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
+        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 6px; display: inline-block; margin-bottom: 1px; }
+        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 11px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
-        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+        .state-badge-pill { background: #ffffff; border: 1.5px solid #333333; border-radius: 10px; padding: 1px 5px; display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
@@ -706,7 +705,7 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
-        .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
+        .pct-sub { font-size: 8px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
@@ -714,7 +713,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="page-wrapper">
         <div class="header">
-            <h3 style="margin:0; font-size: 15px;">⚡ Arush LTP Calculator</h3>
+            <h3 style="margin:0; font-size: 14px;">⚡ Arush LTP Calculator</h3>
             <div class="controls-group">
                 <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
                 <select id="symbolSelect" onchange="onSymbolChange()"></select>
@@ -732,9 +731,9 @@ HTML_TEMPLATE = """
             <table id="optionChainTable">
                 <thead>
                     <tr id="row-calls-puts">
-                        <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 12px;">CALLS (CE)</th>
+                        <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 11px;">CALLS (CE)</th>
                         <th class="strike-col">STRIKE</th>
-                        <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 12px;">PUTS (PE)</th>
+                        <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 11px;">PUTS (PE)</th>
                     </tr>
                     <tr id="row-columns">
                         <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
@@ -745,7 +744,7 @@ HTML_TEMPLATE = """
                     </tr>
                 </thead>
                 <tbody id="gridBody">
-                    <tr><td colspan="21" style="padding: 20px; font-size: 14px; color: #666;">Syncing option chain matrix...</td></tr>
+                    <tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -843,7 +842,7 @@ HTML_TEMPLATE = """
                         tbody.appendChild(tr);
                     });
 
-                    // Dynamic Header Height Lock
+                    // 📌 Dynamic Sticky Offset Fix for Table Row Headers
                     let r1 = document.getElementById('row-calls-puts');
                     let r2 = document.getElementById('row-columns');
                     if(r1 && r2) {
@@ -853,17 +852,17 @@ HTML_TEMPLATE = """
                         });
                     }
 
-                    // 📌 REFRESH / FIRST LOAD HORIZONTAL & VERTICAL CENTER LOCK
+                    // 📌 HORIZONTAL & VERTICAL CENTER LOCK ON INITIAL / REFRESH
                     if (isFirstLoad) {
                         setTimeout(() => {
                             let spotRowTarget = document.querySelector('.spot-target-row');
                             let container = document.getElementById('tableContainer');
                             if (spotRowTarget && container) {
-                                let targetTop = spotRowTarget.offsetTop - (container.clientHeight / 2);
+                                let targetTop = spotRowTarget.offsetTop - (container.clientHeight / 2) + (spotRowTarget.clientHeight / 2);
                                 let targetLeft = spotRowTarget.offsetLeft - (container.clientWidth / 2) + (spotRowTarget.clientWidth / 2);
                                 container.scrollTo({ top: targetTop, left: targetLeft, behavior: 'instant' });
                             }
-                        }, 150);
+                        }, 100);
                         isFirstLoad = false;
                     }
                 }
@@ -874,6 +873,7 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
 
 
 # --- FLASK API ROUTES ---
