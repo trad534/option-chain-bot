@@ -222,11 +222,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -373,7 +373,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bullish"
         elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe in ["stable strong", "strong"] and checkCe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
@@ -640,7 +640,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE ---
+# --- HTML TEMPLATE (EXACT ORIGINAL COLUMNS + AUTO CENTER LOCK & STICKY HEADERS) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -664,16 +664,17 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 10px; flex-grow: 1; height: calc(100vh - 160px); overflow: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
-        table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
+        table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
         
-        thead th { position: sticky; z-index: 20; background-color: #f8f9fa; color: #212529; }
-        #row-calls-puts th { top: 0; z-index: 22; }
-        #row-columns th { top: 27px; z-index: 21; }
+        /* 📌 STICKY HEADERS */
+        th { background: #f8f9fa; color: #212529; position: sticky; z-index: 10; }
+        #row-calls-puts th { top: 0; z-index: 12; }
+        #row-columns th { top: 27px; z-index: 11; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
-        #row-calls-puts th.strike-col { top: 0; z-index: 30; }
-        #row-columns th.strike-col { top: 27px; z-index: 29; }
+        #row-calls-puts th.strike-col { top: 0; z-index: 15; }
+        #row-columns th.strike-col { top: 27px; z-index: 14; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 87px !important; width: 87px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
@@ -885,7 +886,7 @@ def get_initial_metadata():
 @app.route('/api/set-symbol/<symbol>', defaults={'expiry': None}, methods=['POST'])
 @app.route('/api/set-symbol/<symbol>/<expiry>', methods=['POST'])
 def set_symbol_api(symbol, expiry):
-    global user_selected_expiries, current_active_symbol_ui, smart_api_global
+    global user_selected_expiries,current_active_symbol_ui, smart_api_global
     sym = symbol.upper()
     current_active_symbol_ui = sym
     try:
