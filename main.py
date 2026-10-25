@@ -660,7 +660,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT REFERENCE 1000310291_3.PNG LAYOUT) ---
+# --- HTML TEMPLATE (EXACT REFERENCE 1000310291_4.PNG PROFESSIONAL LAYOUT) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -689,7 +689,7 @@ HTML_TEMPLATE = """
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         th { position: sticky; z-index: 11; }
-        #row-winners th { top: 0; z-index: 13; padding: 6px 4px; height: 50px; vertical-align: middle; }
+        #row-winners th { top: 0; z-index: 13; padding: 6px 4px; height: 50px; vertical-align: middle; border: none !important; }
         #row-columns th { top: 50px; z-index: 12; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
@@ -699,7 +699,7 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Exact Reference Image White Status Boxes Styling */
+        /* 📌 Clean White Status Boxes without extra borders or lines */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.1); width: 100%; min-height: 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -739,18 +739,18 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Exact Reference Image Layout matching 1000310291_3.png -->
+                <!-- 📌 Exact Professional Layout matching 1000310291_4.png -->
                 <tr id="row-winners">
                     <th colspan="1" style="background: #2b8a3e; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="2" style="background: #2b8a3e;"></th>
+                    <th colspan="3" style="background: #2b8a3e;"></th>
                     <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
                     <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
-                    <th colspan="3" style="background: #2b8a3e;"></th>
+                    <th colspan="2" style="background: #2b8a3e;"></th>
                     <th class="strike-col">OUTPUT</th>
-                    <th colspan="3" style="background: #c92a2a;"></th>
+                    <th colspan="2" style="background: #c92a2a;"></th>
                     <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
                     <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
-                    <th colspan="2" style="background: #c92a2a;"></th>
+                    <th colspan="3" style="background: #c92a2a;"></th>
                     <th colspan="1" style="background: #c92a2a; color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
                 <!-- 📌 Column Headers with Call=Green and Put=Red -->
