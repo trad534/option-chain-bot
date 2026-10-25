@@ -91,14 +91,12 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     
     sigma = 0.15
     try: 
-        # Micron-level precision ke sath dynamic solver
         sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
     except Exception: 
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
 
-    # Extreme edge cases ke liye safe bounds (koi fixed static IV nahi)
     if iv_val < 1.0:
         iv_val = 1.0
     elif iv_val > 200.0:
@@ -612,7 +610,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
             
-            # 📌 CORRECTED ITM DIRECTION: CE ITM below spot (st > spot), PE ITM above spot (st < spot)
+            # 📌 CORRECTED ITM DIRECTION: CE ITM below spot (st > spot_price), PE ITM above spot (st < spot_price)
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                 'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
