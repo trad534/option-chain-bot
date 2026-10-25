@@ -123,13 +123,16 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike = float(r_dict['strike'])
             if not strike: continue
 
-            if idx >= (spot_idx - 3) and idx < len(raw_rows):
+            # 📌 CE Side: Spot (-3) se lekar Spot (+18) tak
+            if idx >= (spot_idx - 3) and idx <= (spot_idx + 18):
                 ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
                 ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            if idx <= (spot_idx + 3):
+            # 📌 PE Side: Spot (-18) se lekar Spot (+3) tak
+            if idx >= (spot_idx - 18) and idx <= (spot_idx + 3):
                 peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
+
 
         def extract_top_two(data_array):
             if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
