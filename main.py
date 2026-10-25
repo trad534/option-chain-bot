@@ -91,14 +91,12 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     
     sigma = 0.15
     try: 
-        # Micron-level precision ke sath dynamic solver
         sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
     except Exception: 
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
 
-    # Extreme edge cases ke liye safe bounds (koi fixed static IV nahi)
     if iv_val < 1.0:
         iv_val = 1.0
     elif iv_val > 200.0:
@@ -243,7 +241,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -662,7 +660,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (CLEAN CELLS + UNTOUCHED STRIKE COLUMN) ---
+# --- HTML TEMPLATE (REMOVED CALLS/PUTS BANNER, GREEN/RED HEADERS, WHITE IN-LINE WINNER CARDS) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -677,10 +675,7 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
-        .card { padding: 6px 8px; border-radius: 5px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
-        .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
-        .card-pe { background: #ffebee; border-color: #ef9a9a; }
+        
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 3px; }
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
@@ -688,22 +683,23 @@ HTML_TEMPLATE = """
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         
-        /* Headers ke borders maintain rakhenge */
-        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; background: #f8f9fa; color: #212529; }
+        /* 📌 Column headers with Call=Green, Put=Red */
+        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
+        .th-ce { background: #d4edda !important; color: #155724 !important; }
+        .th-pe { background: #f8d7da !important; color: #721c24 !important; }
         
-        /* Data cells (td) ke internal borders hata diye gaye hain, sirf light bottom spacing rakhi hai */
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        th { background: #f8f9fa; color: #212529; position: sticky; z-index: 10; }
-        #row-calls-puts th { top: 0; z-index: 12; }
-        #row-columns th { top: 25px; z-index: 11; }
+        th { position: sticky; top: 0; z-index: 11; }
         
-        /* Strike price column aur uski lines ko bilkul unchanged rakha gaya hai */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        #row-calls-puts th.strike-col { top: 0; z-index: 15; }
-        #row-columns th.strike-col { top: 25px; z-index: 14; }
+        th.strike-col { position: sticky; top: 0; z-index: 14; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
+        
+        /* 📌 Pure White Background Cards placed in line after 1 column from Strike */
+        .winner-card-inline { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 5px; padding: 4px 8px; text-align: center; font-size: 11px; font-weight: bold; color: #000000; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: inline-block; min-width: 140px; }
+
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
@@ -737,26 +733,17 @@ HTML_TEMPLATE = """
         </div>
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
-    <div class="status-box">
-        <div class="card card-ce"><div id="d5Val">-</div></div>
-        <div class="card card-ce"><div id="h5Val">-</div></div>
-        <div class="card card-pe"><div id="q5Val">-</div></div>
-        <div class="card card-pe"><div id="u5Val">-</div></div>
-    </div>
+    
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <tr id="row-calls-puts">
-                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 12px;">CALLS (CE)</th>
-                    <th class="strike-col">STRIKE</th>
-                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 12px;">PUTS (PE)</th>
-                </tr>
+                <!-- 📌 Calls=Green background & Puts=Red background -->
                 <tr id="row-columns">
-                    <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
-                    <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
-                    <th class="strike-col">Price</th>
-                    <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
-                    <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
+                    <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
+                    <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
+                    <th class="strike-col">STRIKE</th>
+                    <th class="th-pe">LTP</th><th class="th-pe">Change</th><th class="pe-vol-col th-pe">Vol</th><th class="pe-oi-col th-pe">OI</th><th class="th-pe">OI Chg</th>
+                    <th class="th-pe">IV</th><th class="th-pe">Delta</th><th class="th-pe">Gamma</th><th class="th-pe">Theta</th><th class="th-pe">Vega</th>
                 </tr>
             </thead>
             <tbody id="gridBody">
@@ -819,10 +806,7 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                document.getElementById("d5Val").innerHTML = data.D5;
-                document.getElementById("h5Val").innerHTML = data.H5;
-                document.getElementById("q5Val").innerHTML = data.Q5;
-                document.getElementById("u5Val").innerHTML = data.U5;
+                
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
@@ -831,6 +815,18 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
+                
+                /* 📌 Top Winner Row inside table placed 1 column away from Strike with pure white background */
+                let winnerRow = document.createElement("tr");
+                winnerRow.innerHTML = `
+                    <td colspan="8"></td>
+                    <td colspan="2" style="padding:4px;"><div class="winner-card-inline">${data.D5}<br>${data.H5}</div></td>
+                    <td class="strike-col" style="background:#f1f3f5 !important; color:#000 !important; font-size:10px;">OUTPUT</td>
+                    <td colspan="2" style="padding:4px;"><div class="winner-card-inline">${data.Q5}<br>${data.U5}</div></td>
+                    <td colspan="8"></td>
+                `;
+                tbody.appendChild(winnerRow);
+
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
@@ -851,20 +847,10 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            /* 📌 BRACKETS HATA DIYE GAYE HAIN PERCENTS SE */
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
-
-                    let r1 = document.getElementById('row-calls-puts');
-                    let r2 = document.getElementById('row-columns');
-                    if(r1 && r2) {
-                        let h1 = r1.offsetHeight;
-                        r2.querySelectorAll('th').forEach(th => {
-                            th.style.top = h1 + 'px';
-                        });
-                    }
 
                     if (isFirstLoad) {
                         setTimeout(() => {
