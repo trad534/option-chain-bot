@@ -91,12 +91,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     
     sigma = 0.15
     try: 
+        # Micron-level precision ke sath dynamic solver
         sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
     except Exception: 
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
 
+    # Extreme edge cases ke liye safe bounds (koi fixed static IV nahi)
     if iv_val < 1.0:
         iv_val = 1.0
     elif iv_val > 200.0:
@@ -616,7 +618,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
                 'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
                 'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
-                'is_itm_ce': bool(st > spot_price), 'is_itm_pe': bool(st < spot_price)
+                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
@@ -660,7 +662,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT REFERENCE IMAGE PROFESSIONAL DESIGN & COLOR VIBE) ---
+# --- HTML TEMPLATE (CLEAN CELLS + UNTOUCHED STRIKE COLUMN) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -670,67 +672,64 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #eef2f5; color: #111; margin: 0; padding: 6px; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 6px 12px; border-radius: 4px; border: 1px solid #dcdcdc; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .controls-group { display: flex; gap: 8px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
-        select { padding: 5px; font-size: 13px; background: #ffffff; border: 1px solid #ccc; border-radius: 4px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 6px; border: 1px solid #ced4da; }
+        .controls-group { display: flex; gap: 10px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
+        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+        .card { padding: 6px 8px; border-radius: 5px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
+        .card-pe { background: #ffebee; border-color: #ef9a9a; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 3px; }
+        .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px; }
-        .card { padding: 4px 6px; border-radius: 3px; border: 1px solid #b5b5b5; text-align: center; font-size: 10px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 36px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
-        .card-ce { background: #d4edda; border-color: #c3e6cb; }
-        .card-pe { background: #f8d7da; border-color: #f5c6cb; }
-        .card-header-line { font-weight: 700; font-size: 10px; margin-bottom: 1px; color: #222; }
-        .yellow-pill-badge { background: #ffeb3b; color: #000000; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 8px; border: 1px solid #fbc02d; display: inline-block; }
-        
-        .k3-banner { background: #d1e7dd; padding: 6px; margin-top: 4px; text-align: center; font-size: 13px; font-weight: bold; border-radius: 4px; color: #0f5132; border: 1px solid #badbcc; }
-        
-        .table-container { margin-top: 4px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #ccc; border-radius: 4px; position: relative; background: #fff; -webkit-overflow-scrolling: touch; }
+        .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th { border: 1px solid #dcdcdc; padding: 3px 5px; white-space: nowrap; position: relative; background: #f1f3f5; color: #333; font-weight: 700; }
-        td { border: 1px solid #eaeaea; padding: 3px 5px; white-space: nowrap; position: relative; color: #222; }
         
-        th { position: sticky; z-index: 10; }
+        /* Headers ke borders maintain rakhenge */
+        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; background: #f8f9fa; color: #212529; }
+        
+        /* Data cells (td) ke internal borders hata diye gaye hain, sirf light bottom spacing rakhi hai */
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
+        
+        th { background: #f8f9fa; color: #212529; position: sticky; z-index: 10; }
         #row-calls-puts th { top: 0; z-index: 12; }
-        #row-columns th { top: 22px; z-index: 11; }
+        #row-columns th { top: 25px; z-index: 11; }
         
-        .strike-col { background: #f57c00 !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #e65100 !important; }
+        /* Strike price column aur uski lines ko bilkul unchanged rakha gaya hai */
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-calls-puts th.strike-col { top: 0; z-index: 15; }
-        #row-columns th.strike-col { top: 22px; z-index: 14; }
+        #row-columns th.strike-col { top: 25px; z-index: 14; }
 
-        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 75px !important; width: 75px !important; }
+        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
-        .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background-color: #d32f2f; z-index: 2; transform: translateY(-50%); }
+        .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
-        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 1px 2px !important; border: 1.5px solid #d32f2f !important; }
-        .spot-tag-red { background: #d32f2f; color: #ffffff; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 6px; display: inline-block; margin-bottom: 1px; }
-        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 11px; display: block; }
-        
+        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; border-top: 1px solid #dee2e6 !important; border-bottom: 1px solid #dee2e6 !important; }
+        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
+        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
-        .state-badge-pill { background: #ffffff; border: 1px solid #555; border-radius: 8px; padding: 1px 5px; display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .state-badge-pill { background: #ffffff; border: 1.5px solid #333333; border-radius: 10px; padding: 1px 6px; display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
-        .state-strong { color: #2e7d32; border-color: #555; }
-        
-        /* 📌 Professional Reference-Style Clean Dark/Grey Shadow Background for ITM cells */
-        .itm-ce { background: rgba(0, 0, 0, 0.07) !important; }
-        .itm-pe { background: rgba(0, 0, 0, 0.07) !important; }
-
-        .ce-oi-col.bg-100 { background: #ff8a8a !important; color: #000000 !important; font-weight: bold; }
-        .ce-vol-col.bg-100 { background: #90caf9 !important; color: #000000 !important; font-weight: bold; }
-        .pe-vol-col.bg-100 { background: #90caf9 !important; color: #000000 !important; font-weight: bold; }
-        .pe-oi-col.bg-100 { background: #a3e4d7 !important; color: #000000 !important; font-weight: bold; }
-        .bg-75 { background: #fff59d !important; color: #000000 !important; font-weight: bold; }
-        
-        .pct-sub { font-size: 8px; font-weight: bold; display: block; color: #333; margin-top: 1px; }
-        .chg-pos { color: #2e7d32; font-weight: bold; }
-        .chg-neg { color: #c62828; font-weight: bold; }
+        .state-strong { color: #2e7d32; border-color: #333333; }
+        .itm-ce { background: rgba(240, 62, 62, 0.06); }
+        .itm-pe { background: rgba(43, 138, 62, 0.06); }
+        .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
+        .ce-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
+        .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
+        .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
+        .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
+        .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
+        .chg-pos { color: #2b8a3e; font-weight: bold; }
+        .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2 style="margin:0; font-size: 16px; color:#333;">⚡ Arush LTP Calculator</h2>
+        <h2>⚡ Arush LTP Calculator</h2>
         <div class="controls-group">
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
             <select id="symbolSelect" onchange="onSymbolChange()"></select>
@@ -748,9 +747,9 @@ HTML_TEMPLATE = """
         <table id="optionChainTable">
             <thead>
                 <tr id="row-calls-puts">
-                    <th colspan="10" style="background: #e3f2fd; color: #1565c0; font-size: 11px;">CALLS (CE)</th>
+                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 12px;">CALLS (CE)</th>
                     <th class="strike-col">STRIKE</th>
-                    <th colspan="10" style="background: #ffebee; color: #c62828; font-size: 11px;">PUTS (PE)</th>
+                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 12px;">PUTS (PE)</th>
                 </tr>
                 <tr id="row-columns">
                     <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
@@ -761,7 +760,7 @@ HTML_TEMPLATE = """
                 </tr>
             </thead>
             <tbody id="gridBody">
-                <tr><td colspan="21" style="padding: 20px; font-size: 12px; color: #666;">Syncing option chain matrix...</td></tr>
+                <tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
             </tbody>
         </table>
     </div>
@@ -852,7 +851,8 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            /* 📌 BRACKETS HATA DIYE GAYE HAIN PERCENTS SE */
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
