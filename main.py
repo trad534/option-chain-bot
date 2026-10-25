@@ -212,13 +212,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -660,7 +660,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (WINNER CARDS PLACED AT THE VERY TOP IN PLACE OF CALLS/PUTS HEADERS, 1 COLUMN AWAY FROM STRIKE) ---
+# --- HTML TEMPLATE (CE SIDE GREEN BACKGROUND & PE SIDE RED BACKGROUND WITH WHITE WINNER CARDS 1 COLUMN AWAY FROM STRIKE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -700,7 +700,7 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Pure White Background Winner Card inside Top Header Row */
+        /* 📌 Pure White Background Winner Card inside Green/Red Header Row 1 column away from Strike */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 3px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-block; width: 100%; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -740,15 +740,15 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Top Row in place of Calls/Puts: Winner Cards positioned 1 column away from Strike -->
+                <!-- 📌 CE Side Green Background (#2b8a3e), PE Side Red Background (#c92a2a), Winner Cards 1 column away from Strike with White Background -->
                 <tr id="row-winners">
-                    <th colspan="6"></th>
-                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
-                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
+                    <th colspan="6" style="background: #2b8a3e;"></th>
+                    <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
+                    <th colspan="2" style="background: #2b8a3e;"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
                     <th class="strike-col">OUTPUT</th>
-                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
-                    <th colspan="2" style="background:#ffffff;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
-                    <th colspan="6"></th>
+                    <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
+                    <th colspan="2" style="background: #c92a2a;"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
+                    <th colspan="6" style="background: #c92a2a;"></th>
                 </tr>
                 <!-- 📌 Column Headers with Call=Green and Put=Red -->
                 <tr id="row-columns">
