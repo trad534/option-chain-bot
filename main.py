@@ -543,7 +543,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-        strikes = all_master_strikes[max(0, closest_idx - 18):min(len(all_master_strikes), closest_idx + 18)]
+        strikes = all_master_strikes[max(0, closest_idx - 18):min(len(all_master_strikes), closest_idx + 19)]
 
         filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
         exch_map = {}
