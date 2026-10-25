@@ -82,7 +82,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         if sigma <= 0: sigma = 1e-4
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
-        return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) - S * norm.cdf(-d1)) - ltp
+        return (S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) if flag == 'CE' else K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1)) - ltp
     try: sigma = brentq(objective_function, 1e-4, 5.0, xtol=1e-6, maxiter=100)
     except Exception: sigma = 0.20
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
@@ -123,13 +123,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike = float(r_dict['strike'])
             if not strike: continue
 
-            # 📌 CE Side (Call): Spot (-3) se lekar Spot (+18) tak
-            if idx >= (spot_idx - 3) and idx <= (spot_idx + 18):
+            if idx >= (spot_idx - 3) and idx < len(raw_rows):
                 ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
                 ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            # 📌 PE Side (Put): Spot (-18) se lekar Spot (+3) tak
-            if idx >= (spot_idx - 18) and idx <= (spot_idx + 3):
+            if idx <= (spot_idx + 3):
                 peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
@@ -219,18 +217,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+            peWinner = "VOL"
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            ceWinner = "VOL"
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+            peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -320,6 +318,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
                 set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
 
+            # Single-line header styling prevents line break for 23500
             if isShifting:
                 line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
                 line2 = f"<div><span class='yellow-pill-badge'>shifted {shiftType}</span></div>"
@@ -543,7 +542,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
         all_master_strikes = sorted(current_expiry_options['strike'].unique())
         closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-        strikes = all_master_strikes[max(0, closest_idx - 18):min(len(all_master_strikes), closest_idx + 19)]
+        strikes = all_master_strikes[max(0, closest_idx - 12):min(len(all_master_strikes), closest_idx + 13)]
 
         filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
         exch_map = {}
@@ -645,6 +644,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
+# --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -653,48 +653,39 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
     <style>
-        * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100dvh; margin: 0; padding: 4px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
-        
-        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100dvh; overflow: hidden; }
-        
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 6px; border: 1px solid #ced4da; flex-shrink: 0; }
-        .controls-group { display: flex; gap: 8px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
-        select { padding: 4px; font-size: 12px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        .controls-group { display: flex; gap: 15px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
+        select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         /* CARD & WINNER STATUS BOX STYLING */
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px; flex-shrink: 0; }
-        .card { padding: 4px 6px; border-radius: 4px; border: 1px solid #ced4da; text-align: center; font-size: 10px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 12px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
-        .card-header-line { font-size: 10px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 1px; }
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 8px; border: 1px solid #fab005; display: inline-block; margin-top: 1px; white-space: nowrap; }
+        /* SINGLE LINE HEADER TEXT CSS TO PREVENT STRIKE BREAKING */
+        .card-header-line { font-size: 12px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
         
-        .k3-banner { background: #e6fcf5; padding: 5px; margin-top: 4px; text-align: center; font-size: 12px; font-weight: bold; border-radius: 4px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
+        /* YELLOW PILL BADGE */
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
         
-        /* 📌 FIXED CALCULATED HEIGHT TABLE CONTAINER FOR MOBILE */
-        .table-container { margin-top: 4px; height: calc(100dvh - 150px); overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; }
-        
-        /* 📌 100% STICKY HEADERS LOCK */
-        thead th { position: sticky; z-index: 50; background-color: #f8f9fa; }
-        #row-calls-puts th { top: 0; z-index: 52; }
-        #row-columns th { top: 23px; z-index: 51; }
-        
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 55 !important; }
-        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 75px !important; width: 75px !important; }
-        
+        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
+        .table-container { margin-top: 10px; overflow-x: auto; max-height: 700px; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
+        table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
+        th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; }
+        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 87px !important; width: 87px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; }
-        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 6px; display: inline-block; margin-bottom: 1px; }
-        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 11px; display: block; }
+        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 10px; display: inline-block; margin-bottom: 1px; }
+        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 13px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
-        .state-badge-pill { background: #ffffff; border: 1.5px solid #333333; border-radius: 10px; padding: 1px 5px; display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
@@ -705,54 +696,50 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
-        .pct-sub { font-size: 8px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
+        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="page-wrapper">
-        <div class="header">
-            <h3 style="margin:0; font-size: 14px;">⚡ Arush LTP Calculator</h3>
-            <div class="controls-group">
-                <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
-                <select id="symbolSelect" onchange="onSymbolChange()"></select>
-                <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
-            </div>
+    <div class="header">
+        <h2>⚡ Arush LTP Calculator</h2>
+        <div class="controls-group">
+            <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
+            <select id="symbolSelect" onchange="onSymbolChange()"></select>
+            <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
         </div>
-        <div class="k3-banner" id="k3Display">Loading Framework...</div>
-        <div class="status-box">
-            <div class="card card-ce"><div id="d5Val">-----</div></div>
-            <div class="card card-ce"><div id="h5Val">-----</div></div>
-            <div class="card card-pe"><div id="q5Val">-----</div></div>
-            <div class="card card-pe"><div id="u5Val">-----</div></div>
-        </div>
-        <div class="table-container" id="tableContainer">
-            <table id="optionChainTable">
-                <thead>
-                    <tr id="row-calls-puts">
-                        <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 11px;">CALLS (CE)</th>
-                        <th class="strike-col">STRIKE</th>
-                        <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 11px;">PUTS (PE)</th>
-                    </tr>
-                    <tr id="row-columns">
-                        <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
-                        <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
-                        <th class="strike-col">Price</th>
-                        <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
-                        <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
-                    </tr>
-                </thead>
-                <tbody id="gridBody">
-                    <tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
-                </tbody>
-            </table>
-        </div>
+    </div>
+    <div class="k3-banner" id="k3Display">Loading Framework...</div>
+    <div class="status-box">
+        <div class="card card-ce"><div id="d5Val">-----</div></div>
+        <div class="card card-ce"><div id="h5Val">-----</div></div>
+        <div class="card card-pe"><div id="q5Val">-----</div></div>
+        <div class="card card-pe"><div id="u5Val">-----</div></div>
+    </div>
+    <div class="table-container">
+        <table id="optionChainTable">
+            <thead>
+                <tr>
+                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 13px;">CALLS (CE)</th>
+                    <th class="strike-col">STRIKE</th>
+                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
+                </tr>
+                <tr>
+                    <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
+                    <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
+                    <th class="strike-col">Price</th>
+                    <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
+                    <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
+                </tr>
+            </thead>
+            <tbody id="gridBody">
+                <tr><td colspan="21" style="padding: 20px; font-size: 14px; color: #666;">Syncing option chain matrix...</td></tr>
+            </tbody>
+        </table>
     </div>
     <script>
         let allExpiriesData = {};
-        let isFirstLoad = true;
-
         function initApp() {
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
@@ -784,7 +771,6 @@ HTML_TEMPLATE = """
             list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
-            isFirstLoad = true;
             updateSelectedSymbolSheet();
         }
         function updateSelectedSymbolSheet() {
@@ -820,7 +806,7 @@ HTML_TEMPLATE = """
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
                         if (row.is_spot_row) {
-                            tr.classList.add("spot-row", "spot-target-row");
+                            tr.classList.add("spot-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
                             let ceBadges = [];
                             let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
@@ -841,30 +827,6 @@ HTML_TEMPLATE = """
                         }
                         tbody.appendChild(tr);
                     });
-
-                    // Dynamic Header Height Lock
-                    let r1 = document.getElementById('row-calls-puts');
-                    let r2 = document.getElementById('row-columns');
-                    if(r1 && r2) {
-                        let h1 = r1.offsetHeight;
-                        r2.querySelectorAll('th').forEach(th => {
-                            th.style.top = h1 + 'px';
-                        });
-                    }
-
-                    // 📌 REFRESH / FIRST LOAD HORIZONTAL & VERTICAL CENTER LOCK
-                    if (isFirstLoad) {
-                        setTimeout(() => {
-                            let spotRowTarget = document.querySelector('.spot-target-row');
-                            let container = document.getElementById('tableContainer');
-                            if (spotRowTarget && container) {
-                                let targetTop = spotRowTarget.offsetTop - (container.clientHeight / 2) + (spotRowTarget.clientHeight / 2);
-                                let targetLeft = spotRowTarget.offsetLeft - (container.clientWidth / 2) + (spotRowTarget.clientWidth / 2);
-                                container.scrollTo({ top: targetTop, left: targetLeft, behavior: 'instant' });
-                            }
-                        }, 100);
-                        isFirstLoad = false;
-                    }
                 }
             });
         }
@@ -873,10 +835,6 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
-
-
-
-
 
 
 # --- FLASK API ROUTES ---
