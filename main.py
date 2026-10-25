@@ -666,7 +666,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (CLEAN CELLS + UNTOUCHED STRIKE COLUMN) ---
+# --- HTML TEMPLATE (CLEAN CELLS + ITM LIGHT BLACK SHADOW + UNTOUCHED STRIKE COLUMN) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -719,8 +719,11 @@ HTML_TEMPLATE = """
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
-        .itm-ce { background: rgba(240, 62, 62, 0.06); }
-        .itm-pe { background: rgba(43, 138, 62, 0.06); }
+        
+        /* ITM CE aur ITM PE side ke background mein light black/dark shadow fill */
+        .itm-ce { background: rgba(0, 0, 0, 0.05); }
+        .itm-pe { background: rgba(0, 0, 0, 0.05); }
+
         .ce-oi-col.bg-100 { background: #ff8787 !important; color: #000000 !important; font-weight: bold; }
         .ce-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
@@ -898,6 +901,8 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+
 
 
 
