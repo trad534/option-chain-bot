@@ -654,9 +654,9 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; margin: 0; padding: 4px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
+        html, body { width: 100%; height: 100dvh; margin: 0; padding: 4px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
         
-        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100vh; max-height: 100vh; overflow: hidden; }
+        .page-wrapper { display: flex; flex-direction: column; width: 100%; height: 100dvh; max-height: 100dvh; overflow: hidden; }
         
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 10px; border-radius: 6px; border: 1px solid #ced4da; flex-shrink: 0; }
         .controls-group { display: flex; gap: 8px; align-items: center; }
@@ -674,12 +674,12 @@ HTML_TEMPLATE = """
         
         .k3-banner { background: #e6fcf5; padding: 5px; margin-top: 4px; text-align: center; font-size: 12px; font-weight: bold; border-radius: 4px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* 📌 STRICT RIGID TABLE CONTAINER FOR MOBILE & PC */
-        .table-container { margin-top: 4px; flex-grow: 1; height: 100%; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        /* 📌 STRICT TABLE CONTAINER WITH 100% FLEX SCROLL */
+        .table-container { margin-top: 4px; flex: 1 1 auto; height: 0; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; }
         
-        /* 📌 100% BULLET-PROOF STICKY HEADERS LOCK */
+        /* 📌 100% STICKY HEADERS LOCK */
         thead th { position: sticky; z-index: 50; background-color: #f8f9fa; }
         #row-calls-puts th { top: 0; z-index: 52; }
         #row-columns th { top: 23px; z-index: 51; }
@@ -842,7 +842,7 @@ HTML_TEMPLATE = """
                         tbody.appendChild(tr);
                     });
 
-                    // 📌 Dynamic Sticky Offset Fix for Table Row Headers
+                    // Dynamic Header Height Lock
                     let r1 = document.getElementById('row-calls-puts');
                     let r2 = document.getElementById('row-columns');
                     if(r1 && r2) {
@@ -852,7 +852,7 @@ HTML_TEMPLATE = """
                         });
                     }
 
-                    // 📌 HORIZONTAL & VERTICAL CENTER LOCK ON INITIAL / REFRESH
+                    // 📌 REFRESH / FIRST LOAD HORIZONTAL & VERTICAL CENTER LOCK
                     if (isFirstLoad) {
                         setTimeout(() => {
                             let spotRowTarget = document.querySelector('.spot-target-row');
@@ -873,6 +873,7 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
 
 
 
