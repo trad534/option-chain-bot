@@ -654,46 +654,48 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 10px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; overflow: hidden; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 10px 15px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
-        .controls-group { display: flex; gap: 15px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 14px; }
-        select { padding: 8px; font-size: 16px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 5px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
+        
+        .page-wrapper { display: flex; flex-direction: column; height: 100vh; max-height: 100vh; padding-bottom: 5px; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
+        .controls-group { display: flex; gap: 10px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 13px; }
+        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         /* CARD & WINNER STATUS BOX STYLING */
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; flex-shrink: 0; }
-        .card { padding: 8px 10px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 12px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 52px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; flex-shrink: 0; }
+        .card { padding: 6px 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 45px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
-        /* SINGLE LINE HEADER TEXT CSS TO PREVENT STRIKE BREAKING */
-        .card-header-line { font-size: 12px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
+        .card-header-line { font-size: 11px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 800; padding: 2px 10px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
         
-        /* YELLOW PILL BADGE */
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 800; padding: 3px 12px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
+        .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
-        
-        /* 📌 STICKY HEADERS & FIXED SCROLL CONTAINER CONTAINER */
-        .table-container { margin-top: 10px; flex-grow: 1; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        /* 📌 STICKY TABLE CONTAINER */
+        .table-container { margin-top: 6px; flex: 1 1 auto; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
+        th, td { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        /* STICKY TABLE HEADERS (CALLS/PUTS + COLUMN TITLES) */
-        thead th { background: #f8f9fa; color: #212529; position: sticky; z-index: 20; }
-        thead tr:nth-child(1) th { top: 0; }
-        thead tr:nth-child(2) th { top: 27px; } /* Adjust height based on first header row */
+        /* 📌 100% STICKY HEADERS LOCK */
+        thead th { position: sticky; z-index: 50; background-color: #f8f9fa; }
+        #row-calls-puts th { top: 0; z-index: 51; }
+        #row-columns th { top: 25px; z-index: 50; }
         
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 12px; z-index: 25; }
-        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 87px !important; width: 87px !important; }
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 55 !important; }
+        .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
+        
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
         .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; }
-        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 10px; display: inline-block; margin-bottom: 1px; }
-        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 13px; display: block; }
+        .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
+        .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
-        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .state-badge-pill { background: #ffffff; border: 1.8px solid #333333; border-radius: 12px; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .state-wtt { color: #2e7d32; border-color: #2e7d32; }
         .state-wtb { color: #c62828; border-color: #c62828; }
         .state-strong { color: #2e7d32; border-color: #333333; }
@@ -704,47 +706,49 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
-        .pct-sub { font-size: 10px; font-weight: bold; display: block; color: #000000; margin-top: 2px; }
+        .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
         .chg-pos { color: #2b8a3e; font-weight: bold; }
         .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h2>⚡ Arush LTP Calculator</h2>
-        <div class="controls-group">
-            <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
-            <select id="symbolSelect" onchange="onSymbolChange()"></select>
-            <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
+    <div class="page-wrapper">
+        <div class="header">
+            <h2>⚡ Arush LTP Calculator</h2>
+            <div class="controls-group">
+                <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
+                <select id="symbolSelect" onchange="onSymbolChange()"></select>
+                <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
+            </div>
         </div>
-    </div>
-    <div class="k3-banner" id="k3Display">Loading Framework...</div>
-    <div class="status-box">
-        <div class="card card-ce"><div id="d5Val">-----</div></div>
-        <div class="card card-ce"><div id="h5Val">-----</div></div>
-        <div class="card card-pe"><div id="q5Val">-----</div></div>
-        <div class="card card-pe"><div id="u5Val">-----</div></div>
-    </div>
-    <div class="table-container" id="tableContainer">
-        <table id="optionChainTable">
-            <thead>
-                <tr>
-                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 13px;">CALLS (CE)</th>
-                    <th class="strike-col" style="z-index: 30;">STRIKE</th>
-                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 13px;">PUTS (PE)</th>
-                </tr>
-                <tr>
-                    <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
-                    <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
-                    <th class="strike-col" style="z-index: 30;">Price</th>
-                    <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
-                    <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
-                </tr>
-            </thead>
-            <tbody id="gridBody">
-                <tr><td colspan="21" style="padding: 20px; font-size: 14px; color: #666;">Syncing option chain matrix...</td></tr>
-            </tbody>
-        </table>
+        <div class="k3-banner" id="k3Display">Loading Framework...</div>
+        <div class="status-box">
+            <div class="card card-ce"><div id="d5Val">-----</div></div>
+            <div class="card card-ce"><div id="h5Val">-----</div></div>
+            <div class="card card-pe"><div id="q5Val">-----</div></div>
+            <div class="card card-pe"><div id="u5Val">-----</div></div>
+        </div>
+        <div class="table-container" id="tableContainer">
+            <table id="optionChainTable">
+                <thead>
+                    <tr id="row-calls-puts">
+                        <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 12px;">CALLS (CE)</th>
+                        <th class="strike-col">STRIKE</th>
+                        <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 12px;">PUTS (PE)</th>
+                    </tr>
+                    <tr id="row-columns">
+                        <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
+                        <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
+                        <th class="strike-col">Price</th>
+                        <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
+                        <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
+                    </tr>
+                </thead>
+                <tbody id="gridBody">
+                    <tr><td colspan="21" style="padding: 20px; font-size: 14px; color: #666;">Syncing option chain matrix...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
     <script>
         let allExpiriesData = {};
@@ -838,6 +842,16 @@ HTML_TEMPLATE = """
                         }
                         tbody.appendChild(tr);
                     });
+
+                    // 📌 Dynamic Sticky Offset Fix
+                    let r1 = document.getElementById('row-calls-puts');
+                    let r2 = document.getElementById('row-columns');
+                    if(r1 && r2) {
+                        let h1 = r1.offsetHeight;
+                        r2.querySelectorAll('th').forEach(th => {
+                            th.style.top = h1 + 'px';
+                        });
+                    }
 
                     // 📌 AUTO-CENTER SPOT ROW ON FIRST LOAD / REFRESH
                     if (isFirstLoad) {
