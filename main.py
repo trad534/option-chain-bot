@@ -266,7 +266,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
-                return {'text': "-----", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
+                return {'text': '<div class="winner-card-top">-----</div>', 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
             strike = topObj['highest']['strike']
             secondStrike = strike
@@ -339,21 +339,21 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if isShifting:
                 line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
                 line2 = f"<div><span class='yellow-pill-badge'>shifted {shiftType}</span></div>"
-                outputText = f"{line1}{line2}"
+                outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
             else:
                 if displayStatus == "stable strong":
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
                     line2 = "<div><span class='yellow-pill-badge'>stable strong</span></div>"
-                    outputText = f"{line1}{line2}"
+                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
                 elif "to strong" in displayStatus:
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
                     line2 = f"<div><span class='yellow-pill-badge'>{displayStatus}</span></div>"
-                    outputText = f"{line1}{line2}"
+                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
                     line2 = f"<div><span class='yellow-pill-badge'>{weakDir}</span></div>"
-                    outputText = f"{line1}{line2}"
+                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
@@ -407,19 +407,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceWinner == "BOTH": 
             finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
         elif ceWinner == "VOL": 
-            finalD5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
+            finalD5 = '<div class="winner-card-top">-----</div>'
             finalH5 = ceVolResult['text']
         elif ceWinner == "OI": 
             finalD5 = ceOiResult['text']
-            finalH5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
+            finalH5 = '<div class="winner-card-top">-----</div>'
 
         if peWinner == "BOTH": 
             finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
         elif peWinner == "VOL": 
             finalQ5 = peVolResult['text']
-            finalU5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
+            finalU5 = '<div class="winner-card-top">-----</div>'
         elif peWinner == "OI": 
-            finalQ5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
+            finalQ5 = '<div class="winner-card-top">-----</div>'
             finalU5 = peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (BALANCED PROFESSIONAL SHADES & PROPER LTP COLUMN SKIPPING) ---
+# --- HTML TEMPLATE (EXACT PROFESSIONAL SHADES & UNIFORM CARD SIZES) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -694,11 +694,11 @@ HTML_TEMPLATE = """
         
         th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
         
-        /* 📌 Balanced Professional Medium Shades */
+        /* 📌 Professional Distinct Medium-Soft Shades */
         .th-ce { background: #d4edda !important; color: #155724 !important; }
         .th-pe { background: #f8d7da !important; color: #721c24 !important; }
-        .bg-call-side { background: #c3e6cb !important; }
-        .bg-put-side { background: #f5c6cb !important; }
+        .bg-call-side { background: #a8d5ba !important; }
+        .bg-put-side { background: #f1aeb5 !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
@@ -713,8 +713,8 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Uniform Clean Winner Cards */
-        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; min-height: 36px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
+        /* 📌 Uniform Card Sizes (Winner & Non-Winner exact same size) */
+        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
@@ -753,17 +753,17 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Balanced Medium Shades & Proper LTP Column Skipping -->
+                <!-- 📌 Professional Medium-Soft Shades & Uniform Card Sizes -->
                 <tr id="row-winners">
                     <th colspan="1" class="bg-call-side" style="color: #155724; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
                     <th colspan="4" class="bg-call-side"></th>
-                    <th colspan="2" class="bg-call-side"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
-                    <th colspan="2" class="bg-call-side"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
+                    <th colspan="2" class="bg-call-side"><div id="d5HeaderVal">-</div></th>
+                    <th colspan="2" class="bg-call-side"><div id="h5HeaderVal">-</div></th>
                     <th class="th-ce"></th>
                     <th class="strike-col">OUTPUT</th>
                     <th class="th-pe"></th>
-                    <th colspan="2" class="bg-put-side"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
-                    <th colspan="2" class="bg-put-side"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
+                    <th colspan="2" class="bg-put-side"><div id="q5HeaderVal">-</div></th>
+                    <th colspan="2" class="bg-put-side"><div id="u5HeaderVal">-</div></th>
                     <th colspan="4" class="bg-put-side"></th>
                     <th colspan="1" class="bg-put-side" style="color: #721c24; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
@@ -837,7 +837,7 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                /* 📌 Update top header winner cards */
+                /* 📌 Update top header winner cards with uniform height */
                 document.getElementById("d5HeaderVal").innerHTML = data.D5;
                 document.getElementById("h5HeaderVal").innerHTML = data.H5;
                 document.getElementById("q5HeaderVal").innerHTML = data.Q5;
