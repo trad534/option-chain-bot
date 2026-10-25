@@ -407,19 +407,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if ceWinner == "BOTH": 
             finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
         elif ceWinner == "VOL": 
-            finalD5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalD5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
             finalH5 = ceVolResult['text']
         elif ceWinner == "OI": 
             finalD5 = ceOiResult['text']
-            finalH5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalH5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
 
         if peWinner == "BOTH": 
             finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
         elif peWinner == "VOL": 
             finalQ5 = peVolResult['text']
-            finalU5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalU5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
         elif peWinner == "OI": 
-            finalQ5 = "<div class='winner-card-top' style='background:#f8f9fa; border:1px solid #ced4da; color:#6c757d; font-weight:normal;'>-----</div>"
+            finalQ5 = "<div class='winner-card-top' style='background:#ffffff; border:1px solid #ced4da; color:#adb5bd;'>-----</div>"
             finalU5 = peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (SOFT LIGHT BACKGROUNDS & MERGED UNIFORM WINNER CARDS) ---
+# --- HTML TEMPLATE (BALANCED PROFESSIONAL SHADES & PROPER LTP COLUMN SKIPPING) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -694,11 +694,11 @@ HTML_TEMPLATE = """
         
         th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
         
-        /* 📌 Soft Light Background Colors */
-        .th-ce { background: #e8f5e9 !important; color: #1b5e20 !important; }
-        .th-pe { background: #ffebee !important; color: #b71c1c !important; }
-        .bg-call-side { background: #e8f5e9 !important; }
-        .bg-put-side { background: #ffebee !important; }
+        /* 📌 Balanced Professional Medium Shades */
+        .th-ce { background: #d4edda !important; color: #155724 !important; }
+        .th-pe { background: #f8d7da !important; color: #721c24 !important; }
+        .bg-call-side { background: #c3e6cb !important; }
+        .bg-put-side { background: #f5c6cb !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
@@ -753,17 +753,19 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Soft Light Backgrounds & Merged Uniform Winner Cards -->
+                <!-- 📌 Balanced Medium Shades & Proper LTP Column Skipping -->
                 <tr id="row-winners">
-                    <th colspan="1" class="bg-call-side" style="color: #1b5e20; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="3" class="bg-call-side"></th>
-                    <th colspan="4" class="bg-call-side"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
+                    <th colspan="1" class="bg-call-side" style="color: #155724; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
+                    <th colspan="4" class="bg-call-side"></th>
+                    <th colspan="2" class="bg-call-side"><div class="winner-card-top" id="d5HeaderVal">-</div></th>
                     <th colspan="2" class="bg-call-side"><div class="winner-card-top" id="h5HeaderVal">-</div></th>
+                    <th class="th-ce"></th>
                     <th class="strike-col">OUTPUT</th>
+                    <th class="th-pe"></th>
                     <th colspan="2" class="bg-put-side"><div class="winner-card-top" id="q5HeaderVal">-</div></th>
-                    <th colspan="4" class="bg-put-side"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
-                    <th colspan="3" class="bg-put-side"></th>
-                    <th colspan="1" class="bg-put-side" style="color: #b71c1c; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                    <th colspan="2" class="bg-put-side"><div class="winner-card-top" id="u5HeaderVal">-</div></th>
+                    <th colspan="4" class="bg-put-side"></th>
+                    <th colspan="1" class="bg-put-side" style="color: #721c24; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
                 <!-- 📌 Column Headers with Call=Soft Green and Put=Soft Red -->
                 <tr id="row-columns">
