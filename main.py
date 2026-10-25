@@ -645,7 +645,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE ---
+# --- HTML TEMPLATE (FIXED HEADERS, CENTER LOCK & SMOOTH TOUCH SCROLL) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -655,37 +655,37 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        html, body { height: 100%; margin: 0; padding: 5px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
+        html, body { height: 100vh; margin: 0; padding: 5px; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; overflow: hidden; }
         
-        .page-wrapper { display: flex; flex-direction: column; height: 100vh; max-height: 100vh; padding-bottom: 5px; }
+        .page-wrapper { display: flex; flex-direction: column; height: 100vh; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 6px 12px; border-radius: 8px; border: 1px solid #ced4da; flex-shrink: 0; }
         .controls-group { display: flex; gap: 10px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 13px; }
-        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 4px 8px; border-radius: 5px; font-weight: bold; font-size: 12px; }
+        select { padding: 4px; font-size: 13px; background: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
         
         /* CARD & WINNER STATUS BOX STYLING */
-        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; flex-shrink: 0; }
-        .card { padding: 6px 8px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 45px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; flex-shrink: 0; }
+        .card { padding: 4px 6px; border-radius: 6px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: 700; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 42px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
         .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
         .card-pe { background: #ffebee; border-color: #ef9a9a; }
         
         .card-header-line { font-size: 11px; font-weight: 800; white-space: nowrap; word-break: keep-all; display: block; margin-bottom: 2px; }
-        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 800; padding: 2px 10px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 2px; white-space: nowrap; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 1px; white-space: nowrap; }
         
-        .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
+        .k3-banner { background: #e6fcf5; padding: 6px; margin-top: 4px; text-align: center; font-size: 13px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* 📌 STICKY TABLE CONTAINER */
-        .table-container { margin-top: 6px; flex: 1 1 auto; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
+        /* 📌 STICKY TABLE CONTAINER & SCROLL LOCK */
+        .table-container { margin-top: 4px; flex: 1; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
+        th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
+        th { border-top: 1px solid #dee2e6; }
         
-        /* 📌 100% STICKY HEADERS LOCK */
-        thead th { position: sticky; z-index: 50; background-color: #f8f9fa; }
-        #row-calls-puts th { top: 0; z-index: 51; }
-        #row-columns th { top: 25px; z-index: 50; }
+        /* 📌 HEADERS FREEZE (STRICT STICKY LOCK) */
+        thead tr:nth-child(1) th { position: sticky; top: 0; z-index: 40; background: #f8f9fa; }
+        thead tr:nth-child(2) th { position: sticky; top: 26px; z-index: 40; background: #f8f9fa; }
         
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 55 !important; }
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; z-index: 45 !important; }
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
@@ -714,7 +714,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="page-wrapper">
         <div class="header">
-            <h2>⚡ Arush LTP Calculator</h2>
+            <h3 style="margin:0; font-size: 15px;">⚡ Arush LTP Calculator</h3>
             <div class="controls-group">
                 <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
                 <select id="symbolSelect" onchange="onSymbolChange()"></select>
@@ -843,7 +843,7 @@ HTML_TEMPLATE = """
                         tbody.appendChild(tr);
                     });
 
-                    // 📌 Dynamic Sticky Offset Fix
+                    // Dynamic Header Height Lock
                     let r1 = document.getElementById('row-calls-puts');
                     let r2 = document.getElementById('row-columns');
                     if(r1 && r2) {
@@ -853,15 +853,17 @@ HTML_TEMPLATE = """
                         });
                     }
 
-                    // 📌 AUTO-CENTER SPOT ROW ON FIRST LOAD / REFRESH
+                    // 📌 REFRESH / FIRST LOAD HORIZONTAL & VERTICAL CENTER LOCK
                     if (isFirstLoad) {
                         setTimeout(() => {
                             let spotRowTarget = document.querySelector('.spot-target-row');
                             let container = document.getElementById('tableContainer');
                             if (spotRowTarget && container) {
-                                spotRowTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                                let targetTop = spotRowTarget.offsetTop - (container.clientHeight / 2);
+                                let targetLeft = spotRowTarget.offsetLeft - (container.clientWidth / 2) + (spotRowTarget.clientWidth / 2);
+                                container.scrollTo({ top: targetTop, left: targetLeft, behavior: 'instant' });
                             }
-                        }, 200);
+                        }, 150);
                         isFirstLoad = false;
                     }
                 }
@@ -872,6 +874,8 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+
 
 
 # --- FLASK API ROUTES ---
