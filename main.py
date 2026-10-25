@@ -666,7 +666,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (FIXED PE OI CHANGE COLOR + 13 STRIKES VIEWPORT) ---
+# --- HTML TEMPLATE (CLEAN CELLS + UNTOUCHED STRIKE COLUMN) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -691,21 +691,27 @@ HTML_TEMPLATE = """
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
-        th, td { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
+        
+        /* Headers ke borders maintain rakhenge */
+        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; background: #f8f9fa; color: #212529; }
+        
+        /* Data cells (td) ke internal borders hata diye gaye hain, sirf light bottom spacing rakhi hai */
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         th { background: #f8f9fa; color: #212529; position: sticky; z-index: 10; }
         #row-calls-puts th { top: 0; z-index: 12; }
         #row-columns th { top: 25px; z-index: 11; }
         
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; }
+        /* Strike price column aur uski lines ko bilkul unchanged rakha gaya hai */
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-calls-puts th.strike-col { top: 0; z-index: 15; }
         #row-columns th.strike-col { top: 25px; z-index: 14; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
-        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; }
+        .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
-        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; }
+        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; border-top: 1px solid #dee2e6 !important; border-bottom: 1px solid #dee2e6 !important; }
         .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
         .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
@@ -849,7 +855,6 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            // 📌 PE side pe_oi_chg me chg-pos / chg-neg color logic apply kar diya gaya hai
                             tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">(${row.ce_oi_pct}%)</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">(${row.ce_vol_pct}%)</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">(${row.pe_vol_pct}%)</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">(${row.pe_oi_pct}%)</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
@@ -893,6 +898,7 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
 
 
 # --- FLASK API ROUTES ---
