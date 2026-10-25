@@ -377,7 +377,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
         elif checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
         elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
@@ -391,7 +391,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
         elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
         elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe in ["stable strong", "strong"] and checkCe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT PROFESSIONAL SHADES & UNIFORM CARD SIZES) ---
+# --- HTML TEMPLATE (EXACT UNIFORM WIDTH & SEAMLESS PROFESSIONAL LOOK) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -694,16 +694,16 @@ HTML_TEMPLATE = """
         
         th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
         
-        /* 📌 Professional Distinct Medium-Soft Shades */
-        .th-ce { background: #d4edda !important; color: #155724 !important; }
-        .th-pe { background: #f8d7da !important; color: #721c24 !important; }
-        .bg-call-side { background: #a8d5ba !important; }
-        .bg-put-side { background: #f1aeb5 !important; }
+        /* 📌 Professional Vibrant Medium-Deep Shades matching Reference */
+        .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
+        .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
+        .bg-call-side { background: #81c784 !important; }
+        .bg-put-side { background: #e57373 !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         th { position: sticky; z-index: 11; }
-        #row-winners th { top: 0; z-index: 13; padding: 6px 4px; height: 50px; vertical-align: middle; border: 1px solid #dee2e6 !important; }
+        #row-winners th { top: 0; z-index: 13; padding: 4px; height: 50px; vertical-align: middle; border: none !important; }
         #row-columns th { top: 50px; z-index: 12; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
@@ -713,7 +713,7 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 Uniform Card Sizes (Winner & Non-Winner exact same size) */
+        /* 📌 100% Uniform Card Width & Height across Winner and Non-Winner */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -753,21 +753,21 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Professional Medium-Soft Shades & Uniform Card Sizes -->
+                <!-- 📌 Seamless Uniform Layout without White Lines -->
                 <tr id="row-winners">
-                    <th colspan="1" class="bg-call-side" style="color: #155724; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
+                    <th colspan="1" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
                     <th colspan="4" class="bg-call-side"></th>
                     <th colspan="2" class="bg-call-side"><div id="d5HeaderVal">-</div></th>
                     <th colspan="2" class="bg-call-side"><div id="h5HeaderVal">-</div></th>
-                    <th class="th-ce"></th>
+                    <th class="th-ce" style="border:none !important;"></th>
                     <th class="strike-col">OUTPUT</th>
-                    <th class="th-pe"></th>
+                    <th class="th-pe" style="border:none !important;"></th>
                     <th colspan="2" class="bg-put-side"><div id="q5HeaderVal">-</div></th>
                     <th colspan="2" class="bg-put-side"><div id="u5HeaderVal">-</div></th>
                     <th colspan="4" class="bg-put-side"></th>
-                    <th colspan="1" class="bg-put-side" style="color: #721c24; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                    <th colspan="1" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
-                <!-- 📌 Column Headers with Call=Soft Green and Put=Soft Red -->
+                <!-- 📌 Column Headers with Call and Put Styles -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
@@ -837,7 +837,7 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                /* 📌 Update top header winner cards with uniform height */
+                /* 📌 Update top header winner cards with uniform width and height */
                 document.getElementById("d5HeaderVal").innerHTML = data.D5;
                 document.getElementById("h5HeaderVal").innerHTML = data.H5;
                 document.getElementById("q5HeaderVal").innerHTML = data.Q5;
@@ -943,10 +943,10 @@ def get_symbol_runtime_data(symbol):
         
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
-        "D5": vault.get("D5_TEXT", "-----"),
-        "H5": vault.get("H5_TEXT", "-----"),
-        "Q5": vault.get("Q5_TEXT", "-----"),
-        "U5": vault.get("U5_TEXT", "-----"),
+        "D5": vault.get("D5_TEXT", '<div class="winner-card-top">-----</div>'),
+        "H5": vault.get("H5_TEXT", '<div class="winner-card-top">-----</div>'),
+        "Q5": vault.get("Q5_TEXT", '<div class="winner-card-top">-----</div>'),
+        "U5": vault.get("U5_TEXT", '<div class="winner-card-top">-----</div>'),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
         "spot_price": vault.get("spot_price", 0)
