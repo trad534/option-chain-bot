@@ -212,13 +212,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -379,7 +379,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe in ["stable strong", "strong"] and checkCe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe in ["stable strong", "strong"] and checkCe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
@@ -623,7 +623,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                 'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
-                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'ce_oi_chg': ce_q['ce_oi_chg'] if 'ce_oi_chg' in ce_q else ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
                 'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
                 'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT UNIFORM WIDTH & SEAMLESS PROFESSIONAL LOOK) ---
+# --- HTML TEMPLATE (100% UNIFORM CARD WIDTH & FULL BACKGROUND COVERAGE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -753,19 +753,11 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Seamless Uniform Layout without White Lines -->
+                <!-- 📌 Seamless Uniform Layout with Full Background Coverage -->
                 <tr id="row-winners">
-                    <th colspan="1" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="4" class="bg-call-side"></th>
-                    <th colspan="2" class="bg-call-side"><div id="d5HeaderVal">-</div></th>
-                    <th colspan="2" class="bg-call-side"><div id="h5HeaderVal">-</div></th>
-                    <th class="th-ce" style="border:none !important;"></th>
+                    <th colspan="10" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
                     <th class="strike-col">OUTPUT</th>
-                    <th class="th-pe" style="border:none !important;"></th>
-                    <th colspan="2" class="bg-put-side"><div id="q5HeaderVal">-</div></th>
-                    <th colspan="2" class="bg-put-side"><div id="u5HeaderVal">-</div></th>
-                    <th colspan="4" class="bg-put-side"></th>
-                    <th colspan="1" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                    <th colspan="10" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
                 </tr>
                 <!-- 📌 Column Headers with Call and Put Styles -->
                 <tr id="row-columns">
@@ -837,12 +829,6 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                /* 📌 Update top header winner cards with uniform width and height */
-                document.getElementById("d5HeaderVal").innerHTML = data.D5;
-                document.getElementById("h5HeaderVal").innerHTML = data.H5;
-                document.getElementById("q5HeaderVal").innerHTML = data.Q5;
-                document.getElementById("u5HeaderVal").innerHTML = data.U5;
-
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
@@ -851,6 +837,23 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
+                
+                # Rebuilding winner row dynamically with proper colspans covering both cards
+                let rowWinners = document.getElementById("row-winners");
+                rowWinners.innerHTML = `
+                    <th colspan="1" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
+                    <th colspan="4" class="bg-call-side"></th>
+                    <th colspan="2" class="bg-call-side">${data.D5}</th>
+                    <th colspan="2" class="bg-call-side">${data.H5}</th>
+                    <th class="th-ce" style="border:none !important;"></th>
+                    <th class="strike-col">OUTPUT</th>
+                    <th class="th-pe" style="border:none !important;"></th>
+                    <th colspan="2" class="bg-put-side">${data.Q5}</th>
+                    <th colspan="2" class="bg-put-side">${data.U5}</th>
+                    <th colspan="4" class="bg-put-side"></th>
+                    <th colspan="1" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                `;
+
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
