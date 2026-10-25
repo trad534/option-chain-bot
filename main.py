@@ -226,11 +226,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "VOL"
+            peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            ceWinner = "VOL"
+            peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -674,8 +674,8 @@ HTML_TEMPLATE = """
         
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; }
         
-        /* FIXED TABLE CONTAINER TO SHOW FULL STRIKES WITHOUT OVERFLOW CLIPPING */
-        .table-container { margin-top: 10px; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; }
+        /* FIXED TABLE CONTAINER WITH SMOOTH SCROLLING SUPPORT */
+        .table-container { margin-top: 10px; overflow-x: auto; overflow-y: auto; max-height: 70vh; border: 1px solid #dee2e6; border-radius: 6px; position: relative; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; position: relative; }
         th { background: #f8f9fa; color: #212529; position: sticky; top: 0; z-index: 10; }
@@ -720,7 +720,7 @@ HTML_TEMPLATE = """
         <div class="card card-pe"><div id="q5Val">-----</div></div>
         <div class="card card-pe"><div id="u5Val">-----</div></div>
     </div>
-    <div class="table-container">
+    <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
                 <tr>
@@ -743,6 +743,8 @@ HTML_TEMPLATE = """
     </div>
     <script>
         let allExpiriesData = {};
+        let isFirstLoad = true;
+
         function initApp() {
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
@@ -774,6 +776,7 @@ HTML_TEMPLATE = """
             list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
+            isFirstLoad = true; // symbol badalne par wapis center karega
             updateSelectedSymbolSheet();
         }
         function updateSelectedSymbolSheet() {
@@ -809,7 +812,7 @@ HTML_TEMPLATE = """
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
                         if (row.is_spot_row) {
-                            tr.classList.add("spot-row");
+                            tr.classList.add("spot-row", "spot-target-row");
                             let renderSpotValue = row.spot_price || data.spot_price || 0;
                             let ceBadges = [];
                             let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
@@ -830,6 +833,18 @@ HTML_TEMPLATE = """
                         }
                         tbody.appendChild(tr);
                     });
+
+                    // 📌 AUTO-CENTER SPOT ROW ON FIRST LOAD / REFRESH
+                    if (isFirstLoad) {
+                        setTimeout(() => {
+                            let spotRowTarget = document.querySelector('.spot-target-row');
+                            let container = document.getElementById('tableContainer');
+                            if (spotRowTarget && container) {
+                                spotRowTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                            }
+                        }, 200);
+                        isFirstLoad = false;
+                    }
                 }
             });
         }
