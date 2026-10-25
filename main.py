@@ -377,7 +377,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
         elif checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
         elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe in ["stable strong", "strong"] and checkCe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% UNIFORM CARD WIDTH & FULL BACKGROUND COVERAGE) ---
+# --- HTML TEMPLATE (100% UNIFORM WIDTH & PROPER COLSPAN TO LTP) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -713,7 +713,7 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 100% Uniform Card Width & Height across Winner and Non-Winner */
+        /* 📌 100% Uniform Card Width & Height */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -753,19 +753,15 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Seamless Uniform Layout with Full Background Coverage -->
+                <!-- 📌 Exact Colspan matching all 10 columns up to LTP, with non-winners merged up to IV -->
                 <tr id="row-winners">
-                    <th colspan="2" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="3" class="bg-call-side"></th>
+                    <th colspan="5" class="bg-call-side"></th>
                     <th colspan="2" class="bg-call-side" id="cell-d5">-</th>
-                    <th colspan="2" class="bg-call-side" id="cell-h5">-</th>
-                    <th class="th-ce" style="border:none !important;"></th>
+                    <th colspan="3" class="bg-call-side" id="cell-h5">-</th>
                     <th class="strike-col">OUTPUT</th>
-                    <th class="th-pe" style="border:none !important;"></th>
-                    <th colspan="2" class="bg-put-side" id="cell-q5">-</th>
+                    <th colspan="3" class="bg-put-side" id="cell-q5">-</th>
                     <th colspan="2" class="bg-put-side" id="cell-u5">-</th>
-                    <th colspan="3" class="bg-put-side"></th>
-                    <th colspan="2" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
+                    <th colspan="5" class="bg-put-side"></th>
                 </tr>
                 <!-- 📌 Column Headers with Call and Put Styles -->
                 <tr id="row-columns">
