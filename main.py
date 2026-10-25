@@ -91,12 +91,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     
     sigma = 0.15
     try: 
+        # Micron-level precision ke sath dynamic solver
         sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
     except Exception: 
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
 
+    # Extreme edge cases ke liye safe bounds (koi fixed static IV nahi)
     if iv_val < 1.0:
         iv_val = 1.0
     elif iv_val > 200.0:
@@ -212,13 +214,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -266,7 +268,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         def calculateIndependentCell(topObj, cacheKey, sideLabel, isWinner, rawState, finalStatusText):
             if not topObj or not topObj.get('highest') or topObj['highest']['strike'] == 0:
-                return {'text': '<div class="winner-card-top">-----</div>', 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
+                return {'text': "-----", 'status': "stable strong", 'scenarioStatus': "stable strong", 'rawState': "STRONG"}
 
             strike = topObj['highest']['strike']
             secondStrike = strike
@@ -339,21 +341,21 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if isShifting:
                 line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
                 line2 = f"<div><span class='yellow-pill-badge'>shifted {shiftType}</span></div>"
-                outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
+                outputText = f"{line1}{line2}"
             else:
                 if displayStatus == "stable strong":
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
                     line2 = "<div><span class='yellow-pill-badge'>stable strong</span></div>"
-                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
+                    outputText = f"{line1}{line2}"
                 elif "to strong" in displayStatus:
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel} - {strike_str}</div>"
                     line2 = f"<div><span class='yellow-pill-badge'>{displayStatus}</span></div>"
-                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
+                    outputText = f"{line1}{line2}"
                 else:
                     weakDir = "weak towards top" if displayStatus == "wtt" else "weak towards bottom"
                     line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
                     line2 = f"<div><span class='yellow-pill-badge'>{weakDir}</span></div>"
-                    outputText = f"<div class='winner-card-top'>{line1}{line2}</div>"
+                    outputText = f"{line1}{line2}"
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
@@ -363,7 +365,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
-        finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
+        finalPeState = peOiResult['scenarioStatus'] if ceWinner == "OI" else peVolResult['scenarioStatus']
 
         if ceWinner == "BOTH": finalCeState = ceVolResult['scenarioStatus'] if "to strong" in ceVolResult['scenarioStatus'] else ceOiResult['scenarioStatus']
         if peWinner == "BOTH": finalPeState = peVolResult['scenarioStatus'] if "to strong" in peVolResult['scenarioStatus'] else peOiResult['scenarioStatus']
@@ -377,9 +379,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
         elif checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
         elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe in ["stable strong", "strong"] and checkCe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
@@ -391,7 +393,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
         elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
         elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
         elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe in ["stable strong", "strong"] and checkCe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
@@ -402,25 +404,15 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
-        finalD5, finalH5, finalQ5, finalU5 = "", "", "", ""
+        finalD5, finalH5, finalQ5, finalU5 = "-----", "-----", "-----", "-----"
 
-        if ceWinner == "BOTH": 
-            finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
-        elif ceWinner == "VOL": 
-            finalD5 = '<div class="winner-card-top">-----</div>'
-            finalH5 = ceVolResult['text']
-        elif ceWinner == "OI": 
-            finalD5 = ceOiResult['text']
-            finalH5 = '<div class="winner-card-top">-----</div>'
+        if ceWinner == "BOTH": finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
+        elif ceWinner == "VOL": finalH5 = ceVolResult['text']
+        elif ceWinner == "OI": finalD5 = ceOiResult['text']
 
-        if peWinner == "BOTH": 
-            finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
-        elif peWinner == "VOL": 
-            finalQ5 = peVolResult['text']
-            finalU5 = '<div class="winner-card-top">-----</div>'
-        elif peWinner == "OI": 
-            finalQ5 = '<div class="winner-card-top">-----</div>'
-            finalU5 = peOiResult['text']
+        if peWinner == "BOTH": finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
+        elif peWinner == "VOL": finalQ5 = peVolResult['text']
+        elif peWinner == "OI": finalU5 = peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
@@ -623,7 +615,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
                 'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
-                'ce_oi_chg': ce_q['ce_oi_chg'] if 'ce_oi_chg' in ce_q else ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
                 'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
                 'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
@@ -670,7 +662,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% UNIFORM CARD WIDTH & FULL BACKGROUND COVERAGE) ---
+# --- HTML TEMPLATE (CLEAN CELLS + UNTOUCHED STRIKE COLUMN) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -685,37 +677,33 @@ HTML_TEMPLATE = """
         .controls-group { display: flex; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
-        
+        .status-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+        .card { padding: 6px 8px; border-radius: 5px; border: 1px solid #ced4da; text-align: center; font-size: 11px; font-weight: bold; color: #000000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+        .card-ce { background: #e8f5e9; border-color: #a5d6a7; }
+        .card-pe { background: #ffebee; border-color: #ef9a9a; }
+        .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #fab005; display: inline-block; margin-top: 3px; }
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         
-        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
+        /* Headers ke borders maintain rakhenge */
+        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; background: #f8f9fa; color: #212529; }
         
-        /* 📌 Professional Vibrant Medium-Deep Shades matching Reference */
-        .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
-        .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
-        .bg-call-side { background: #81c784 !important; }
-        .bg-put-side { background: #e57373 !important; }
-        
+        /* Data cells (td) ke internal borders hata diye gaye hain, sirf light bottom spacing rakhi hai */
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        th { position: sticky; z-index: 11; }
-        #row-winners th { top: 0; z-index: 13; padding: 4px; height: 50px; vertical-align: middle; border: none !important; }
-        #row-columns th { top: 50px; z-index: 12; }
+        th { background: #f8f9fa; color: #212529; position: sticky; z-index: 10; }
+        #row-calls-puts th { top: 0; z-index: 12; }
+        #row-columns th { top: 25px; z-index: 11; }
         
+        /* Strike price column aur uski lines ko bilkul unchanged rakha gaya hai */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        th.strike-col { position: sticky; z-index: 15; }
-        #row-winners th.strike-col { top: 0; background: #ff922b !important; color: #ffffff !important; }
-        #row-columns th.strike-col { top: 50px; background: #ff922b !important; color: #ffffff !important; }
+        #row-calls-puts th.strike-col { top: 0; z-index: 15; }
+        #row-columns th.strike-col { top: 25px; z-index: 14; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
-        
-        /* 📌 100% Uniform Card Width & Height across Winner and Non-Winner */
-        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
-
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
@@ -749,23 +737,26 @@ HTML_TEMPLATE = """
         </div>
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
-    
+    <div class="status-box">
+        <div class="card card-ce"><div id="d5Val">-</div></div>
+        <div class="card card-ce"><div id="h5Val">-</div></div>
+        <div class="card card-pe"><div id="q5Val">-</div></div>
+        <div class="card card-pe"><div id="u5Val">-</div></div>
+    </div>
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Seamless Uniform Layout with Full Background Coverage -->
-                <tr id="row-winners">
-                    <th colspan="10" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th class="strike-col">OUTPUT</th>
-                    <th colspan="10" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
-                </tr>
-                <!-- 📌 Column Headers with Call and Put Styles -->
-                <tr id="row-columns">
-                    <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
-                    <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
+                <tr id="row-calls-puts">
+                    <th colspan="10" style="background: #e7f5ff; color: #1c7ed6; font-size: 12px;">CALLS (CE)</th>
                     <th class="strike-col">STRIKE</th>
-                    <th class="th-pe">LTP</th><th class="th-pe">Change</th><th class="pe-vol-col th-pe">Vol</th><th class="pe-oi-col th-pe">OI</th><th class="th-pe">OI Chg</th>
-                    <th class="th-pe">IV</th><th class="th-pe">Delta</th><th class="th-pe">Gamma</th><th class="th-pe">Theta</th><th class="th-pe">Vega</th>
+                    <th colspan="10" style="background: #fff5f5; color: #f03e3e; font-size: 12px;">PUTS (PE)</th>
+                </tr>
+                <tr id="row-columns">
+                    <th>Vega</th><th>Theta</th><th>Gamma</th><th>Delta</th><th>IV</th>
+                    <th>OI Chg</th><th class="ce-oi-col">OI</th><th class="ce-vol-col">Vol</th><th>Change</th><th>LTP</th>
+                    <th class="strike-col">Price</th>
+                    <th>LTP</th><th>Change</th><th class="pe-vol-col">Vol</th><th class="pe-oi-col">OI</th><th>OI Chg</th>
+                    <th>IV</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
                 </tr>
             </thead>
             <tbody id="gridBody">
@@ -828,7 +819,10 @@ HTML_TEMPLATE = """
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                
+                document.getElementById("d5Val").innerHTML = data.D5;
+                document.getElementById("h5Val").innerHTML = data.H5;
+                document.getElementById("q5Val").innerHTML = data.Q5;
+                document.getElementById("u5Val").innerHTML = data.U5;
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
@@ -837,23 +831,6 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
-                
-                # Rebuilding winner row dynamically with proper colspans covering both cards
-                let rowWinners = document.getElementById("row-winners");
-                rowWinners.innerHTML = `
-                    <th colspan="1" class="bg-call-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">CALL SIDE</th>
-                    <th colspan="4" class="bg-call-side"></th>
-                    <th colspan="2" class="bg-call-side">${data.D5}</th>
-                    <th colspan="2" class="bg-call-side">${data.H5}</th>
-                    <th class="th-ce" style="border:none !important;"></th>
-                    <th class="strike-col">OUTPUT</th>
-                    <th class="th-pe" style="border:none !important;"></th>
-                    <th colspan="2" class="bg-put-side">${data.Q5}</th>
-                    <th colspan="2" class="bg-put-side">${data.U5}</th>
-                    <th colspan="4" class="bg-put-side"></th>
-                    <th colspan="1" class="bg-put-side" style="color: #ffffff; font-weight: 800; font-size: 11px; text-align: center;">PUT SIDE</th>
-                `;
-
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
@@ -874,10 +851,20 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            /* 📌 BRACKETS HATA DIYE GAYE HAIN PERCENTS SE */
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.pe_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
+
+                    let r1 = document.getElementById('row-calls-puts');
+                    let r2 = document.getElementById('row-columns');
+                    if(r1 && r2) {
+                        let h1 = r1.offsetHeight;
+                        r2.querySelectorAll('th').forEach(th => {
+                            th.style.top = h1 + 'px';
+                        });
+                    }
 
                     if (isFirstLoad) {
                         setTimeout(() => {
@@ -946,10 +933,10 @@ def get_symbol_runtime_data(symbol):
         
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
-        "D5": vault.get("D5_TEXT", '<div class="winner-card-top">-----</div>'),
-        "H5": vault.get("H5_TEXT", '<div class="winner-card-top">-----</div>'),
-        "Q5": vault.get("Q5_TEXT", '<div class="winner-card-top">-----</div>'),
-        "U5": vault.get("U5_TEXT", '<div class="winner-card-top">-----</div>'),
+        "D5": vault.get("D5_TEXT", "-----"),
+        "H5": vault.get("H5_TEXT", "-----"),
+        "Q5": vault.get("Q5_TEXT", "-----"),
+        "U5": vault.get("U5_TEXT", "-----"),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
         "spot_price": vault.get("spot_price", 0)
