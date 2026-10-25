@@ -123,12 +123,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike = float(r_dict['strike'])
             if not strike: continue
 
-            # 📌 CE Side (Call): Spot (-3) se lekar Spot (+18) tak
             if idx >= (spot_idx - 3) and idx <= (spot_idx + 18):
                 ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
                 ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            # 📌 PE Side (Put): Spot (-18) se lekar Spot (+3) tak
             if idx >= (spot_idx - 18) and idx <= (spot_idx + 3):
                 peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
@@ -187,11 +185,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 📌 CALL (CE) SIDE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -201,7 +198,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -215,7 +212,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 📌 PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -226,11 +222,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "VOL"
+            peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            ceWinner = "VOL"
+            peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -355,7 +351,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkCe = finalCeState
         checkPe = finalPeState
 
-        # 📌 27 MARKET SCENARIOS MATRIX MAP (EXACT GOOGLE SHEET MAPPING)
         k3Text = f"{symbol_name} is Neutral"
         
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
@@ -645,8 +640,8 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (EXACT ORIGINAL COLUMNS + AUTO CENTER LOCK & STICKY HEADER) ---
-HTML_TEMPLATE = \"\"\"
+# --- HTML TEMPLATE ---
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -667,13 +662,11 @@ HTML_TEMPLATE = \"\"\"
         .yellow-pill-badge { background: #ffd43b; color: #000000; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 12px; border: 1px solid #fab005; display: inline-block; margin-top: 4px; }
         .k3-banner { background: #e6fcf5; padding: 10px; margin-top: 8px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 6px; color: #0ca678; border: 1px solid #20c997; flex-shrink: 0; }
         
-        /* 📌 SCROLL CONTAINER & STICKY HEADERS LOCK */
         .table-container { margin-top: 10px; flex-grow: 1; height: calc(100vh - 160px); overflow: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; padding: 5px 6px; white-space: nowrap; }
         
-        /* 📌 STICKY TOP HEADERS */
         thead th { position: sticky; z-index: 20; background-color: #f8f9fa; color: #212529; }
         #row-calls-puts th { top: 0; z-index: 22; }
         #row-columns th { top: 27px; z-index: 21; }
@@ -835,7 +828,6 @@ HTML_TEMPLATE = \"\"\"
                         tbody.appendChild(tr);
                     });
 
-                    // 📌 DUAL HEADER HEIGHT ADJUSTMENT
                     let r1 = document.getElementById('row-calls-puts');
                     let r2 = document.getElementById('row-columns');
                     if(r1 && r2) {
@@ -845,19 +837,16 @@ HTML_TEMPLATE = \"\"\"
                         });
                     }
 
-                    // 📌 AUTO HORIZONTAL & VERTICAL CENTER LOCK ON LOAD
                     if (isFirstLoad) {
                         setTimeout(() => {
                             let spotRowTarget = document.querySelector('.spot-target-row');
                             let container = document.getElementById('tableContainer');
                             if (spotRowTarget && container) {
-                                // 1. Vertical Center Scroll
                                 let rowTop = spotRowTarget.offsetTop;
                                 let rowHeight = spotRowTarget.offsetHeight;
                                 let containerHeight = container.clientHeight;
                                 container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
 
-                                // 2. Horizontal Center Scroll (Strike Column)
                                 let strikeCell = spotRowTarget.querySelector('.strike-col');
                                 if (strikeCell) {
                                     let cellLeft = strikeCell.offsetLeft;
@@ -877,8 +866,6 @@ HTML_TEMPLATE = \"\"\"
 </body>
 </html>
 """
-
-
 
 
 # --- FLASK API ROUTES ---
