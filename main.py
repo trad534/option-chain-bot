@@ -191,7 +191,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -226,11 +226,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -645,7 +645,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (FIXED HEADERS, CENTER LOCK & SMOOTH TOUCH SCROLL) ---
+# --- HTML TEMPLATE (FIXED HEADERS, CENTER LOCK & TOUCH SCROLL) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -874,8 +874,6 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
-
-
 
 
 # --- FLASK API ROUTES ---
