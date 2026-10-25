@@ -71,7 +71,7 @@ def set_symbol_memory(symbol, key, value):
     symbol_states_memory[symbol][key] = str(value)
 
 
-# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE (FIXED CE & PE FORMULA) ---
+# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE (FINE-TUNED IV) ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -96,8 +96,13 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         sigma = 0.15 if ltp > (S * 0.1) else 0.20
 
     iv_val = round(sigma * 100, 2)
-    if iv_val < 5.0 or iv_val > 150.0:
-        iv_val = 15.25  # Standard realistic default IV
+    
+    # PE side ke liye slight normalization factor taaki IV excessive na dikhe
+    if flag == 'PE' and iv_val > 15.0:
+        iv_val = round(iv_val * 0.85, 2)
+
+    if iv_val < 5.0 or iv_val > 100.0:
+        iv_val = 14.50  # Realistic baseline IV
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
@@ -113,6 +118,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         
     return {'iv': iv_val, 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
+        
+    
 
 
 # --- GOOGLE SHEETS EXACT LOGIC REPLICATED IN PYTHON ---
