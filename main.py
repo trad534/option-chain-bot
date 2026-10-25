@@ -663,7 +663,7 @@ HTML_TEMPLATE = """
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
         
         /* 📌 12 STRIKES UP & 12 STRIKES DOWN VIEWPORT HEIGHT */
-        .table-container { margin-top: 7px; max-height: 740px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 7px; position: relative; -webkit-overflow-scrolling: touch; }
+        .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
         table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
         th, td { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; }
