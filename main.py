@@ -71,7 +71,7 @@ def set_symbol_memory(symbol, key, value):
     symbol_states_memory[symbol][key] = str(value)
 
 
-# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE (NSE ALIGNED IV) ---
+# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE (FULLY DYNAMIC & MICRON PRECISION) ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -81,7 +81,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if ltp < intrinsic: ltp = intrinsic + 0.05
     
     def objective_function(sigma):
-        if sigma <= 0: sigma = 1e-4
+        if sigma <= 0: sigma = 1e-6
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
         d2 = d1 - sigma * np.sqrt(t)
         if flag == 'CE':
@@ -89,29 +89,32 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         else:
             return K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1) - ltp
     
-    sigma = 0.14
+    sigma = 0.15
     try: 
-        sigma = brentq(objective_function, 1e-4, 3.0, xtol=1e-6, maxiter=100)
+        # Micron-level precision ke sath dynamic solver
+        sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
     except Exception: 
-        sigma = 0.13 if flag == 'CE' else 0.16
+        sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
-    
-    # 📌 NSE market ke standard index IV range me lock karne ke liye fine-tuning
-    if iv_val < 8.0 or iv_val > 60.0:
-        iv_val = 12.69 if flag == 'CE' else 15.87
+
+    # Extreme edge cases ke liye safe bounds (koi fixed static IV nahi)
+    if iv_val < 1.0:
+        iv_val = 1.0
+    elif iv_val > 200.0:
+        iv_val = 150.0
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
-    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t))
+    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t)) if sigma > 0 and t > 0 else 0
     vega_val = S * norm.pdf(d1) * np.sqrt(t) / 100
     
     if flag == 'CE':
         delta = norm.cdf(d1)
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365 if t > 0 else 0
     else:
         delta = norm.cdf(d1) - 1
-        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365
+        theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365 if t > 0 else 0
         
     return {'iv': iv_val, 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
