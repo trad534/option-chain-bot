@@ -208,7 +208,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -588,13 +588,26 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 time.sleep(0.05)
 
         dash_quotes_dict = {}
+        # 📌 CRITICAL FIX FOR 0 DATA: Persistent Cache Protected Update Strategy
         for item in all_dash_quotes:
             tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-            persistent_quotes_cache[tok] = {
-                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))),
-                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))),
-                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0)))
-            }
+            if tok:
+                new_ltp = float(item.get('ltp', 0))
+                new_vol = float(item.get('tradeVolume', item.get('volume', 0)))
+                new_oi = float(item.get('opnInterest', item.get('oi', 0)))
+                new_chg = float(item.get('netChange', item.get('change', 0)))
+                new_oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
+                
+                # Fetch existing cached values
+                prev_item = persistent_quotes_cache.get(tok, {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0, 'oi_chg': 0})
+                
+                persistent_quotes_cache[tok] = {
+                    'ltp': new_ltp if new_ltp > 0 else prev_item['ltp'],
+                    'volume': new_vol if new_vol > 0 else prev_item['volume'],
+                    'oi': new_oi if new_oi > 0 else prev_item['oi'],
+                    'net_change': new_chg if new_chg != 0 else prev_item['net_change'],
+                    'oi_chg': new_oi_chg if new_oi_chg != 0 else prev_item['oi_chg']
+                }
 
         for tok, q_data in persistent_quotes_cache.items():
             if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: 
