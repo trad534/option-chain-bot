@@ -561,34 +561,50 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT FUTURES MATCH)
-        if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
-            try:
-                # Nearest expiry wala MCX futures contract dhoondhein (jisme instrument type FUTCOM ho ya strike 0 ho)
-                mcx_rows = full_scrip_df[
-                    (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
-                    (full_scrip_df['exch_seg'] == 'MCX') & 
-                    ((full_scrip_df['instrumenttype'] == 'FUTCOM') | (full_scrip_df['strike'] == 0))
-                ].copy()
-                
-                if mcx_rows.empty:
-                    mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
+# 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT FUTURES MATCH)
+if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
+    try:
+        # Nearest expiry wala MCX futures contract dhoondhein
+        mcx_rows = full_scrip_df[
+            (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
+            (full_scrip_df['exch_seg'] == 'MCX') & 
+            ((full_scrip_df['instrumenttype'] == 'FUTCOM') | (full_scrip_df['strike'] == 0))
+        ].copy()
+        
+        if mcx_rows.empty:
+            mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
 
-                if not mcx_rows.empty:
-                    # Agar multiple expiries hain toh sabse nazdeeki (earliest expiry) select karein
-                    if 'parsed_expiry' in mcx_rows.columns:
-                        mcx_rows = mcx_rows.sort_values(by='parsed_expiry')
+        if not mcx_rows.empty:
+            if 'parsed_expiry' in mcx_rows.columns:
+                mcx_rows = mcx_rows.sort_values(by='parsed_expiry')
+            
+            # 1. Token को string और integer दोनों फॉर्म में तैयार रखें
+            str_tok = str(mcx_rows.iloc[0]['token']).strip()
+            int_tok = int(float(str_tok))
+            
+            q_res = smart_api.getMarketData("FULL", {"MCX": [str_tok]})
+            
+            if q_res and q_res.get('status') and q_res.get('data'):
+                fetched_data = q_res['data'].get('fetched', {})
+                
+                # 2. डिक्शनरी फॉर्मेट को सुरक्षित तरीके से चेक करें (String, Integer और MCX:Token फॉर्मेट)
+                if isinstance(fetched_data, dict):
+                    # Angel One कई बार 'MCX:Token' या केवल int/str कीज़ देता है
+                    possible_keys = [str_tok, int_tok, f"MCX:{str_tok}"]
                     
-                    mcx_tok = str(mcx_rows.iloc[0]['token']).strip()
-                    q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
-                    if q_res and q_res.get('status') and q_res.get('data'):
-                        fetched_data = q_res['data'].get('fetched', {})
-                        if isinstance(fetched_data, dict) and mcx_tok in fetched_data: 
-                            spot_price = float(fetched_data[mcx_tok].get('ltp', 0))
-                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                            spot_price = float(fetched_data[0].get('ltp', 0))
-            except Exception as e:
-                print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
+                    for key in possible_keys:
+                        if key in fetched_data:
+                            spot_price = float(fetched_data[key].get('ltp', 0))
+                            break
+                            
+                # 3. अगर रिस्पॉन्स लिस्ट फॉर्मेट में है
+                elif isinstance(fetched_data, list) and len(fetched_data) > 0:
+                    # पहली आइटम का ltp निकालें
+                    spot_price = float(fetched_data[0].get('ltp', 0))
+                    
+    except Exception as e:
+        print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
+
 
 
 
