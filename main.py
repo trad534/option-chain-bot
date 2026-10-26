@@ -590,22 +590,11 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         dash_quotes_dict = {}
         for item in all_dash_quotes:
             tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-            if tok:
-                new_ltp = float(item.get('ltp', 0))
-                new_vol = float(item.get('tradeVolume', item.get('volume', 0)))
-                new_oi = float(item.get('opnInterest', item.get('oi', 0)))
-                new_chg = float(item.get('netChange', item.get('change', 0)))
-                new_oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
-                
-                prev_item = persistent_quotes_cache.get(tok, {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0, 'oi_chg': 0})
-                
-                persistent_quotes_cache[tok] = {
-                    'ltp': new_ltp if new_ltp > 0 else prev_item['ltp'],
-                    'volume': new_vol if new_vol > 0 else prev_item['volume'],
-                    'oi': new_oi if new_oi > 0 else prev_item['oi'],
-                    'net_change': new_chg if new_chg != 0 else prev_item['net_change'],
-                    'oi_chg': new_oi_chg if new_oi_chg != 0 else prev_item['oi_chg']
-                }
+            persistent_quotes_cache[tok] = {
+                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))),
+                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))),
+                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0)))
+            }
 
         for tok, q_data in persistent_quotes_cache.items():
             if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: 
@@ -618,9 +607,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
         raw_grid_payload = []
-        valid_count = 0
-        total_strikes = len(strikes)
-
         for st in strikes:
             ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
             pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
@@ -630,9 +616,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             
             ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
             pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-
-            if ce_q['ltp'] > 0 or pe_q['ltp'] > 0:
-                valid_count += 1
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
@@ -646,19 +629,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
-        # 📌 WARM-UP CHECK: Jab tak saare ya majority strikes ka data na aa jaye, scenario tracker run mat karo taaki galat scenario na bane
-        if valid_count >= (total_strikes * 0.5):
-            execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
-        else:
-            # Agar data warm-up ho raha hai, toh grid rows ko directly vault mein daal do bina scenario tracker ke
-            if clean_active_symbol not in multi_symbol_runtime_states: multi_symbol_runtime_states[clean_active_symbol] = {}
-            vault = multi_symbol_runtime_states[clean_active_symbol]
-            vault["lot_size"] = lot_size
-            vault["spot_price"] = round(spot_price, 2)
-            vault["active_expiry"] = current_expiry
-            vault["grid_rows"] = raw_grid_payload
-            vault["K3_TEXT"] = f"{clean_active_symbol} is syncing market data..."
-
+        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception: {e}")
 
@@ -699,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE ---
+# --- HTML TEMPLATE (100% BULLETPROOF STICKY HEADER WITH LOCKED BOTTOM BLACK BORDER) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -726,6 +697,7 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
+        /* 📌 Complete Solid Background with Extended Overlap to eliminate center white gap */
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
         
@@ -733,6 +705,7 @@ HTML_TEMPLATE = """
         
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
+        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
@@ -742,9 +715,11 @@ HTML_TEMPLATE = """
             background-clip: padding-box; 
         }
         
+        /* 📌 Strike Price Width set to 90px */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
         
+        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
             z-index: 26; 
@@ -760,6 +735,7 @@ HTML_TEMPLATE = """
         
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
         
+        /* 📌 Yellow Pill Badge styling for Winner Cards */
         .yellow-pill-badge {
             background-color: #ffd43b !important;
             color: #000000 !important;
