@@ -561,16 +561,21 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (DIRECT OPTIONS UNDERLYING MATCH)
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT FUTCOM MATCH)
         if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
             try:
-                # current_expiry_options se hi uss commodity ka main future/underlying token dhoond lo
-                futures_row = current_expiry_options[current_expiry_options['instrumenttype'].isin(['FUTCOM', 'FUTSTK', 'FUTIDX']) | (current_expiry_options['strike'] == 0)]
-                if futures_row.empty:
-                    futures_row = current_expiry_options
+                # MCX ka exact FUTCOM (Futures Commodity) contract dhoondhein jo near expiry ho
+                mcx_fut = full_scrip_df[
+                    (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
+                    (full_scrip_df['exch_seg'] == 'MCX') & 
+                    (full_scrip_df['instrumenttype'] == 'FUTCOM')
+                ].copy()
                 
-                if not futures_row.empty:
-                    mcx_tok = str(futures_row.iloc[0]['token']).strip()
+                if not mcx_fut.empty:
+                    if 'parsed_expiry' in mcx_fut.columns:
+                        mcx_fut = mcx_fut.sort_values(by='parsed_expiry')
+                    
+                    mcx_tok = str(mcx_fut.iloc[0]['token']).strip()
                     q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
                     if q_res and q_res.get('status') and q_res.get('data'):
                         fetched_data = q_res['data'].get('fetched', {})
