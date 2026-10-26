@@ -218,7 +218,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -245,7 +245,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% UNIFORM WIDTH & 2X BLACK BOTTOM BORDER LINE) ---
+# --- HTML TEMPLATE (100% STICKY ROCK-SOLID HEADER WITH FIXED 2X BOTTOM LINE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -690,9 +690,9 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
-        table { width: max-content; min-width: 100%; border-collapse: collapse; background: #ffffff; font-size: 11px; text-align: center; }
+        table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         
-        th { border: 1px solid #dee2e6; padding: 4px 5px; white-space: nowrap; position: relative; color: #212529; font-weight: bold; }
+        th { border: 1px solid #dee2e6; border-top: none; padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
         
         /* 📌 Professional Vibrant Medium-Deep Shades matching Reference */
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
@@ -702,16 +702,13 @@ HTML_TEMPLATE = """
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        th { position: sticky; z-index: 11; }
-        #row-winners th { top: 0; z-index: 13; padding: 4px; height: 50px; vertical-align: middle; border: none !important; }
-        
-        /* 📌 2x Black Solid Line Bottom Border for Header Rows */
-        #row-columns th { top: 50px; z-index: 12; border-bottom: 3px solid #000000 !important; }
+        /* 📌 Rock-Solid Sticky Header Fix */
+        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; border-bottom: none !important; }
+        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        th.strike-col { position: sticky; z-index: 15; }
-        #row-winners th.strike-col { top: 0; background: #ff922b !important; color: #ffffff !important; }
-        #row-columns th.strike-col { top: 50px; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
+        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; }
+        #row-columns th.strike-col { top: 50px; z-index: 21; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
