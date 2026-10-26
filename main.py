@@ -242,7 +242,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] < peOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
             ceWinner = "OI"
@@ -795,10 +795,8 @@ HTML_TEMPLATE = """
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
-        
-        /* 🎨 Updated Color Classes: Positive (+)=Blue (#1c7ed6), Negative (-)=Red (#c92a2a) */
-        .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
-        .chg-neg { color: #c92a2a !important; font-weight: bold; }
+        .chg-pos { color: #2b8a3e; font-weight: bold; }
+        .chg-neg { color: #c92a2a; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -929,33 +927,7 @@ HTML_TEMPLATE = """
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
-                            // 📌 CE & PE Side Color Formatting: Positive (+) -> Blue (chg-pos), Negative (-) -> Red (chg-neg)
-                            let ceOiChgCls = row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg';
-                            let ceChgCls   = row.ce_change >= 0 ? 'chg-pos' : 'chg-neg';
-                            let peChgCls   = row.pe_change >= 0 ? 'chg-pos' : 'chg-neg';
-                            let peOiChgCls = row.pe_oi_chg >= 0 ? 'chg-pos' : 'chg-neg';
-
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td>` +
-                                `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td>` +
-                                `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td>` +
-                                `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td>` +
-                                `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td>` +
-                                `<td class="${ceOiChgCls} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td>` +
-                                `<td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td>` +
-                                `<td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>` +
-                                `<td class="${ceChgCls} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td>` +
-                                `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td>` +
-                                `<td class="strike-col">${row.strike}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td>` +
-                                `<td class="${peChgCls} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td>` +
-                                `<td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td>` +
-                                `<td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td>` +
-                                `<td class="${peOiChgCls} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td>` +
-                                `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
+                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                         }
                         tbody.appendChild(tr);
                     });
