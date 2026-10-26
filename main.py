@@ -218,7 +218,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -245,7 +245,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -753,10 +753,9 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Non-winner merged on Theta-IV (colspan=4), Winner merged on OI-Change (colspan=3), LTP excluded -->
+                <!-- 📌 Non-winner merged on Vega-IV (colspan=5), Winner merged on OI-Change (colspan=3), LTP excluded -->
                 <tr id="row-winners">
-                    <th class="th-ce"></th>
-                    <th colspan="4" class="bg-call-side" id="cell-d5">-</th>
+                    <th colspan="5" class="bg-call-side" id="cell-d5">-</th>
                     <th class="bg-call-side"></th>
                     <th colspan="3" class="bg-call-side" id="cell-h5">-</th>
                     <th class="th-ce" style="border:none !important;"></th>
@@ -764,8 +763,7 @@ HTML_TEMPLATE = """
                     <th class="th-pe" style="border:none !important;"></th>
                     <th colspan="3" class="bg-put-side" id="cell-q5">-</th>
                     <th class="bg-put-side"></th>
-                    <th colspan="4" class="bg-put-side" id="cell-u5">-</th>
-                    <th class="th-pe"></th>
+                    <th colspan="5" class="bg-put-side" id="cell-u5">-</th>
                 </tr>
                 <!-- 📌 Column Headers with Call and Put Styles -->
                 <tr id="row-columns">
