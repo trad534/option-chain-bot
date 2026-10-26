@@ -731,6 +731,19 @@ HTML_TEMPLATE = """
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
+        
+        /* 📌 Yellow Pill Badge styling for Winner Cards */
+        .yellow-pill-badge {
+            background-color: #ffd43b !important;
+            color: #000000 !important;
+            padding: 2px 10px !important;
+            border-radius: 12px !important;
+            font-size: 10px !important;
+            font-weight: bold !important;
+            display: inline-block !important;
+            margin-top: 2px !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+        }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
