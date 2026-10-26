@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% FIXED STICKY HEADER WITH PERMANENT BOTTOM BLACK LINE) ---
+# --- HTML TEMPLATE (100% BULLETPROOF STICKY HEADER WITH LOCKED BOTTOM BLACK BORDER) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -703,29 +703,29 @@ HTML_TEMPLATE = """
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
+        #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
-        /* 📌 GUARANTEED FIXED STICKY SECOND ROW WITH PERMANENT VISIBLE BLACK BOTTOM BORDER AND SHADOW */
+        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
-            z-index: 19; 
+            z-index: 24; 
             border-bottom: 3px solid #000000 !important; 
-            box-shadow: 0 3px 0 0 #000000 !important; 
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
             background-clip: padding-box; 
         }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
+        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
         
-        /* 📌 STRIKE COLUMN HEADER STICKY WITH BOTTOM BLACK BORDER */
+        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
-            z-index: 21; 
+            z-index: 26; 
             background: #ff922b !important; 
             color: #ffffff !important; 
             border-bottom: 3px solid #000000 !important; 
-            box-shadow: 0 3px 0 0 #000000 !important; 
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
         }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
