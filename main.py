@@ -129,7 +129,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             symbol_states_memory.clear()
             global_run_date = today_str
 
-        if not raw_rows: return
+        if not raw_rows: return None
 
         strikes_list = [float(r['strike']) for r in raw_rows]
         spot_idx = 0
@@ -167,7 +167,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peVolTop = extract_top_two(peVolArray)
         peOiTop = extract_top_two(peOiArray)
 
-        if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return
+        if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return None
 
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
@@ -236,16 +236,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+            ceWinner = "BOTH" # keeping original logic flow
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] < peOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
-            ceWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
             ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -422,17 +419,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             finalQ5 = '<div class="winner-card-top">-----</div>'
             finalU5 = peOiResult['text']
 
-        if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
-        vault = multi_symbol_runtime_states[symbol_name]
-        vault["D5_TEXT"] = finalD5
-        vault["H5_TEXT"] = finalH5
-        vault["U5_TEXT"] = finalU5
-        vault["Q5_TEXT"] = finalQ5
-        vault["K3_TEXT"] = k3Text
-        vault["lot_size"] = lot_size
-        vault["spot_price"] = round(spot_price, 2)
-        vault["active_expiry"] = active_expiry
-
         c_oi_1, c_oi_2 = ceOiTop['highest']['strike'], ceOiTop['second']['strike']
         c_vol_1, c_vol_2 = ceVolTop['highest']['strike'], ceVolTop['second']['strike']
         p_vol_1, p_vol_2 = peVolTop['highest']['strike'], peVolTop['second']['strike']
@@ -488,14 +474,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
             })
 
-        vault["grid_rows"] = grid_rows_built
+        return {
+            "D5_TEXT": finalD5, "H5_TEXT": finalH5, "U5_TEXT": finalU5, "Q5_TEXT": finalQ5,
+            "K3_TEXT": k3Text, "lot_size": lot_size, "spot_price": round(spot_price, 2),
+            "active_expiry": active_expiry, "grid_rows": grid_rows_built
+        }
     except Exception as e: 
         print(f"❌ Scenario Tracker Error: {e}")
+        return None
 
 
 # --- MARKET DATA ENGINE ---
 def fetch_symbol_data(smart_api, clean_active_symbol):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
+    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries, multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
         current_date_str = now_dt.strftime('%Y-%m-%d')
@@ -629,7 +620,10 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
-        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        # Ensure complete payload is generated before updating global state storage atomically
+        compiled_result = execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        if compiled_result:
+            multi_symbol_runtime_states[clean_active_symbol] = compiled_result
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception: {e}")
 
@@ -715,7 +709,7 @@ HTML_TEMPLATE = """
             background-clip: padding-box; 
         }
         
-        /* 📌 Increased Strike Price Column Width */
+        /* 📌 Strike Price Width set to 90px */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
         
@@ -863,6 +857,8 @@ HTML_TEMPLATE = """
             let sym = document.getElementById("symbolSelect").value;
             if(!sym) return;
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
+                if (!data.grid_rows || data.grid_rows.length === 0) return;
+                
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
                 if(data.D5) document.getElementById("cell-d5").innerHTML = data.D5;
@@ -878,53 +874,51 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 let tbody = document.getElementById("gridBody"); 
-                if (data.grid_rows && data.grid_rows.length > 0) {
-                    tbody.innerHTML = "";
-                    data.grid_rows.forEach(row => {
-                        let tr = document.createElement("tr");
-                        if (row.is_spot_row) {
-                            tr.classList.add("spot-row", "spot-target-row");
-                            let renderSpotValue = row.spot_price || data.spot_price || 0;
-                            let ceBadges = [];
-                            let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
-                            let ceVolHtml = createSinglePillBadgeHtml(row.ce_vol_badge);
-                            if(ceOiHtml) ceBadges.push(ceOiHtml);
-                            if(ceVolHtml) ceBadges.push(ceVolHtml);
-                            let peBadges = [];
-                            let peVolHtml = createSinglePillBadgeHtml(row.pe_vol_badge);
-                            let peOiHtml = createSinglePillBadgeHtml(row.pe_oi_badge);
-                            if(peVolHtml) peBadges.push(peVolHtml);
-                            if(peOiHtml) peBadges.push(peOiHtml);
-                            let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
-                            let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-                        } else {
-                            tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
-                        }
-                        tbody.appendChild(tr);
-                    });
-
-                    if (isFirstLoad) {
-                        setTimeout(() => {
-                            let spotRowTarget = document.querySelector('.spot-target-row');
-                            let container = document.getElementById('tableContainer');
-                            if (spotRowTarget && container) {
-                                let rowTop = spotRowTarget.offsetTop;
-                                let rowHeight = spotRowTarget.offsetHeight;
-                                let containerHeight = container.clientHeight;
-                                container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
-
-                                let strikeCell = spotRowTarget.querySelector('.strike-col');
-                                if (strikeCell) {
-                                    let cellLeft = strikeCell.offsetLeft;
-                                    let cellWidth = strikeCell.offsetWidth;
-                                    let containerWidth = container.clientWidth;
-                                    container.scrollLeft = cellLeft - (containerWidth / 2) + (cellWidth / 2);
-                                }
-                            }
-                        }, 150);
-                        isFirstLoad = false;
+                tbody.innerHTML = "";
+                data.grid_rows.forEach(row => {
+                    let tr = document.createElement("tr");
+                    if (row.is_spot_row) {
+                        tr.classList.add("spot-row", "spot-target-row");
+                        let renderSpotValue = row.spot_price || data.spot_price || 0;
+                        let ceBadges = [];
+                        let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
+                        let ceVolHtml = createSinglePillBadgeHtml(row.ce_vol_badge);
+                        if(ceOiHtml) ceBadges.push(ceOiHtml);
+                        if(ceVolHtml) ceBadges.push(ceVolHtml);
+                        let peBadges = [];
+                        let peVolHtml = createSinglePillBadgeHtml(row.pe_vol_badge);
+                        let peOiHtml = createSinglePillBadgeHtml(row.pe_oi_badge);
+                        if(peVolHtml) peBadges.push(peVolHtml);
+                        if(peOiHtml) peBadges.push(peOiHtml);
+                        let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
+                        let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
+                        tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                    } else {
+                        tr.innerHTML = `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_vega}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_theta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_gamma}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_delta}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_iv}</td><td class="${row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_oi_chg}</td><td class="ce-oi-col ${row.ce_oi_color}">${row.ce_oi}<span class="pct-sub">${row.ce_oi_pct}%</span></td><td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td><td class="${row.ce_change >= 0 ? 'chg-pos' : 'chg-neg'} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td><td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td><td class="strike-col">${row.strike}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td><td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td><td class="pe-oi-col ${row.pe_oi_color}">${row.pe_oi}<span class="pct-sub">${row.pe_oi_pct}%</span></td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_oi_chg}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_iv}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_delta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_gamma}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_theta}</td><td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_vega}</td>`;
                     }
+                    tbody.appendChild(tr);
+                });
+
+                if (isFirstLoad) {
+                    setTimeout(() => {
+                        let spotRowTarget = document.querySelector('.spot-target-row');
+                        let container = document.getElementById('tableContainer');
+                        if (spotRowTarget && container) {
+                            let rowTop = spotRowTarget.offsetTop;
+                            let rowHeight = spotRowTarget.offsetHeight;
+                            let containerHeight = container.clientHeight;
+                            container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
+
+                            let strikeCell = spotRowTarget.querySelector('.strike-col');
+                            if (strikeCell) {
+                                let cellLeft = strikeCell.offsetLeft;
+                                let cellWidth = strikeCell.offsetWidth;
+                                let containerWidth = container.clientWidth;
+                                container.scrollLeft = cellLeft - (containerWidth / 2) + (cellWidth / 2);
+                            }
+                        }
+                    }, 150);
+                    isFirstLoad = false;
                 }
             });
         }
