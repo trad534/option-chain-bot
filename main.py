@@ -71,7 +71,7 @@ def set_symbol_memory(symbol, key, value):
     symbol_states_memory[symbol][key] = str(value)
 
 
-# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE (FULLY DYNAMIC & MICRON PRECISION) ---
+# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -96,11 +96,8 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
-
-    if iv_val < 1.0:
-        iv_val = 1.0
-    elif iv_val > 200.0:
-        iv_val = 150.0
+    if iv_val < 1.0: iv_val = 1.0
+    elif iv_val > 200.0: iv_val = 150.0
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
@@ -240,12 +237,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "OI" # Fallback safeguard
+            ceWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -372,7 +369,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkPe = finalPeState
 
         k3Text = f"{symbol_name} is Neutral"
-        
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
         elif checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
@@ -382,24 +378,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe in ["stable strong", "strong"] and checkCe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is confirm Bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish (Both side trade)"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
-        elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe in ["stable strong", "strong"] and checkCe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkCe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
-        elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
-        elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish Reversal Trend"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
         else: k3Text = f"{symbol_name} is Active Trend"
 
         finalD5, finalH5, finalQ5, finalU5 = "", "", "", ""
@@ -670,7 +648,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (ROBUST STICKY & SAFE FALLBACK) ---
+# --- HTML TEMPLATE (ZERO-GAP BACKGROUND & "STRIKE" MERGED HEADER) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -690,22 +668,23 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
-        table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
+        /* 📌 Zero Gap Border Collapse */
+        table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         
         th { border: 1px solid #dee2e6; border-top: none; padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
         
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
-        .bg-call-side { background: #81c784 !important; }
-        .bg-put-side { background: #e57373 !important; }
+        .bg-call-side { background: #81c784 !important; border-color: #81c784 !important; }
+        .bg-put-side { background: #e57373 !important; border-color: #e57373 !important; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; border-bottom: none !important; }
+        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; }
         #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; }
+        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; }
         #row-columns th.strike-col { top: 50px; z-index: 21; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
@@ -749,17 +728,19 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
+                <!-- 📌 Winner Row with STRIKE merged -->
                 <tr id="row-winners">
                     <th colspan="5" class="bg-call-side" id="cell-d5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side"></th>
                     <th colspan="3" class="bg-call-side" id="cell-h5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side" style="border:none !important;"></th>
-                    <th class="strike-col">OUTPUT</th>
+                    <th class="strike-col">STRIKE</th>
                     <th class="bg-put-side" style="border:none !important;"></th>
                     <th colspan="3" class="bg-put-side" id="cell-q5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-put-side"></th>
                     <th colspan="5" class="bg-put-side" id="cell-u5"><div class="winner-card-top">-----</div></th>
                 </tr>
+                <!-- 📌 Column Headers -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
