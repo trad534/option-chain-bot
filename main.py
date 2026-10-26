@@ -716,8 +716,8 @@ HTML_TEMPLATE = """
         }
         
         /* 📌 Increased Strike Price Column Width */
-        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 100px !important; width: 100px !important; }
-        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 100px !important; width: 100px !important; }
+        .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
+        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
         
         /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
@@ -727,8 +727,8 @@ HTML_TEMPLATE = """
             color: #ffffff !important; 
             border-bottom: 3px solid #000000 !important; 
             box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
-            min-width: 100px !important;
-            width: 100px !important;
+            min-width: 90px !important;
+            width: 90px !important;
         }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
