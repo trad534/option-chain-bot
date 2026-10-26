@@ -561,15 +561,24 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (FIXED)
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT FUTURES MATCH)
         if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
             try:
-                # Sirf futures contract ya non-strike wale main contract ko filter karein
-                mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX') & (full_scrip_df['strike'] == 0)]
+                # Nearest expiry wala MCX futures contract dhoondhein (jisme instrument type FUTCOM ho ya strike 0 ho)
+                mcx_rows = full_scrip_df[
+                    (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
+                    (full_scrip_df['exch_seg'] == 'MCX') & 
+                    ((full_scrip_df['instrumenttype'] == 'FUTCOM') | (full_scrip_df['strike'] == 0))
+                ].copy()
+                
                 if mcx_rows.empty:
                     mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
-                
+
                 if not mcx_rows.empty:
+                    # Agar multiple expiries hain toh sabse nazdeeki (earliest expiry) select karein
+                    if 'parsed_expiry' in mcx_rows.columns:
+                        mcx_rows = mcx_rows.sort_values(by='parsed_expiry')
+                    
                     mcx_tok = str(mcx_rows.iloc[0]['token']).strip()
                     q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
                     if q_res and q_res.get('status') and q_res.get('data'):
@@ -580,6 +589,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             spot_price = float(fetched_data[0].get('ltp', 0))
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
+
 
 
         if spot_price <= 0 and clean_active_symbol not in index_map:
