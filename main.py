@@ -236,9 +236,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "BOTH"
+            ceWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
-            peWinner = "BOTH"
+            ceWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% BULLETPROOF STICKY HEADER WITH LOCKED BOTTOM BLACK BORDER) ---
+# --- HTML TEMPLATE (1px CLEAN SHARP STICKY BOTTOM BLACK LINE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -705,27 +705,25 @@ HTML_TEMPLATE = """
         
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
-        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
+        /* 📌 1px EXACT SHARP STICKY BLACK BOTTOM BORDER */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
             z-index: 24; 
-            border-bottom: 3px solid #000000 !important; 
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
+            border-bottom: 1px solid #000000 !important; 
             background-clip: padding-box; 
         }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
         
-        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
+        /* 📌 STRIKE COLUMN HEADER STICKY WITH 1px BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
             z-index: 26; 
             background: #ff922b !important; 
             color: #ffffff !important; 
-            border-bottom: 3px solid #000000 !important; 
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
+            border-bottom: 1px solid #000000 !important; 
         }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
