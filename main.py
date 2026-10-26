@@ -242,11 +242,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] < peOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] > peVolTop['highest']['strike']):
-            peWinner = "OI"
+            ceWinner = "VOL"
+        elif peOiIsStable100 and not peVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] < peOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
+            ceWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
-            peWinner = "VOL"
+            ceWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
             if peOiTop['second'] and peOiTop['second']['row'] > 0 and peOiTop['pct'] >= 75.0:
@@ -257,7 +257,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             if peVolActiveRow != peOiActiveRow:
                 peWinner = "VOL" if peVolActiveRow > peOiActiveRow else "OI"
             else:
-                peWinner = "VOL" if peVolTop['highest']['row'] >= peOiTop['highest']['row'] else "OI"
+                peWinner = "VOL" if peVolTop['highest']['strike'] >= peOiTop['highest']['strike'] else "OI"
 
         if ceOiRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_OI", ceOiRawState)
         if ceVolRawState in ["wtt", "wtb"]: set_symbol_memory(symbol_name, "WEAK_HIST_CE_VOL", ceVolRawState)
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (PIXEL-PERFECT SEAMLESS BACKGROUND) ---
+# --- HTML TEMPLATE (100% SEAMLESS BLOCKS WITHOUT ANY LINE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -697,9 +697,9 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
-        /* 📌 Absolute Solid Background without sub-pixel gaps */
-        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset 0 0 0 2px #81c784; transform: translateZ(0); }
-        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset 0 0 0 2px #e57373; transform: translateZ(0); }
+        /* 📌 Complete Solid Background with Extended Overlap to eliminate center white gap */
+        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
+        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
