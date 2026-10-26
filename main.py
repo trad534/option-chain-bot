@@ -561,28 +561,26 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT STRIKE 0 / FUTURES MATCH)
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT NEAR-MONTH FUTURES)
         if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
             try:
-                # MCX par underlying/futures contract ki strike hamesha 0 hoti hai aur name match hona chahiye
+                # full_scrip_df se seedha MCX futures contract (strike == 0) dhoondhein
                 mcx_fut = full_scrip_df[
                     (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
                     (full_scrip_df['exch_seg'] == 'MCX') & 
                     (full_scrip_df['strike'] == 0)
                 ].copy()
                 
-                if mcx_fut.empty:
-                    # Fallback agar strike 0 na mile toh sabse pehli MCX row utha lo
-                    mcx_fut = full_scrip_df[
-                        (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
-                        (full_scrip_df['exch_seg'] == 'MCX')
-                    ].copy()
-
                 if not mcx_fut.empty:
-                    if 'parsed_expiry' in mcx_fut.columns:
-                        mcx_fut = mcx_fut.sort_values(by='parsed_expiry')
+                    if 'parsed_expiry' not in mcx_fut.columns:
+                        mcx_fut['parsed_expiry'] = pd.to_datetime(mcx_fut['expiry'], format='mixed', errors='coerce')
                     
-                    mcx_tok = str(mcx_fut.iloc[0]['token']).strip()
+                    today_dt = pd.Timestamp(datetime.now().date())
+                    valid_fut = mcx_fut[mcx_fut['parsed_expiry'] >= today_dt].sort_values(by='parsed_expiry')
+                    
+                    target_fut = valid_fut if not valid_fut.empty else mcx_fut
+                    mcx_tok = str(target_fut.iloc[0]['token']).strip()
+                    
                     q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
                     if q_res and q_res.get('status') and q_res.get('data'):
                         fetched_data = q_res['data'].get('fetched', {})
