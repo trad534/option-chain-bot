@@ -237,7 +237,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "BOTH"
+            ceWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
@@ -609,12 +609,12 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
             prev_entry = persistent_quotes_cache.get(tok, {})
 
-            # 📌 Fallback Lock Logic - Prevents zero values from overwriting valid data
-            final_ltp = new_ltp if new_ltp > 0 else prev_entry.get('ltp', 0)
-            final_vol = new_vol if new_vol > 0 else prev_entry.get('volume', 0)
-            final_oi = new_oi if new_oi > 0 else prev_entry.get('oi', 0)
-            final_net_change = new_net_change if new_net_change != 0 else prev_entry.get('net_change', 0)
-            final_oi_chg = new_oi_chg if new_oi_chg != 0 else prev_entry.get('oi_chg', 0)
+            # 📌 Strict Fallback Lock: Never let a valid non-zero data be overwritten by 0
+            final_ltp = new_ltp if new_ltp > 0 else prev_entry.get('ltp', 0.0)
+            final_vol = new_vol if new_vol > 0 else prev_entry.get('volume', 0.0)
+            final_oi = new_oi if new_oi > 0 else prev_entry.get('oi', 0.0)
+            final_net_change = new_net_change if new_net_change != 0 else prev_entry.get('net_change', 0.0)
+            final_oi_chg = new_oi_chg if new_oi_chg != 0 else prev_entry.get('oi_chg', 0.0)
 
             persistent_quotes_cache[tok] = {
                 'ltp': final_ltp,
