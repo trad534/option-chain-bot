@@ -1,6 +1,9 @@
 import time
 import os
 import json
+import hmac
+import builtins
+import threading
 import requests
 import pandas as pd
 import numpy as np
@@ -9,62 +12,103 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 from datetime import datetime
 from SmartApi import SmartConnect
-from flask import Flask, jsonify, render_template_string
-import threading
-import builtins
-from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, jsonify, render_template_string, request, Response
 
-# --- SERVER ALIVE & FLASK CONFIGURATION ---
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+# --- TIMEZONE: server chahe UTC ho, saara code IST me chalega ---
+os.environ["TZ"] = "Asia/Kolkata"
+try:
+    time.tzset()
+except AttributeError:
+    pass
 
-def self_ping():
-    while True:
-        try:
-            if RENDER_URL:
-                requests.get(RENDER_URL, timeout=5)
-        except Exception:
-            pass
-        time.sleep(180)
-
-threading.Thread(target=self_ping, daemon=True).start()
 
 def print(*args, **kwargs):
     kwargs['flush'] = True
     builtins.print(*args, **kwargs)
 
+
+# --- CONFIG ---
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
+PIN = os.getenv("ANGEL_PIN")
+API_KEY = os.getenv("ANGEL_API_KEY")
+TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
+DASH_USER = os.getenv("DASH_USER")          # optional basic auth
+DASH_PASS = os.getenv("DASH_PASS")
+REDIS_URL = os.getenv("REDIS_URL")          # optional (state save). Nahi ho to file use hogi
+STATE_FILE = os.getenv("STATE_FILE", "/tmp/tracker_state.json")
+STATE_KEY = "option_tracker_state"
+MIN_API_GAP = 1.1                           # getMarketData ke beech minimum seconds
+INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
+INDEX_MAP = {
+    "NIFTY": ("NSE", "99926000"),
+    "BANKNIFTY": ("NSE", "99926009"),
+    "FINNIFTY": ("NSE", "99926037"),
+    "SENSEX": ("BSE", "99919000"),
+    "BSX": ("BSE", "99919000"),
+    "BSEX": ("BSE", "99919000"),
+}
+
 app = Flask(__name__)
+
+redis_client = None
+if REDIS_URL:
+    try:
+        import redis
+        redis_client = redis.from_url(REDIS_URL)
+    except Exception as e:
+        print(f"⚠ Redis init failed, file use hogi: {e}")
+
+
+def self_ping():
+    while True:
+        try:
+            if RENDER_URL:
+                requests.get(RENDER_URL.rstrip('/') + "/health", timeout=5)
+        except Exception:
+            pass
+        time.sleep(180)
+
+
+threading.Thread(target=self_ping, daemon=True).start()
+
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-# --- CREDENTIALS CONFIGURATION ---
-CLIENT_ID = os.getenv("ANGEL_CLIENT_ID")
-PIN = os.getenv("ANGEL_PIN")
-API_KEY = os.getenv("ANGEL_API_KEY")
-TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
-
-# --- GLOBAL CORE STORAGE PANELS ---
+# --- GLOBAL STORAGE ---
 global_run_date = ""
-persistent_quotes_cache = {}
-multi_symbol_runtime_states = {}  
+reset_done_date = ""
+persistent_quotes_cache = {}      # "EXCH:token" -> quote
+multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
 options_cache = {}
+symbol_exch_cache = {}
+chain_cache = {}
+spot_source_cache = {}
 full_scrip_df = pd.DataFrame()
 morning_oi_dict = {}
-baseline_date = None
-current_active_symbol_ui = "NIFTY"  
+current_active_symbol_ui = "NIFTY"
 last_session_date = None
+scrip_master_date = None
 user_selected_expiries = {}
 smart_api_global = None
-
 symbol_states_memory = {}
+last_ui_poll = [0.0]
+need_relogin = [False]
+last_login_ts = [0.0]
+fail_streak = [0]
+api_lock = threading.Lock()
+_last_call = [0.0]
+
 
 def get_symbol_memory(symbol, key, default=""):
     if symbol not in symbol_states_memory:
         symbol_states_memory[symbol] = {}
     return symbol_states_memory[symbol].get(key, default)
+
 
 def set_symbol_memory(symbol, key, value):
     if symbol not in symbol_states_memory:
@@ -72,15 +116,87 @@ def set_symbol_memory(symbol, key, value):
     symbol_states_memory[symbol][key] = str(value)
 
 
-# --- BLACK-SCHOLES MATHEMATICAL GREEKS ENGINE ---
+def del_symbol_memory(symbol, key):
+    if symbol in symbol_states_memory:
+        symbol_states_memory[symbol].pop(key, None)
+
+
+def num(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+# --- STATE SAVE / LOAD (restart par history na jaye) ---
+def save_state():
+    try:
+        payload = json.dumps({
+            "run_date": global_run_date, "reset_done": reset_done_date,
+            "states": symbol_states_memory, "morning_oi": morning_oi_dict
+        })
+        if redis_client:
+            redis_client.set(STATE_KEY, payload, ex=172800)
+        else:
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(payload)
+            os.replace(tmp, STATE_FILE)
+    except Exception as e:
+        print(f"⚠ State save error: {e}")
+
+
+def load_state():
+    global global_run_date, reset_done_date
+    try:
+        raw = None
+        if redis_client:
+            raw = redis_client.get(STATE_KEY)
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+        elif os.path.exists(STATE_FILE):
+            with open(STATE_FILE) as f:
+                raw = f.read()
+        if not raw:
+            return
+        d = json.loads(raw)
+        if d.get("run_date") == datetime.now().strftime("%Y-%m-%d"):
+            symbol_states_memory.update(d.get("states", {}))
+            morning_oi_dict.update(d.get("morning_oi", {}))
+            global_run_date = d["run_date"]
+            reset_done_date = d.get("reset_done", "")
+            print(f"♻ State restored: {len(symbol_states_memory)} symbols")
+    except Exception as e:
+        print(f"⚠ State load error: {e}")
+
+
+def maybe_daily_reset(now_dt):
+    """Apps Script jaisa: roz 09:14:50 par saari history saaf (aur date badalne par)."""
+    global global_run_date, reset_done_date
+    today = now_dt.strftime("%Y-%m-%d")
+    hms = now_dt.strftime("%H:%M:%S")
+    if global_run_date != today:
+        symbol_states_memory.clear()
+        morning_oi_dict.clear()
+        persistent_quotes_cache.clear()
+        global_run_date = today
+        reset_done_date = today if hms >= "09:14:50" else ""
+    elif hms >= "09:14:50" and reset_done_date != today:
+        symbol_states_memory.clear()
+        morning_oi_dict.clear()
+        persistent_quotes_cache.clear()
+        reset_done_date = today
+
+
+# --- BLACK-SCHOLES GREEKS (aapka original, bina badlav) ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
         return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
-    
+
     intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S)
     if ltp < intrinsic: ltp = intrinsic + 0.05
-    
+
     def objective_function(sigma):
         if sigma <= 0: sigma = 1e-6
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
@@ -89,15 +205,14 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
             return S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2) - ltp
         else:
             return K * np.exp(-r * t) * norm.cdf(-d2) - S * norm.cdf(-d1) - ltp
-    
+
     sigma = 0.15
-    try: 
+    try:
         sigma = brentq(objective_function, 1e-6, 4.0, xtol=1e-8, maxiter=200)
-    except Exception: 
+    except Exception:
         sigma = 0.15
 
     iv_val = round(sigma * 100, 2)
-
     if iv_val < 1.0:
         iv_val = 1.0
     elif iv_val > 200.0:
@@ -107,28 +222,23 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     d2 = d1 - sigma * np.sqrt(t)
     gamma = norm.pdf(d1) / (S * sigma * np.sqrt(t)) if sigma > 0 and t > 0 else 0
     vega_val = S * norm.pdf(d1) * np.sqrt(t) / 100
-    
+
     if flag == 'CE':
         delta = norm.cdf(d1)
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) - r * K * np.exp(-r * t) * norm.cdf(d2)) / 365 if t > 0 else 0
     else:
         delta = norm.cdf(d1) - 1
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365 if t > 0 else 0
-        
+
     return {'iv': iv_val, 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
-# --- GOOGLE SHEETS EXACT LOGIC REPLICATED IN PYTHON ---
+# --- APPS SCRIPT LOGIC (Python replica) ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
-    global global_run_date, multi_symbol_runtime_states
+    global multi_symbol_runtime_states
     try:
         now_dt = datetime.now()
-        today_str = now_dt.strftime("%Y-%m-%d")
         currentTimeStr = now_dt.strftime("%I:%M %p").lower()
-
-        if global_run_date != today_str:
-            symbol_states_memory.clear()
-            global_run_date = today_str
 
         if not raw_rows: return
 
@@ -153,11 +263,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
         def extract_top_two(data_array):
-            if not data_array: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            empty = {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            if not data_array: return empty
             filtered = [item for item in data_array if item['val'] > 0]
-            if not filtered: return {'highest': {'strike': 0, 'val': 0, 'row': 0}, 'second': {'strike': 0, 'val': 0, 'row': 0}, 'pct': 0}
+            if not filtered: return empty
             filtered.sort(key=lambda x: x['val'], reverse=True)
-            
             highest = filtered[0]
             second = filtered[1] if len(filtered) > 1 else {'strike': highest['strike'], 'val': 0, 'row': highest['row']}
             pct = (second['val'] / highest['val']) * 100 if highest['val'] > 0 else 0
@@ -206,7 +316,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # 📌 CALL (CE) SIDE WINNER ENGINE
+        # CALL (CE) SIDE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -214,12 +324,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
-        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "OI"
+        elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+            ceWinner = "OI"   # FIX: Apps Script jaisa (ceVolTop.highest)
         elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
@@ -234,7 +344,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 📌 PUT (PE) SIDE WINNER ENGINE
+        # PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -295,6 +405,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
                     set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
                     set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
+                    del_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey)   # Apps Script: removeProperty
 
             if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"):
                 if strike < prevStrike:
@@ -360,10 +471,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
             return {'text': outputText, 'status': displayStatus, 'scenarioStatus': scenarioStatus, 'rawState': rawState}
 
-        ceOiResult  = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner == "OI" or ceWinner == "BOTH", ceOiRawState, ceOiStatusText)
+        ceOiResult = calculateIndependentCell(ceOiTop, "CE_OI", "Eor OI", ceWinner == "OI" or ceWinner == "BOTH", ceOiRawState, ceOiStatusText)
         ceVolResult = calculateIndependentCell(ceVolTop, "CE_VOL", "Eor VOL", ceWinner == "VOL" or ceWinner == "BOTH", ceVolRawState, ceVolStatusText)
         peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos VOL", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText)
-        peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
+        peOiResult = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
@@ -373,16 +484,17 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
         checkCe = finalCeState
         checkPe = finalPeState
+        SS = "stable strong"
 
+        # K3 SCENARIOS: bilkul Apps Script jaisa (default Neutral, "strong" alag se nahi)
         k3Text = f"{symbol_name} is Neutral"
-        
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
-        elif checkCe in ["stable strong", "strong"] and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is Neutral"
-        elif checkCe == "wtb" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe == "wtt" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly bullish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == SS and checkPe == SS: k3Text = f"{symbol_name} is Neutral"
+        elif checkCe == "wtb" and checkPe == SS: k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == SS and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtt" and checkPe == SS: k3Text = f"{symbol_name} is slightly bullish"
+        elif checkCe == SS and checkPe == "wtt": k3Text = f"{symbol_name} is slightly bullish"
         elif checkCe == "wtt" and checkPe == "wtt": k3Text = f"{symbol_name} is Bullrun"
         elif checkCe == "wtb" and checkPe == "wtb": k3Text = f"{symbol_name} is bloodbath"
         elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm Bloodbath"
@@ -393,48 +505,34 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif checkCe == "wtb to strong" and checkPe == "wtt": k3Text = f"{symbol_name} is confirm Bull Run"
         elif checkCe == "wtb to strong" and checkPe == "wtb": k3Text = f"{symbol_name} is slightly Bearish (Both side trade)"
         elif checkCe == "wtb" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bearish (both side trade)"
-        elif checkCe == "wtb to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
-        elif checkCe == "wtt to strong" and checkPe in ["stable strong", "strong"]: k3Text = f"{symbol_name} is slightly Bearish"
-        elif checkCe in ["stable strong", "strong"] and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == "wtb to strong" and checkPe == SS: k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == SS and checkPe == "wtb to strong": k3Text = f"{symbol_name} is slightly Bullish"
+        elif checkCe == "wtt to strong" and checkPe == SS: k3Text = f"{symbol_name} is slightly Bearish"
+        elif checkCe == SS and checkPe == "wtt to strong": k3Text = f"{symbol_name} is slightly Bearish"
         elif checkCe == "wtt to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is 8th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is 9th scenario both side Risky trade"
         elif checkCe == "wtb to strong" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is confirm Bull Run"
         elif checkCe == "wtt to strong" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is confirm bloodbath"
-        elif checkCe == "wtt" and checkPe == "wtb to strong": k3Text = f"{symbol_name} is Bullish Reversal Trend"
-        elif checkCe == "wtb" and checkPe == "wtt to strong": k3Text = f"{symbol_name} is Bearish Reversal Trend"
-        else: k3Text = f"{symbol_name} is Active Trend"
 
+        dash = '<div class="winner-card-top">-----</div>'
         finalD5, finalH5, finalQ5, finalU5 = "", "", "", ""
 
-        if ceWinner == "BOTH": 
+        if ceWinner == "BOTH":
             finalD5, finalH5 = ceOiResult['text'], ceVolResult['text']
-        elif ceWinner == "VOL": 
-            finalD5 = '<div class="winner-card-top">-----</div>'
-            finalH5 = ceVolResult['text']
-        elif ceWinner == "OI": 
-            finalD5 = ceOiResult['text']
-            finalH5 = '<div class="winner-card-top">-----</div>'
+        elif ceWinner == "VOL":
+            finalD5, finalH5 = dash, ceVolResult['text']
+        elif ceWinner == "OI":
+            finalD5, finalH5 = ceOiResult['text'], dash
 
-        if peWinner == "BOTH": 
+        if peWinner == "BOTH":
             finalU5, finalQ5 = peOiResult['text'], peVolResult['text']
-        elif peWinner == "VOL": 
-            finalQ5 = peVolResult['text']
-            finalU5 = '<div class="winner-card-top">-----</div>'
-        elif peWinner == "OI": 
-            finalQ5 = '<div class="winner-card-top">-----</div>'
-            finalU5 = peOiResult['text']
+        elif peWinner == "VOL":
+            finalQ5, finalU5 = peVolResult['text'], dash
+        elif peWinner == "OI":
+            finalQ5, finalU5 = dash, peOiResult['text']
 
         if symbol_name not in multi_symbol_runtime_states: multi_symbol_runtime_states[symbol_name] = {}
         vault = multi_symbol_runtime_states[symbol_name]
-        vault["D5_TEXT"] = finalD5
-        vault["H5_TEXT"] = finalH5
-        vault["U5_TEXT"] = finalU5
-        vault["Q5_TEXT"] = finalQ5
-        vault["K3_TEXT"] = k3Text
-        vault["lot_size"] = lot_size
-        vault["spot_price"] = round(spot_price, 2)
-        vault["active_expiry"] = active_expiry
 
         c_oi_1, c_oi_2 = ceOiTop['highest']['strike'], ceOiTop['second']['strike']
         c_vol_1, c_vol_2 = ceVolTop['highest']['strike'], ceVolTop['second']['strike']
@@ -457,15 +555,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             s_type = raw_state.upper() if raw_state in ["wtt", "wtb"] else "STRONG"
             return {"state": s_type, "pct": round(top_obj['pct'], 2), "show_badge": True}
 
+        def spot_row():
+            return {
+                'is_spot_row': True, 'spot_price': round(spot_price, 2),
+                'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
+                'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
+                'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
+                'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
+            }
+
         for idx, r_dict in enumerate(raw_rows):
             if not spot_inserted and idx == spot_insert_idx:
-                grid_rows_built.append({
-                    'is_spot_row': True, 'spot_price': round(spot_price, 2),
-                    'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
-                    'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
-                    'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
-                    'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
-                })
+                grid_rows_built.append(spot_row())
                 spot_inserted = True
 
             st = r_dict['strike']
@@ -483,253 +584,313 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             grid_rows_built.append(r_copy)
 
         if not spot_inserted:
-            grid_rows_built.append({
-                'is_spot_row': True, 'spot_price': round(spot_price, 2),
-                'ce_oi_badge': build_badge_payload(ceOiTop, ceOiRawState),
-                'ce_vol_badge': build_badge_payload(ceVolTop, ceVolRawState),
-                'pe_vol_badge': build_badge_payload(peVolTop, peVolRawState),
-                'pe_oi_badge': build_badge_payload(peOiTop, peOiRawState)
-            })
+            grid_rows_built.append(spot_row())
 
+        vault["D5_TEXT"] = finalD5
+        vault["H5_TEXT"] = finalH5
+        vault["U5_TEXT"] = finalU5
+        vault["Q5_TEXT"] = finalQ5
+        vault["K3_TEXT"] = k3Text
+        vault["lot_size"] = lot_size
+        vault["spot_price"] = round(spot_price, 2)
+        vault["active_expiry"] = active_expiry
         vault["grid_rows"] = grid_rows_built
-    except Exception as e: 
-        print(f"❌ Scenario Tracker Error: {e}")
+    except Exception as e:
+        print(f"❌ Scenario Tracker Error ({symbol_name}): {e}")
 
 
 # --- MARKET DATA ENGINE ---
-def fetch_tokens_batch_api(smart_api, exch, t_list):
-    try:
-        res = smart_api.getMarketData("FULL", {exch: t_list})
-        if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
-            return res['data']['fetched']
-    except Exception:
-        pass
+def rate_limited_market_data(smart_api, req, retries=3):
+    """Saari getMarketData calls yahin se: 1.1s gap, retry, unfetched log."""
+    for attempt in range(retries):
+        res = None
+        with api_lock:
+            wait = MIN_API_GAP - (time.time() - _last_call[0])
+            if wait > 0:
+                time.sleep(wait)
+            _last_call[0] = time.time()
+            try:
+                res = smart_api.getMarketData("FULL", req)
+            except Exception as e:
+                print(f"⚠ getMarketData exception: {e}")
+        if res and res.get('status') and res.get('data') is not None:
+            fail_streak[0] = 0
+            d = res['data']
+            if d.get('unfetched'):
+                print(f"⚠ unfetched tokens: {len(d['unfetched'])}")
+            return d.get('fetched') or []
+        fail_streak[0] += 1
+        msg = str(res)[:200]
+        print(f"⚠ getMarketData failed (try {attempt + 1}): {msg}")
+        low = msg.lower()
+        if any(k in low for k in ("invalid token", "token expired", "session", "unauthor")) or fail_streak[0] >= 12:
+            if time.time() - last_login_ts[0] > 300:
+                need_relogin[0] = True
+            fail_streak[0] = 0
+        time.sleep(1.5 * (attempt + 1))
     return []
 
-def fetch_symbol_data(smart_api, clean_active_symbol):
-    global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
+
+def fetch_quotes(smart_api, pairs):
+    """pairs = [(exch, token)]. Max 50 tokens per request. Returns {(exch, token): item}"""
+    out = {}
+    for i in range(0, len(pairs), 50):
+        chunk = pairs[i:i + 50]
+        req = {}
+        for e, t in chunk:
+            req.setdefault(e, []).append(t)
+        default_exch = chunk[0][0] if len(req) == 1 else ""
+        for item in rate_limited_market_data(smart_api, req):
+            e = str(item.get('exchange') or default_exch).strip()
+            t = str(item.get('symbolToken', item.get('token', ''))).strip()
+            out[(e, t)] = item
+    return out
+
+
+def get_item(quotes, e, t):
+    return quotes.get((e, t)) or quotes.get(("", t))
+
+
+def spot_from(quotes, src):
+    it = get_item(quotes, src[0], src[1])
+    return num(it.get('ltp')) if it else 0.0
+
+
+def nearest_idx(strikes, spot):
+    return min(range(len(strikes)), key=lambda i: abs(strikes[i] - spot))
+
+
+def build_chain(sym, expiry_str):
+    key = (sym, expiry_str)
+    if key in chain_cache:
+        return chain_cache[key]
+    opts = options_cache.get(sym)
+    if opts is None:
+        return None
+    exp_dt = pd.Timestamp(datetime.strptime(expiry_str, '%d%b%Y'))
+    sub = opts[opts['parsed_expiry'] == exp_dt]
+    if sub.empty:
+        return None
+    typ = sub['symbol'].astype(str).str.upper().str[-2:]
+    tokmap = {}
+    for st, tp, tok, ex in zip(sub['strike'], typ, sub['token'], sub['exch_seg']):
+        if tp in ('CE', 'PE'):
+            tokmap.setdefault((float(st), tp), (str(ex).strip(), str(tok).strip()))
+    strikes = sorted({k[0] for k in tokmap})
+    if not strikes:
+        return None
+    lot = 1
+    if 'lotsize' in sub.columns:
+        lot = int(num(sub['lotsize'].iloc[0], 1)) or 1
+    chain = {'expiry_dt': exp_dt, 'tokmap': tokmap, 'strikes': strikes, 'lot': lot}
+    chain_cache[key] = chain
+    return chain
+
+
+def resolve_spot_source(sym, expiry_dt):
+    """(exchange, token) of underlying: index / MCX near future / NSE equity."""
+    key = (sym, str(expiry_dt))
+    if key in spot_source_cache:
+        return spot_source_cache[key]
+    src = None
+    try:
+        if sym in INDEX_MAP:
+            src = INDEX_MAP[sym]
+        else:
+            df = full_scrip_df
+            exch = symbol_exch_cache.get(sym, "")
+            if exch == 'MCX':
+                m = df[(df['name_up'] == sym) & (df['exch_seg'] == 'MCX') & (df['strike'] <= 0)]
+                if 'instrumenttype' in m.columns:
+                    m = m[m['instrumenttype'].astype(str).str.upper().str.startswith('FUT')]
+                m = m.copy()
+                m['pe'] = pd.to_datetime(m['expiry'], format='mixed', errors='coerce')
+                m = m[m['pe'].notna()].sort_values('pe')
+                cand = m[m['pe'] >= expiry_dt]
+                if cand.empty:
+                    cand = m[m['pe'] >= pd.Timestamp(datetime.now().date())]
+                if not cand.empty:
+                    src = ('MCX', str(cand.iloc[0]['token']).strip())
+            elif exch == 'NFO':
+                eq = df[(df['name_up'] == sym) & (df['exch_seg'] == 'NSE')]
+                if not eq.empty:
+                    pref = eq[eq['symbol'].astype(str).str.upper().str.endswith('-EQ')]
+                    eq = pref if not pref.empty else eq
+                    src = ('NSE', str(eq['token'].iloc[0]).strip())
+    except Exception as e:
+        print(f"⚠ Spot source error ({sym}): {e}")
+    if src:
+        spot_source_cache[key] = src
+    return src
+
+
+def option_quote(tokmap, st, tp, after_open):
+    zero = {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0}
+    pair = tokmap.get((st, tp))
+    if not pair:
+        return zero
+    key = f"{pair[0]}:{pair[1]}"
+    q = persistent_quotes_cache.get(key)
+    if not q:
+        return zero
+    if after_open and key not in morning_oi_dict and q['oi'] > 0:
+        morning_oi_dict[key] = q['oi']
+    base_oi = morning_oi_dict.get(key, q['oi'])
+    calc_oi_chg = q['oi'] - base_oi if q['oi'] > 0 else q.get('oi_chg', 0)
+    return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
+
+
+def fetch_symbol_data(smart_api, sym, light=False):
+    """light=True: sirf tracker ke tokens (background symbols). light=False: poori chain (screen wala symbol)."""
     try:
         now_dt = datetime.now()
-        current_date_str = now_dt.strftime('%Y-%m-%d')
-        if baseline_date != current_date_str: 
-            morning_oi_dict = {}
-            baseline_date = current_date_str
-            
-        if not options_cache or clean_active_symbol not in options_cache: return
+        maybe_daily_reset(now_dt)
 
-        sym_options = options_cache[clean_active_symbol]
-        valid_opts = sym_options[sym_options['parsed_expiry'] >= pd.Timestamp(now_dt.date())].copy()
-        if valid_opts.empty: return
+        expiry_list = symbol_expiries_cache.get(sym) or []
+        if not expiry_list or sym not in options_cache:
+            return
+        chosen = user_selected_expiries.get(sym, expiry_list[0])
+        current_expiry = chosen if chosen in expiry_list else expiry_list[0]
+        chain = build_chain(sym, current_expiry)
+        if not chain:
+            return
+        spot_src = resolve_spot_source(sym, chain['expiry_dt'])
+        if not spot_src:
+            return
 
-        unique_expiries_dt = sorted(valid_opts['parsed_expiry'].unique())
-        expiry_strings_sorted = [pd.Timestamp(dt).strftime('%d%b%Y').upper() for dt in unique_expiries_dt]
-        
-        target_expiry_str = user_selected_expiries.get(clean_active_symbol, expiry_strings_sorted[0])
-        matched_exp = [dt for dt in unique_expiries_dt if pd.Timestamp(dt).strftime('%d%b%Y').upper() == target_expiry_str]
-        
-        if matched_exp: 
-            current_expiry_dt = matched_exp[0]
-            current_expiry = target_expiry_str
-        else: 
-            current_expiry_dt = unique_expiries_dt[0]
-            current_expiry = expiry_strings_sorted[0]
+        tokmap, all_strikes = chain['tokmap'], chain['strikes']
+        spot_ref = num(multi_symbol_runtime_states.get(sym, {}).get('spot_price'))
+        if spot_ref <= 0:   # pehli baar: spot alag se (sirf ek baar)
+            spot_ref = spot_from(fetch_quotes(smart_api, [spot_src]), spot_src)
+            if spot_ref <= 0:
+                return
 
-        current_expiry_options = valid_opts[valid_opts['parsed_expiry'] == current_expiry_dt].copy()
-        lot_size = int(float(current_expiry_options['lotsize'].iloc[0])) if 'lotsize' in current_expiry_options.columns and not current_expiry_options['lotsize'].empty else 1
+        closest = nearest_idx(all_strikes, spot_ref)
+        lo, hi = max(0, closest - 18), min(len(all_strikes), closest + 19)
+        pairs = [spot_src]
+        for pos in range(lo, hi):
+            st = all_strikes[pos]
+            need_ce = need_pe = True
+            if light:   # tracker window + 1 padding
+                need_ce = (closest - 4) <= pos <= (closest + 19)
+                need_pe = (closest - 19) <= pos <= (closest + 4)
+            if need_ce and (st, 'CE') in tokmap: pairs.append(tokmap[(st, 'CE')])
+            if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
 
-        spot_price = 0.0
-        index_map = {
-            "NIFTY": {"exch": "NSE", "token": "99926000"},
-            "BANKNIFTY": {"exch": "NSE", "token": "99926009"},
-            "FINNIFTY": {"exch": "NSE", "token": "99926037"},
-            "SENSEX": {"exch": "BSE", "token": "99919000"},
-            "BSX": {"exch": "BSE", "token": "99919000"},
-            "BSEX": {"exch": "BSE", "token": "99919000"}
-        }
+        quotes = fetch_quotes(smart_api, pairs)
+        spot_price = spot_from(quotes, spot_src)
+        if spot_price <= 0:
+            return
 
-        if clean_active_symbol in index_map:
-            idx_info = index_map[clean_active_symbol]
-            try:
-                q_res = smart_api.getMarketData("FULL", {idx_info["exch"]: [idx_info["token"]]})
-                if q_res and q_res.get('status') and q_res.get('data'):
-                    fetched_data = q_res['data'].get('fetched', {})
-                    token_key = idx_info["token"]
-                    if isinstance(fetched_data, dict) and token_key in fetched_data: 
-                        spot_price = float(fetched_data[token_key].get('ltp', 0))
-                    elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                        spot_price = float(fetched_data[0].get('ltp', 0))
-            except Exception as e:
-                print(f"⚠ Spot Fetch Error (Index): {e}")
-
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT NEAR-MONTH FUTURES)
-        if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
-            try:
-                # full_scrip_df se seedha MCX futures contract (strike == 0) dhoondhein
-                mcx_fut = full_scrip_df[
-                    (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
-                    (full_scrip_df['exch_seg'] == 'MCX') & 
-                    (full_scrip_df['strike'] == 0)
-                ].copy()
-                
-                if not mcx_fut.empty:
-                    if 'parsed_expiry' not in mcx_fut.columns:
-                        mcx_fut['parsed_expiry'] = pd.to_datetime(mcx_fut['expiry'], format='mixed', errors='coerce')
-                    
-                    today_dt = pd.Timestamp(datetime.now().date())
-                    valid_fut = mcx_fut[mcx_fut['parsed_expiry'] >= today_dt].sort_values(by='parsed_expiry')
-                    
-                    target_fut = valid_fut if not valid_fut.empty else mcx_fut
-                    mcx_tok = str(target_fut.iloc[0]['token']).strip()
-                    
-                    q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
-                    if q_res and q_res.get('status') and q_res.get('data'):
-                        fetched_data = q_res['data'].get('fetched', {})
-                        if isinstance(fetched_data, dict) and mcx_tok in fetched_data: 
-                            spot_price = float(fetched_data[mcx_tok].get('ltp', 0))
-                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                            spot_price = float(fetched_data[0].get('ltp', 0))
-            except Exception as e:
-                print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
-
-
-
-
-        if spot_price <= 0 and clean_active_symbol not in index_map:
-            try:
-                equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
-                if not equity_row.empty:
-                    eq_tok = str(equity_row['token'].iloc[0]).strip()
-                    q_res = smart_api.getMarketData("FULL", {"NSE": [eq_tok]})
-                    if q_res and q_res.get('status') and q_res.get('data'):
-                        fetched_data = q_res['data'].get('fetched', {})
-                        if isinstance(fetched_data, dict) and eq_tok in fetched_data: 
-                            spot_price = float(fetched_data[eq_tok].get('ltp', 0))
-                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
-                            spot_price = float(fetched_data[0].get('ltp', 0))
-            except Exception as e:
-                print(f"⚠ Spot Fetch Error (Equity): {e}")
-
-        if spot_price <= 0: return
-
-        all_master_strikes = sorted(current_expiry_options['strike'].unique())
-        closest_idx = min(range(len(all_master_strikes)), key=lambda i: abs(all_master_strikes[i] - spot_price))
-        strikes = all_master_strikes[max(0, closest_idx - 18):min(len(all_master_strikes), closest_idx + 19)]
-
-        filtered_opts = current_expiry_options[current_expiry_options['strike'].isin(strikes)].copy()
-        exch_map = {}
-        for _, row in filtered_opts.iterrows():
-            exch, tok = str(row['exch_seg']).strip(), str(row['token']).strip()
-            if exch not in exch_map: exch_map[exch] = []
-            exch_map[exch].append(tok)
-
-        batch_chunks = []
-        for exch, t_list in exch_map.items():
-            for i in range(0, len(t_list), 40):
-                batch_chunks.append((exch, t_list[i:i+40]))
-
-        all_dash_quotes = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(fetch_tokens_batch_api, smart_api, exch, t_sub) for exch, t_sub in batch_chunks]
-            for f in futures:
-                all_dash_quotes.extend(f.result())
-
-        dash_quotes_dict = {}
-        for item in all_dash_quotes:
-            tok = str(item.get('symbolToken', item.get('token', ''))).strip()
-            new_ltp = float(item.get('ltp', 0))
-            new_vol = float(item.get('tradeVolume', item.get('volume', 0)))
-            new_oi = float(item.get('opnInterest', item.get('oi', 0)))
-            new_net_change = float(item.get('netChange', item.get('change', 0)))
-            new_oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
-
-            prev_entry = persistent_quotes_cache.get(tok, {})
-
-            final_ltp = new_ltp if new_ltp > 0 else prev_entry.get('ltp', 0.0)
-            final_vol = new_vol if new_vol > 0 else prev_entry.get('volume', 0.0)
-            final_oi = new_oi if new_oi > 0 else prev_entry.get('oi', 0.0)
-            final_net_change = new_net_change if new_net_change != 0 else prev_entry.get('net_change', 0.0)
-            final_oi_chg = new_oi_chg if new_oi_chg != 0 else prev_entry.get('oi_chg', 0.0)
-
-            persistent_quotes_cache[tok] = {
-                'ltp': final_ltp,
-                'volume': final_vol,
-                'oi': final_oi,
-                'net_change': final_net_change,
-                'oi_chg': final_oi_chg
+        missing = 0
+        for e, t in pairs[1:]:
+            item = get_item(quotes, e, t)
+            if not item:
+                missing += 1
+                continue
+            key = f"{e}:{t}"
+            new_ltp = num(item.get('ltp'))
+            new_vol = num(item.get('tradeVolume', item.get('volume', 0)))
+            new_oi = num(item.get('opnInterest', item.get('oi', 0)))
+            new_net = num(item.get('netChange', item.get('change', 0)))
+            new_oi_chg = num(item.get('opnInterestChange', item.get('oiChange', 0)))
+            prev = persistent_quotes_cache.get(key, {})
+            persistent_quotes_cache[key] = {
+                'ltp': new_ltp if new_ltp > 0 else prev.get('ltp', 0.0),
+                'volume': new_vol if new_vol > 0 else prev.get('volume', 0.0),
+                'oi': new_oi if new_oi > 0 else prev.get('oi', 0.0),
+                'net_change': new_net if new_net != 0 else prev.get('net_change', 0.0),
+                'oi_chg': new_oi_chg if new_oi_chg != 0 else prev.get('oi_chg', 0.0),
             }
+        if missing and not light:
+            print(f"⚠ {sym}: {missing}/{len(pairs) - 1} tokens ka quote nahi aaya (purani value dikh rahi hai)")
 
-        for tok, q_data in persistent_quotes_cache.items():
-            if now_dt.time() >= datetime.strptime("09:15:00", "%H:%M:%S").time() and tok not in morning_oi_dict and q_data['oi'] > 0: 
-                morning_oi_dict[tok] = q_data['oi']
-            base_oi = morning_oi_dict.get(tok, q_data['oi'])
-            calc_oi_chg = q_data['oi'] - base_oi if q_data['oi'] > 0 else q_data.get('oi_chg', 0)
-            dash_quotes_dict[tok] = {'ltp': q_data['ltp'], 'volume': q_data['volume'], 'oi': q_data['oi'], 'oi_chg': calc_oi_chg, 'net_change': q_data['net_change']}
+        closest = nearest_idx(all_strikes, spot_price)
+        strikes = all_strikes[max(0, closest - 18):min(len(all_strikes), closest + 19)]
+        after_open = (now_dt.hour, now_dt.minute) >= (9, 15)
 
-        expiry_dt_val = pd.Timestamp(current_expiry_options['parsed_expiry'].iloc[0])
-        t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+        expiry_dt_val = chain['expiry_dt']
+        t = max((expiry_dt_val.replace(hour=15, minute=30) - now_dt).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+        zero_g = {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
         raw_grid_payload = []
         for st in strikes:
-            ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
-            pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
-            
-            ce_token = str(ce_sub['token'].iloc[0]).strip() if not ce_sub.empty else ""
-            pe_token = str(pe_sub['token'].iloc[0]).strip() if not pe_sub.empty else ""
-            
-            ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
-            pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
+            ce_q = option_quote(tokmap, st, 'CE', after_open)
+            pe_q = option_quote(tokmap, st, 'PE', after_open)
+            if light:
+                ce_g = pe_g = zero_g
+            else:
+                ce_g = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
+                pe_g = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
 
-            ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
-            pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
-            
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
-                'ce_vega': ce_gks['vega'], 'ce_theta': ce_gks['theta'], 'ce_gamma': ce_gks['gamma'], 'ce_delta': ce_gks['delta'], 'ce_iv': ce_gks['iv'] if ce_gks['iv'] > 1 else 0,
-                'ce_oi_chg': ce_q['ce_oi_chg'] if 'ce_oi_chg' in ce_q else ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
-                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['pe_oi_chg'] if 'pe_oi_chg' in pe_q else pe_q['oi_chg'],
-                'pe_iv': pe_gks['iv'] if pe_gks['iv'] > 1 else 0, 'pe_delta': pe_gks['delta'], 'pe_gamma': pe_gks['gamma'], 'pe_theta': pe_gks['theta'], 'pe_vega': pe_gks['vega'],
+                'ce_vega': ce_g['vega'], 'ce_theta': ce_g['theta'], 'ce_gamma': ce_g['gamma'], 'ce_delta': ce_g['delta'], 'ce_iv': ce_g['iv'] if ce_g['iv'] > 1 else 0,
+                'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
+                'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
+                'pe_iv': pe_g['iv'] if pe_g['iv'] > 1 else 0, 'pe_delta': pe_g['delta'], 'pe_gamma': pe_g['gamma'], 'pe_theta': pe_g['theta'], 'pe_vega': pe_g['vega'],
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
-        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=chain['lot'], active_expiry=current_expiry, symbol_name=sym)
+        v = multi_symbol_runtime_states.get(sym)
+        if v is not None:
+            v['is_light'] = light
+            v['fetched_ts'] = time.time()
+            v['updated_at'] = datetime.now().strftime("%H:%M:%S")
     except Exception as e:
-        print(f"❌ fetch_symbol_data Exception: {e}")
+        print(f"❌ fetch_symbol_data Exception ({sym}): {e}")
 
 
-# --- SCRIP MASTER DOWNLOADER ---
-def initialize_scrip_master(smart_api):
-    global full_scrip_df, options_cache, symbol_expiries_cache
+# --- SCRIP MASTER ---
+def initialize_scrip_master():
+    global full_scrip_df, options_cache, symbol_expiries_cache, symbol_exch_cache, scrip_master_date
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        resp = requests.get(url, timeout=30)
-        if resp.status_code == 200:
-            scrip_data = resp.json()
-            full_scrip_df = pd.DataFrame(scrip_data)
-            if 'symboltoken' in full_scrip_df.columns and 'token' not in full_scrip_df.columns: full_scrip_df['token'] = full_scrip_df['symboltoken']
-            if 'tradingsymbol' in full_scrip_df.columns and 'symbol' not in full_scrip_df.columns: full_scrip_df['symbol'] = full_scrip_df['tradingsymbol']
-            if 'strike' in full_scrip_df.columns: full_scrip_df['strike'] = pd.to_numeric(full_scrip_df['strike'], errors='coerce').fillna(0) / 100.0
-            
-            fno_opts = full_scrip_df[(full_scrip_df['strike'] > 0) & (full_scrip_df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
-            fno_opts['strike'] = pd.to_numeric(fno_opts['strike'], errors='coerce')
-            fno_opts['parsed_expiry'] = pd.to_datetime(fno_opts['expiry'], format='mixed', errors='coerce')
-            
-            today_dt = pd.Timestamp(datetime.now().date())
-            for name, group in fno_opts.groupby(fno_opts['name'].str.upper()):
-                clean_name = name.strip()
-                if clean_name in ['BSX', 'BSEX']: clean_name = 'SENSEX'
-                options_cache[clean_name] = group
-                valid_group = group[group['parsed_expiry'] >= today_dt].copy()
-                valid_group_sorted = valid_group.sort_values(by='parsed_expiry')
-                unique_expiries = []
-                for exp_dt in valid_group_sorted['parsed_expiry'].unique():
-                    formatted_exp = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
-                    if formatted_exp not in unique_expiries: unique_expiries.append(formatted_exp)
-                symbol_expiries_cache[clean_name] = unique_expiries
+        resp = requests.get(url, timeout=120)
+        if resp.status_code != 200:
+            print(f"⚠ Scrip master HTTP {resp.status_code}")
+            return False
+        df = pd.DataFrame(resp.json())
+        if 'symboltoken' in df.columns and 'token' not in df.columns: df['token'] = df['symboltoken']
+        if 'tradingsymbol' in df.columns and 'symbol' not in df.columns: df['symbol'] = df['tradingsymbol']
+        keep = [c for c in ['token', 'symbol', 'name', 'expiry', 'strike', 'lotsize', 'instrumenttype', 'exch_seg'] if c in df.columns]
+        df = df[keep].copy()
+        df['strike'] = pd.to_numeric(df['strike'], errors='coerce').fillna(0) / 100.0
+        df['name_up'] = df['name'].astype(str).str.upper().str.strip()
 
-            if "SENSEX" not in options_cache and "BSX" in options_cache:
-                options_cache["SENSEX"] = options_cache["BSX"]
-                symbol_expiries_cache["SENSEX"] = symbol_expiries_cache.get("BSX", [])
-    except Exception: pass
+        fno = df[(df['strike'] > 0) & (df['exch_seg'].isin(['NFO', 'MCX', 'BFO', 'BSE']))].copy()
+        fno['parsed_expiry'] = pd.to_datetime(fno['expiry'], format='mixed', errors='coerce')
+
+        today_dt = pd.Timestamp(datetime.now().date())
+        new_opts, new_exp, new_exch = {}, {}, {}
+        for name, group in fno.groupby('name_up'):
+            clean_name = name
+            if clean_name in ['BSX', 'BSEX']: clean_name = 'SENSEX'
+            new_opts[clean_name] = group
+            new_exch[clean_name] = str(group['exch_seg'].iloc[0])
+            valid = group[group['parsed_expiry'] >= today_dt].sort_values(by='parsed_expiry')
+            uniq = []
+            for exp_dt in valid['parsed_expiry'].unique():
+                s = pd.Timestamp(exp_dt).strftime('%d%b%Y').upper()
+                if s not in uniq: uniq.append(s)
+            new_exp[clean_name] = uniq
+
+        if not new_opts:
+            print("⚠ Scrip master khali aaya")
+            return False
+        full_scrip_df = df
+        options_cache = new_opts
+        symbol_expiries_cache = new_exp
+        symbol_exch_cache = new_exch
+        chain_cache.clear()
+        spot_source_cache.clear()
+        scrip_master_date = datetime.now().strftime("%Y-%m-%d")
+        print(f"📚 Scrip master loaded: {len(new_opts)} symbols")
+        return True
+    except Exception as e:
+        print(f"⚠ Scrip master error: {e}")
+        return False
 
 
 # --- HTML TEMPLATE ---
@@ -746,53 +907,55 @@ HTML_TEMPLATE = """
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 6px; border: 1px solid #ced4da; }
         .controls-group { display: flex; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
+        .upd-badge { background: #2b8a3e; }
+        .upd-stale { background: #c92a2a; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
-        
+
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
-        
+
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
-        
+
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
-        
+
         th { padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
-        
+
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
-        
+
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
-        
+
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
-        
+
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
-        
-        #row-columns th { 
-            position: sticky; 
-            top: 50px; 
-            z-index: 24; 
-            border-bottom: 3px solid #000000 !important; 
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
-            background-clip: padding-box; 
+
+        #row-columns th {
+            position: sticky;
+            top: 50px;
+            z-index: 24;
+            border-bottom: 3px solid #000000 !important;
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
+            background-clip: padding-box;
         }
-        
+
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
-        
-        #row-columns th.strike-col { 
-            top: 50px; 
-            z-index: 26; 
-            background: #ff922b !important; 
-            color: #ffffff !important; 
-            border-bottom: 3px solid #000000 !important; 
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important; 
+
+        #row-columns th.strike-col {
+            top: 50px;
+            z-index: 26;
+            background: #ff922b !important;
+            color: #ffffff !important;
+            border-bottom: 3px solid #000000 !important;
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
             min-width: 90px !important;
             width: 90px !important;
         }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
-        
+
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
-        
+
         .yellow-pill-badge {
             background-color: #ffd43b !important;
             color: #000000 !important;
@@ -824,7 +987,7 @@ HTML_TEMPLATE = """
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
-        
+
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
     </style>
@@ -833,13 +996,14 @@ HTML_TEMPLATE = """
     <div class="header">
         <h2>⚡ Arush LTP Calculator</h2>
         <div class="controls-group">
+            <div class="lot-size-badge upd-badge" id="updDisplay">Updated: -</div>
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
             <select id="symbolSelect" onchange="onSymbolChange()"></select>
             <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
         </div>
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
-    
+
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
@@ -870,6 +1034,8 @@ HTML_TEMPLATE = """
     <script>
         let allExpiriesData = {};
         let isFirstLoad = true;
+        let busy = false;
+        const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
@@ -888,11 +1054,12 @@ HTML_TEMPLATE = """
                 sortedSymbols.forEach(sym => {
                     let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; symSelect.appendChild(opt);
                 });
-                if(meta.symbols.length > 0) {
+                if (meta.symbols.length > 0) {
                     symSelect.value = meta.active_symbol || meta.symbols[0];
                     onSymbolChange();
                 }
-            });
+                if (!meta.ready) setTimeout(initApp, 3000);
+            }).catch(() => setTimeout(initApp, 3000));
         }
         function onSymbolChange() {
             let sym = document.getElementById("symbolSelect").value;
@@ -908,8 +1075,10 @@ HTML_TEMPLATE = """
         function updateSelectedSymbolSheet() {
             let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
-            if(!sym) return;
-            fetch('/api/set-symbol/' + sym + (exp ? '/' + exp : ''), {method: 'POST'}).then(() => fetchData());
+            if (!sym) return;
+            document.getElementById("gridBody").innerHTML = LOADING_ROW;
+            isFirstLoad = true;
+            fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => fetchData());
         }
         function createSinglePillBadgeHtml(badgeObj) {
             if (!badgeObj || !badgeObj.show_badge) return "";
@@ -919,23 +1088,36 @@ HTML_TEMPLATE = """
         }
         function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
-            if(!sym) return;
-            fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
+            let exp = document.getElementById("expirySelect").value;
+            if (!sym || busy) return;
+            busy = true;
+            fetch('/api/data/' + encodeURIComponent(sym) + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
+                busy = false;
+                if (document.getElementById("symbolSelect").value !== sym) return;
+                let tbody = document.getElementById("gridBody");
+                if (data.partial || (exp && data.expiry && data.expiry !== exp)) {
+                    if (!tbody.innerHTML.includes("Loading data")) tbody.innerHTML = LOADING_ROW;
+                    return;
+                }
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
-                
-                if(data.D5) document.getElementById("cell-d5").innerHTML = data.D5;
-                if(data.H5) document.getElementById("cell-h5").innerHTML = data.H5;
-                if(data.Q5) document.getElementById("cell-q5").innerHTML = data.Q5;
-                if(data.U5) document.getElementById("cell-u5").innerHTML = data.U5;
+                let upd = document.getElementById("updDisplay");
+                if (data.updated_at) {
+                    upd.innerText = "Updated: " + data.updated_at + " (" + data.age + "s ago)";
+                    upd.className = "lot-size-badge " + (data.age > 20 ? "upd-stale" : "upd-badge");
+                }
+
+                if (data.D5) document.getElementById("cell-d5").innerHTML = data.D5;
+                if (data.H5) document.getElementById("cell-h5").innerHTML = data.H5;
+                if (data.Q5) document.getElementById("cell-q5").innerHTML = data.Q5;
+                if (data.U5) document.getElementById("cell-u5").innerHTML = data.U5;
 
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
                 let k3TextLower = data.K3.toLowerCase();
-                if(k3TextLower.includes("bull")) k3Div.style.color = "#0000FF";
-                else if(k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
+                if (k3TextLower.includes("bull")) k3Div.style.color = "#0000FF";
+                else if (k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
                 else k3Div.style.color = "#000000";
 
-                let tbody = document.getElementById("gridBody"); 
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     tbody.innerHTML = "";
                     data.grid_rows.forEach(row => {
@@ -946,13 +1128,13 @@ HTML_TEMPLATE = """
                             let ceBadges = [];
                             let ceOiHtml = createSinglePillBadgeHtml(row.ce_oi_badge);
                             let ceVolHtml = createSinglePillBadgeHtml(row.ce_vol_badge);
-                            if(ceOiHtml) ceBadges.push(ceOiHtml);
-                            if(ceVolHtml) ceBadges.push(ceVolHtml);
+                            if (ceOiHtml) ceBadges.push(ceOiHtml);
+                            if (ceVolHtml) ceBadges.push(ceVolHtml);
                             let peBadges = [];
                             let peVolHtml = createSinglePillBadgeHtml(row.pe_vol_badge);
                             let peOiHtml = createSinglePillBadgeHtml(row.pe_oi_badge);
-                            if(peVolHtml) peBadges.push(peVolHtml);
-                            if(peOiHtml) peBadges.push(peOiHtml);
+                            if (peVolHtml) peBadges.push(peVolHtml);
+                            if (peOiHtml) peBadges.push(peOiHtml);
                             let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
                             tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
@@ -1009,49 +1191,65 @@ HTML_TEMPLATE = """
                         isFirstLoad = false;
                     }
                 }
-            });
+            }).catch(() => { busy = false; });
         }
-        setInterval(fetchData, 1000); window.onload = initApp;
+        setInterval(fetchData, 2000); window.onload = initApp;
     </script>
 </body>
 </html>
 """
 
 
-# --- FLASK API ROUTES ---
+# --- FLASK ROUTES ---
+@app.before_request
+def basic_auth_guard():
+    if not DASH_USER or request.path == "/health":
+        return None
+    a = request.authorization
+    if a and hmac.compare_digest(a.username or "", DASH_USER) and hmac.compare_digest(a.password or "", DASH_PASS or ""):
+        return None
+    return Response("Login required", 401, {"WWW-Authenticate": 'Basic realm="Dashboard"'})
+
+
+@app.route('/health')
+def health():
+    return "ok"
+
+
 @app.route('/')
-def home(): 
+def home():
     return render_template_string(HTML_TEMPLATE)
+
 
 @app.route('/api/init-meta')
 def get_initial_metadata():
-    global current_active_symbol_ui
+    last_ui_poll[0] = time.time()
     return jsonify({
-        "symbols": sorted(list(options_cache.keys())) if options_cache else ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"], 
-        "expiries": symbol_expiries_cache, 
-        "active_symbol": current_active_symbol_ui
+        "symbols": sorted(list(options_cache.keys())) if options_cache else INDICES,
+        "expiries": symbol_expiries_cache,
+        "active_symbol": current_active_symbol_ui,
+        "ready": bool(options_cache)
     })
+
 
 @app.route('/api/set-symbol/<symbol>', defaults={'expiry': None}, methods=['POST'])
 @app.route('/api/set-symbol/<symbol>/<expiry>', methods=['POST'])
 def set_symbol_api(symbol, expiry):
-    global user_selected_expiries, current_active_symbol_ui, smart_api_global
+    global current_active_symbol_ui
     sym = symbol.upper()
     current_active_symbol_ui = sym
-    try:
-        if expiry: user_selected_expiries[sym] = expiry.upper()
-        if smart_api_global and sym in options_cache:
-            threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
-    except Exception: pass
+    if expiry:
+        user_selected_expiries[sym] = expiry.upper()
+    last_ui_poll[0] = time.time()
     return jsonify({"status": "success"})
+
 
 @app.route('/api/data/<symbol>')
 def get_symbol_runtime_data(symbol):
+    last_ui_poll[0] = time.time()
     sym = symbol.upper()
     vault = multi_symbol_runtime_states.get(sym, {})
-    if not vault.get("grid_rows") and smart_api_global and sym in options_cache:
-        threading.Thread(target=fetch_symbol_data, args=(smart_api_global, sym), daemon=True).start()
-        
+    ts = vault.get("fetched_ts")
     return jsonify({
         "lot_size": vault.get("lot_size", 1),
         "D5": vault.get("D5_TEXT", '<div class="winner-card-top">-----</div>'),
@@ -1060,50 +1258,121 @@ def get_symbol_runtime_data(symbol):
         "U5": vault.get("U5_TEXT", '<div class="winner-card-top">-----</div>'),
         "K3": vault.get("K3_TEXT", f"{sym} is Neutral"),
         "grid_rows": vault.get("grid_rows", []),
-        "spot_price": vault.get("spot_price", 0)
+        "spot_price": vault.get("spot_price", 0),
+        "expiry": vault.get("active_expiry", ""),
+        "partial": bool(vault.get("is_light", False)) or not vault.get("grid_rows"),
+        "updated_at": vault.get("updated_at", ""),
+        "age": int(time.time() - ts) if ts else 0
     })
 
 
-# --- BACKGROUND PROCESS ENGINE ---
+# --- BACKGROUND ENGINE ---
+def market_open(exch, now_dt):
+    if now_dt.weekday() >= 5:
+        return False
+    hm = now_dt.strftime("%H:%M")
+    if exch == "MCX":
+        return "09:00" <= hm <= "23:55"
+    return "09:00" <= hm <= "15:35"
+
+
+def do_login(smart_api):
+    last_login_ts[0] = time.time()
+    if not (CLIENT_ID and PIN and TOTP_SECRET):
+        print("❌ ANGEL_CLIENT_ID / ANGEL_PIN / ANGEL_TOTP_SECRET env set nahi hain")
+        return False
+    try:
+        totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
+        res = smart_api.generateSession(CLIENT_ID, PIN, totp)
+        if res and res.get('status'):
+            print("🔐 Session generated")
+            return True
+        print(f"❌ Login failed: {str(res)[:150]}")
+    except Exception as e:
+        print(f"❌ Login exception: {e}")
+    return False
+
+
 def run_bot_lock_loop():
-    global last_session_date, current_active_symbol_ui, options_cache, smart_api_global
+    global last_session_date, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     time.sleep(3)
-    
-    try: 
+
+    try:
         smart_api = SmartConnect(api_key=API_KEY)
         smart_api_global = smart_api
-    except Exception as e: 
+    except Exception as e:
         print(f"❌ Init Error: {e}")
         return
-    
+
+    load_state()
+    login_fail = 0
+    last_save = time.time()
+    last_sm_try = 0.0
+    rot_i = 0
+
     while True:
         try:
             now_dt = datetime.now()
-            today_date_str = now_dt.strftime("%Y-%m-%d")
-            
-            if last_session_date != today_date_str:
-                totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now() if TOTP_SECRET else "123456"
-                print(f"🔐 Generating Session for Client ID: {CLIENT_ID}")
-                session_res = smart_api.generateSession(CLIENT_ID, PIN, totp)
-                if session_res and session_res.get('status'):
-                    last_session_date = today_date_str
-                    print("🔐 Session Generated Successfully! Loading Scrip Master...")
-                    initialize_scrip_master(smart_api)
-            
-            if options_cache:
-                active_sym = current_active_symbol_ui
-                if active_sym: 
-                    fetch_symbol_data(smart_api, active_sym)
-                
-                for background_sym in ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]:
-                    if background_sym != active_sym and background_sym in options_cache:
-                        fetch_symbol_data(smart_api, background_sym)
-                        time.sleep(0.1)
+            today = now_dt.strftime("%Y-%m-%d")
 
-        except Exception as e: 
+            # LOGIN (backoff ke saath: galat PIN par account lock na ho)
+            if last_session_date != today or need_relogin[0]:
+                if do_login(smart_api):
+                    last_session_date = today
+                    need_relogin[0] = False
+                    login_fail = 0
+                else:
+                    login_fail += 1
+                    time.sleep(600 if login_fail >= 5 else 20 * login_fail)
+                    continue
+
+            # SCRIP MASTER (roz ek baar, fail ho to har 60s retry)
+            if scrip_master_date != today:
+                if time.time() - last_sm_try > 60:
+                    last_sm_try = time.time()
+                    initialize_scrip_master()
+                if not options_cache:
+                    time.sleep(5)
+                    continue
+
+            ui_open = (time.time() - last_ui_poll[0]) < 10
+            active = current_active_symbol_ui
+
+            # 1) Screen wala symbol: poori chain, har loop
+            if ui_open and active and active in options_cache:
+                v = multi_symbol_runtime_states.get(active, {})
+                fresh = (time.time() - v.get("fetched_ts", 0)) < 60
+                if market_open(symbol_exch_cache.get(active, ""), now_dt) or not fresh or v.get("is_light"):
+                    fetch_symbol_data(smart_api, active, light=False)
+
+            # 2) Background: ek symbol per loop (indices har ~10 symbols baad)
+            open_syms = [s for s in options_cache if market_open(symbol_exch_cache.get(s, ""), now_dt)]
+            others = sorted(s for s in open_syms if s not in INDICES)
+            idx_open = [s for s in INDICES if s in open_syms]
+            rotation = []
+            for k, s in enumerate(others):
+                rotation.append(s)
+                if k % 10 == 9:
+                    rotation.extend(idx_open)
+            if not others:
+                rotation = idx_open
+            if rotation:
+                sym = rotation[rot_i % len(rotation)]
+                rot_i += 1
+                if not (ui_open and sym == active):
+                    fetch_symbol_data(smart_api, sym, light=True)
+            else:
+                time.sleep(5)
+
+            if time.time() - last_save > 30:
+                save_state()
+                last_save = time.time()
+        except Exception as e:
             print(f"⚠ Loop Error: {e}")
-        time.sleep(3)
+            time.sleep(3)
+        time.sleep(0.2)
+
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
