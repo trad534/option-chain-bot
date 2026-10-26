@@ -588,7 +588,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 time.sleep(0.05)
 
         dash_quotes_dict = {}
-        # 📌 FIXED: Persistent Cache Guard to prevent 0 overwrites
         for item in all_dash_quotes:
             tok = str(item.get('symbolToken', item.get('token', ''))).strip()
             if tok:
@@ -619,6 +618,9 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
         t = max((expiry_dt_val.replace(hour=15, minute=30) - datetime.now()).total_seconds() / (365.0 * 24 * 3600), 0.0001)
 
         raw_grid_payload = []
+        valid_count = 0
+        total_strikes = len(strikes)
+
         for st in strikes:
             ce_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('CE'))]
             pe_sub = current_expiry_options[(current_expiry_options['strike'] == st) & (current_expiry_options['symbol'].str.upper().str.endswith('PE'))]
@@ -628,6 +630,9 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             
             ce_q = dash_quotes_dict.get(ce_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
             pe_q = dash_quotes_dict.get(pe_token, {'ltp': 0, 'volume': 0, 'oi': 0, 'oi_chg': 0, 'net_change': 0})
+
+            if ce_q['ltp'] > 0 or pe_q['ltp'] > 0:
+                valid_count += 1
 
             ce_gks = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
             pe_gks = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
@@ -641,7 +646,19 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
             })
 
-        execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        # 📌 WARM-UP CHECK: Jab tak saare ya majority strikes ka data na aa jaye, scenario tracker run mat karo taaki galat scenario na bane
+        if valid_count >= (total_strikes * 0.5):
+            execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=lot_size, active_expiry=current_expiry, symbol_name=clean_active_symbol)
+        else:
+            # Agar data warm-up ho raha hai, toh grid rows ko directly vault mein daal do bina scenario tracker ke
+            if clean_active_symbol not in multi_symbol_runtime_states: multi_symbol_runtime_states[clean_active_symbol] = {}
+            vault = multi_symbol_runtime_states[clean_active_symbol]
+            vault["lot_size"] = lot_size
+            vault["spot_price"] = round(spot_price, 2)
+            vault["active_expiry"] = current_expiry
+            vault["grid_rows"] = raw_grid_payload
+            vault["K3_TEXT"] = f"{clean_active_symbol} is syncing market data..."
+
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception: {e}")
 
