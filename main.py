@@ -697,8 +697,15 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
+        /* 📌 Complete Solid Background with Extended Overlap to eliminate center white gap */
+        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
+        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
+        
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
+        
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
+        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
@@ -711,6 +718,7 @@ HTML_TEMPLATE = """
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
         
+        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
             z-index: 26; 
