@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% SEAMLESS BLOCKS WITHOUT ANY LINE) ---
+# --- HTML TEMPLATE (100% SEAMLESS BLOCKS WITH STICKY BOTTOM BLACK LINE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -704,11 +704,15 @@ HTML_TEMPLATE = """
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
-        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; background-clip: padding-box; }
+        
+        /* 📌 STICKY HEADER SECOND ROW WITH PERMANENT BLACK BOTTOM BORDER */
+        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 2px solid #000000 !important; background-clip: padding-box; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
-        #row-columns th.strike-col { top: 50px; z-index: 21; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
+        
+        /* 📌 STRIKE COLUMN HEADER ALSO KEEPS THE STICKY BOTTOM BLACK LINE */
+        #row-columns th.strike-col { top: 50px; z-index: 21; background: #ff922b !important; color: #ffffff !important; border-bottom: 2px solid #000000 !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
