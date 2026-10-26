@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% UNIFORM WIDTH & PROPER COLSPAN TO LTP) ---
+# --- HTML TEMPLATE (100% UNIFORM WIDTH & EXACT COLUMN MERGES) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -753,15 +753,19 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Exact Colspan matching all 10 columns up to LTP, with non-winners merged up to IV -->
+                <!-- 📌 Non-winner merged on Theta-IV (colspan=4), Winner merged on OI-Change (colspan=3), LTP excluded -->
                 <tr id="row-winners">
-                    <th colspan="5" class="bg-call-side"></th>
-                    <th colspan="2" class="bg-call-side" id="cell-d5">-</th>
+                    <th class="th-ce"></th>
+                    <th colspan="4" class="bg-call-side" id="cell-d5">-</th>
+                    <th class="bg-call-side"></th>
                     <th colspan="3" class="bg-call-side" id="cell-h5">-</th>
+                    <th class="th-ce" style="border:none !important;"></th>
                     <th class="strike-col">OUTPUT</th>
+                    <th class="th-pe" style="border:none !important;"></th>
                     <th colspan="3" class="bg-put-side" id="cell-q5">-</th>
-                    <th colspan="2" class="bg-put-side" id="cell-u5">-</th>
-                    <th colspan="5" class="bg-put-side"></th>
+                    <th class="bg-put-side"></th>
+                    <th colspan="4" class="bg-put-side" id="cell-u5">-</th>
+                    <th class="th-pe"></th>
                 </tr>
                 <!-- 📌 Column Headers with Call and Put Styles -->
                 <tr id="row-columns">
