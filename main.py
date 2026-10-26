@@ -208,7 +208,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -588,7 +588,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 time.sleep(0.05)
 
         dash_quotes_dict = {}
-        # 📌 CRITICAL FIX FOR 0 DATA: Persistent Cache Protected Update Strategy
+        # 📌 FIXED: Persistent Cache Guard to prevent 0 overwrites
         for item in all_dash_quotes:
             tok = str(item.get('symbolToken', item.get('token', ''))).strip()
             if tok:
@@ -598,7 +598,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                 new_chg = float(item.get('netChange', item.get('change', 0)))
                 new_oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
                 
-                # Fetch existing cached values
                 prev_item = persistent_quotes_cache.get(tok, {'ltp': 0, 'volume': 0, 'oi': 0, 'net_change': 0, 'oi_chg': 0})
                 
                 persistent_quotes_cache[tok] = {
@@ -683,7 +682,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% BULLETPROOF STICKY HEADER WITH LOCKED BOTTOM BLACK BORDER) ---
+# --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -710,7 +709,6 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
-        /* 📌 Complete Solid Background with Extended Overlap to eliminate center white gap */
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
         
@@ -718,7 +716,6 @@ HTML_TEMPLATE = """
         
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
-        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
@@ -728,11 +725,9 @@ HTML_TEMPLATE = """
             background-clip: padding-box; 
         }
         
-        /* 📌 Strike Price Width set to 90px */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
         
-        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
             z-index: 26; 
@@ -748,7 +743,6 @@ HTML_TEMPLATE = """
         
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
         
-        /* 📌 Yellow Pill Badge styling for Winner Cards */
         .yellow-pill-badge {
             background-color: #ffd43b !important;
             color: #000000 !important;
