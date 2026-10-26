@@ -561,16 +561,23 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT FUTCOM MATCH)
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (EXACT STRIKE 0 / FUTURES MATCH)
         if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
             try:
-                # MCX ka exact FUTCOM (Futures Commodity) contract dhoondhein jo near expiry ho
+                # MCX par underlying/futures contract ki strike hamesha 0 hoti hai aur name match hona chahiye
                 mcx_fut = full_scrip_df[
                     (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
                     (full_scrip_df['exch_seg'] == 'MCX') & 
-                    (full_scrip_df['instrumenttype'] == 'FUTCOM')
+                    (full_scrip_df['strike'] == 0)
                 ].copy()
                 
+                if mcx_fut.empty:
+                    # Fallback agar strike 0 na mile toh sabse pehli MCX row utha lo
+                    mcx_fut = full_scrip_df[
+                        (full_scrip_df['name'].str.upper() == clean_active_symbol) & 
+                        (full_scrip_df['exch_seg'] == 'MCX')
+                    ].copy()
+
                 if not mcx_fut.empty:
                     if 'parsed_expiry' in mcx_fut.columns:
                         mcx_fut = mcx_fut.sort_values(by='parsed_expiry')
