@@ -241,11 +241,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             ceWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] < peOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peTop['highest']['strike'] if 'ceTop' in locals() else True):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (ABSOLUTE SOLID BACKGROUND - ZERO WHITE LINES) ---
+# --- HTML TEMPLATE (PIXEL-PERFECT SEAMLESS BACKGROUND) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -697,14 +697,14 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
-        /* 📌 Solid background without inner white separator lines */
-        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset 0 0 0 1px #81c784; }
-        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset 0 0 0 1px #e57373; }
+        /* 📌 Absolute Solid Background without sub-pixel gaps */
+        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset 0 0 0 2px #81c784; transform: translateZ(0); }
+        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset 0 0 0 2px #e57373; transform: translateZ(0); }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; }
-        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; border-top: 1px solid #dee2e6 !important; border-right: 1px solid #dee2e6 !important; }
+        #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
+        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; background-clip: padding-box; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
