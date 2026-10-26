@@ -234,7 +234,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # 📌 PUT (PE) SIDE WINNER ENGINE (FIXED TYPOS & VARIABLES)
+        # 📌 PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
@@ -365,7 +365,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peVolResult = calculateIndependentCell(peVolTop, "PE_VOL", "Eos VOL", peWinner == "VOL" or peWinner == "BOTH", peVolRawState, peVolStatusText)
         peOiResult  = calculateIndependentCell(peOiTop, "PE_OI", "Eos OI", peWinner == "OI" or peWinner == "BOTH", peOiRawState, peOiStatusText)
 
-        # 📌 FIXED: PE Side state now evaluates 'peWinner' correctly
         finalCeState = ceOiResult['scenarioStatus'] if ceWinner == "OI" else ceVolResult['scenarioStatus']
         finalPeState = peOiResult['scenarioStatus'] if peWinner == "OI" else peVolResult['scenarioStatus']
 
@@ -562,6 +561,22 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (NEW SAFE BLOCK)
+        if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
+            try:
+                mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
+                if not mcx_rows.empty:
+                    mcx_tok = str(mcx_rows.iloc[0]['token']).strip()
+                    q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
+                    if q_res and q_res.get('status') and q_res.get('data'):
+                        fetched_data = q_res['data'].get('fetched', {})
+                        if isinstance(fetched_data, dict) and mcx_tok in fetched_data: 
+                            spot_price = float(fetched_data[mcx_tok].get('ltp', 0))
+                        elif isinstance(fetched_data, list) and len(fetched_data) > 0: 
+                            spot_price = float(fetched_data[0].get('ltp', 0))
+            except Exception as e:
+                print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
+
         if spot_price <= 0 and clean_active_symbol not in index_map:
             try:
                 equity_row = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'NSE')]
@@ -612,7 +627,6 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
 
             prev_entry = persistent_quotes_cache.get(tok, {})
 
-            # 📌 Strict Fallback Lock: Never let a valid non-zero data be overwritten by 0
             final_ltp = new_ltp if new_ltp > 0 else prev_entry.get('ltp', 0.0)
             final_vol = new_vol if new_vol > 0 else prev_entry.get('volume', 0.0)
             final_oi = new_oi if new_oi > 0 else prev_entry.get('oi', 0.0)
@@ -701,7 +715,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% BULLETPROOF STICKY HEADER WITH LOCKED BOTTOM BLACK BORDER) ---
+# --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -728,7 +742,6 @@ HTML_TEMPLATE = """
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
-        /* 📌 Complete Solid Background with Extended Overlap to eliminate center white gap */
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
         
@@ -736,7 +749,6 @@ HTML_TEMPLATE = """
         
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
         
-        /* 📌 BULLETPROOF STICKY SECOND ROW WITH FIXED ABSOLUTE BLACK BORDER & SHADOW */
         #row-columns th { 
             position: sticky; 
             top: 50px; 
@@ -746,11 +758,9 @@ HTML_TEMPLATE = """
             background-clip: padding-box; 
         }
         
-        /* 📌 Strike Price Width set to 90px */
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
         #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
         
-        /* 📌 STRIKE COLUMN HEADER STICKY WITH PERMANENT LOCKED BLACK BORDER */
         #row-columns th.strike-col { 
             top: 50px; 
             z-index: 26; 
@@ -766,7 +776,6 @@ HTML_TEMPLATE = """
         
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
         
-        /* 📌 Yellow Pill Badge styling for Winner Cards */
         .yellow-pill-badge {
             background-color: #ffd43b !important;
             color: #000000 !important;
@@ -799,7 +808,6 @@ HTML_TEMPLATE = """
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
         
-        /* 🎨 Color Classes: Positive (+)=Blue (#1c7ed6), Negative (-)=Red (#c92a2a) */
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
     </style>
