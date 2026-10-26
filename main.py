@@ -218,7 +218,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
+        elif ceVolIsStable100 and not ceOiIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         else:
             ceOiActiveRow = ceOiTop['highest']['row']
@@ -245,7 +245,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% UNIFORM WIDTH & EXACT COLUMN MERGES WITH LTP HEADERS FILLED) ---
+# --- HTML TEMPLATE (100% UNIFORM WIDTH & 2X BLACK BOTTOM BORDER LINE) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -704,12 +704,14 @@ HTML_TEMPLATE = """
         
         th { position: sticky; z-index: 11; }
         #row-winners th { top: 0; z-index: 13; padding: 4px; height: 50px; vertical-align: middle; border: none !important; }
-        #row-columns th { top: 50px; z-index: 12; }
+        
+        /* 📌 2x Black Solid Line Bottom Border for Header Rows */
+        #row-columns th { top: 50px; z-index: 12; border-bottom: 3px solid #000000 !important; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
         th.strike-col { position: sticky; z-index: 15; }
         #row-winners th.strike-col { top: 0; background: #ff922b !important; color: #ffffff !important; }
-        #row-columns th.strike-col { top: 50px; background: #ff922b !important; color: #ffffff !important; }
+        #row-columns th.strike-col { top: 50px; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
@@ -753,7 +755,7 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Non-winner merged on Vega-IV (colspan=5), Winner merged on OI-Change (colspan=3), LTP headers filled -->
+                <!-- 📌 Winners Row -->
                 <tr id="row-winners">
                     <th colspan="5" class="bg-call-side" id="cell-d5">-</th>
                     <th class="bg-call-side"></th>
@@ -765,7 +767,7 @@ HTML_TEMPLATE = """
                     <th class="bg-put-side"></th>
                     <th colspan="5" class="bg-put-side" id="cell-u5">-</th>
                 </tr>
-                <!-- 📌 Column Headers with Call and Put Styles -->
+                <!-- 📌 Column Headers with 2x Black Bottom Border Line -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
