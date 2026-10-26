@@ -240,12 +240,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
-            peWinner = "OI"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']):
+            ceWinner = "OI" # Fallback safeguard
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (100% STICKY ROCK-SOLID HEADER WITH FIXED 2X BOTTOM LINE) ---
+# --- HTML TEMPLATE (ROBUST STICKY & SAFE FALLBACK) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -694,7 +694,6 @@ HTML_TEMPLATE = """
         
         th { border: 1px solid #dee2e6; border-top: none; padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
         
-        /* 📌 Professional Vibrant Medium-Deep Shades matching Reference */
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         .bg-call-side { background: #81c784 !important; }
@@ -702,7 +701,6 @@ HTML_TEMPLATE = """
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
-        /* 📌 Rock-Solid Sticky Header Fix */
         #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; border-bottom: none !important; }
         #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; }
         
@@ -712,7 +710,6 @@ HTML_TEMPLATE = """
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
         
-        /* 📌 100% Uniform Card Width & Height */
         .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
 
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
@@ -752,19 +749,17 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Winners Row -->
                 <tr id="row-winners">
-                    <th colspan="5" class="bg-call-side" id="cell-d5">-</th>
+                    <th colspan="5" class="bg-call-side" id="cell-d5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side"></th>
-                    <th colspan="3" class="bg-call-side" id="cell-h5">-</th>
+                    <th colspan="3" class="bg-call-side" id="cell-h5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side" style="border:none !important;"></th>
                     <th class="strike-col">OUTPUT</th>
                     <th class="bg-put-side" style="border:none !important;"></th>
-                    <th colspan="3" class="bg-put-side" id="cell-q5">-</th>
+                    <th colspan="3" class="bg-put-side" id="cell-q5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-put-side"></th>
-                    <th colspan="5" class="bg-put-side" id="cell-u5">-</th>
+                    <th colspan="5" class="bg-put-side" id="cell-u5"><div class="winner-card-top">-----</div></th>
                 </tr>
-                <!-- 📌 Column Headers with 2x Black Bottom Border Line -->
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
                     <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
@@ -834,10 +829,10 @@ HTML_TEMPLATE = """
             fetch('/api/data/' + sym + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 
-                document.getElementById("cell-d5").innerHTML = data.D5;
-                document.getElementById("cell-h5").innerHTML = data.H5;
-                document.getElementById("cell-q5").innerHTML = data.Q5;
-                document.getElementById("cell-u5").innerHTML = data.U5;
+                if(data.D5) document.getElementById("cell-d5").innerHTML = data.D5;
+                if(data.H5) document.getElementById("cell-h5").innerHTML = data.H5;
+                if(data.Q5) document.getElementById("cell-q5").innerHTML = data.Q5;
+                if(data.U5) document.getElementById("cell-u5").innerHTML = data.U5;
 
                 let k3Div = document.getElementById("k3Display");
                 k3Div.innerText = data.K3;
@@ -846,8 +841,9 @@ HTML_TEMPLATE = """
                 else if(k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
                 else k3Div.style.color = "#000000";
 
-                let tbody = document.getElementById("gridBody"); tbody.innerHTML = "";
+                let tbody = document.getElementById("gridBody"); 
                 if (data.grid_rows && data.grid_rows.length > 0) {
+                    tbody.innerHTML = "";
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
                         if (row.is_spot_row) {
