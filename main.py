@@ -12,6 +12,7 @@ from SmartApi import SmartConnect
 from flask import Flask, jsonify, render_template_string
 import threading
 import builtins
+from concurrent.futures import ThreadPoolExecutor
 
 # --- SERVER ALIVE & FLASK CONFIGURATION ---
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
@@ -494,6 +495,15 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 # --- MARKET DATA ENGINE ---
+def fetch_tokens_batch_api(smart_api, exch, t_list):
+    try:
+        res = smart_api.getMarketData("FULL", {exch: t_list})
+        if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
+            return res['data']['fetched']
+    except Exception:
+        pass
+    return []
+
 def fetch_symbol_data(smart_api, clean_active_symbol):
     global morning_oi_dict, baseline_date, options_cache, persistent_quotes_cache, symbol_expiries_cache, user_selected_expiries
     try:
@@ -577,23 +587,41 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             if exch not in exch_map: exch_map[exch] = []
             exch_map[exch].append(tok)
 
-        all_dash_quotes = []
+        batch_chunks = []
         for exch, t_list in exch_map.items():
-            for i in range(0, len(t_list), 20):
-                try:
-                    res = smart_api.getMarketData("FULL", {exch: t_list[i:i+20]})
-                    if res and res.get('status') and res.get('data') and res.get('data').get('fetched'):
-                        all_dash_quotes.extend(res['data']['fetched'])
-                except Exception: pass
-                time.sleep(0.05)
+            for i in range(0, len(t_list), 40):
+                batch_chunks.append((exch, t_list[i:i+40]))
+
+        all_dash_quotes = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(fetch_tokens_batch_api, smart_api, exch, t_sub) for exch, t_sub in batch_chunks]
+            for f in futures:
+                all_dash_quotes.extend(f.result())
 
         dash_quotes_dict = {}
         for item in all_dash_quotes:
             tok = str(item.get('symbolToken', item.get('token', ''))).strip()
+            new_ltp = float(item.get('ltp', 0))
+            new_vol = float(item.get('tradeVolume', item.get('volume', 0)))
+            new_oi = float(item.get('opnInterest', item.get('oi', 0)))
+            new_net_change = float(item.get('netChange', item.get('change', 0)))
+            new_oi_chg = float(item.get('opnInterestChange', item.get('oiChange', 0)))
+
+            prev_entry = persistent_quotes_cache.get(tok, {})
+
+            # 📌 Fallback Lock Logic - Prevents zero values from overwriting valid data
+            final_ltp = new_ltp if new_ltp > 0 else prev_entry.get('ltp', 0)
+            final_vol = new_vol if new_vol > 0 else prev_entry.get('volume', 0)
+            final_oi = new_oi if new_oi > 0 else prev_entry.get('oi', 0)
+            final_net_change = new_net_change if new_net_change != 0 else prev_entry.get('net_change', 0)
+            final_oi_chg = new_oi_chg if new_oi_chg != 0 else prev_entry.get('oi_chg', 0)
+
             persistent_quotes_cache[tok] = {
-                'ltp': float(item.get('ltp', 0)), 'volume': float(item.get('tradeVolume', item.get('volume', 0))),
-                'oi': float(item.get('opnInterest', item.get('oi', 0))), 'net_change': float(item.get('netChange', item.get('change', 0))),
-                'oi_chg': float(item.get('opnInterestChange', item.get('oiChange', 0)))
+                'ltp': final_ltp,
+                'volume': final_vol,
+                'oi': final_oi,
+                'net_change': final_net_change,
+                'oi_chg': final_oi_chg
             }
 
         for tok, q_data in persistent_quotes_cache.items():
