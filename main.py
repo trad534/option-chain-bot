@@ -928,7 +928,7 @@ HTML_TEMPLATE = """
                 }
             });
         }
-        setInterval(fetchData, 3000); window.onload = initApp;
+        setInterval(fetchData, 1000); window.onload = initApp;
     </script>
 </body>
 </html>
