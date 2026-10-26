@@ -561,10 +561,14 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (Index): {e}")
 
-        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (NEW SAFE BLOCK)
+        # 📌 MCX COMMODITIES SPOT / UNDERLYING PRICE FETCH (FIXED)
         if spot_price <= 0 and clean_active_symbol in ['CRUDEOIL', 'NATURALGAS', 'GOLD', 'SILVER', 'COPPER', 'ZINC', 'ALUMINIUM', 'LEAD', 'NICKEL']:
             try:
-                mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
+                # Sirf futures contract ya non-strike wale main contract ko filter karein
+                mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX') & (full_scrip_df['strike'] == 0)]
+                if mcx_rows.empty:
+                    mcx_rows = full_scrip_df[(full_scrip_df['name'].str.upper() == clean_active_symbol) & (full_scrip_df['exch_seg'] == 'MCX')]
+                
                 if not mcx_rows.empty:
                     mcx_tok = str(mcx_rows.iloc[0]['token']).strip()
                     q_res = smart_api.getMarketData("FULL", {"MCX": [mcx_tok]})
@@ -576,6 +580,7 @@ def fetch_symbol_data(smart_api, clean_active_symbol):
                             spot_price = float(fetched_data[0].get('ltp', 0))
             except Exception as e:
                 print(f"⚠ Spot Fetch Error (MCX Commodity): {e}")
+
 
         if spot_price <= 0 and clean_active_symbol not in index_map:
             try:
