@@ -245,7 +245,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -670,7 +670,7 @@ def initialize_scrip_master(smart_api):
     except Exception: pass
 
 
-# --- HTML TEMPLATE (ZERO WHITE LINES IN WINNERS AREA & STRIKE MERGED HEADER) ---
+# --- HTML TEMPLATE (ABSOLUTE SOLID BACKGROUND - ZERO WHITE LINES) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -690,25 +690,24 @@ HTML_TEMPLATE = """
         
         .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
         
-        /* 📌 Seamless Border Collapse to remove white gaps */
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
         
-        th { border: 1px solid #dee2e6; border-top: none; padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
+        th { border: none !important; padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
         
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
         
-        /* Smooth solid background without inner white borders */
-        .bg-call-side { background: #81c784 !important; border: none !important; }
-        .bg-put-side { background: #e57373 !important; border: none !important; }
+        /* 📌 Solid background without inner white separator lines */
+        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset 0 0 0 1px #81c784; }
+        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset 0 0 0 1px #e57373; }
         
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
         
         #row-winners th { position: sticky; top: 0; z-index: 20; padding: 4px; height: 50px; vertical-align: middle; }
-        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; }
+        #row-columns th { position: sticky; top: 50px; z-index: 19; border-bottom: 3px solid #000000 !important; border-top: 1px solid #dee2e6 !important; border-right: 1px solid #dee2e6 !important; }
         
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; }
-        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; }
+        #row-winners th.strike-col { top: 0; z-index: 22; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; }
         #row-columns th.strike-col { top: 50px; z-index: 21; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; }
 
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
@@ -752,7 +751,6 @@ HTML_TEMPLATE = """
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
             <thead>
-                <!-- 📌 Output & Strike Header Fixed + Solid Background Colors -->
                 <tr id="row-winners">
                     <th colspan="5" class="bg-call-side" id="cell-d5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side"></th>
