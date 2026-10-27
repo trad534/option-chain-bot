@@ -200,8 +200,8 @@ def maybe_daily_reset(now_dt):
         event_log.clear()
         last_event_sig.clear()
         global_run_date = today
-        reset_done_date = today if hms >= "09:14:50" else ""
-    elif hms >= "09:14:50" and reset_done_date != today:
+        reset_done_date = today if hms >= "09:14:55" else ""
+    elif hms >= "09:14:55" and reset_done_date != today:
         symbol_states_memory.clear()
         morning_oi_dict.clear()
         persistent_quotes_cache.clear()
