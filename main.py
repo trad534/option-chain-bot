@@ -2,6 +2,7 @@ import time
 import os
 import json
 import hmac
+from collections import deque
 import builtins
 import threading
 import requests
@@ -102,6 +103,23 @@ last_login_ts = [0.0]
 fail_streak = [0]
 api_lock = threading.Lock()
 _last_call = [0.0]
+state_lock = threading.RLock()
+sym_locks = {}
+active_pending = [0]
+wake_active = threading.Event()
+event_log = {}
+last_event_sig = {}
+
+
+def get_sym_lock(sym):
+    lk = sym_locks.get(sym)
+    if lk is None:
+        lk = sym_locks.setdefault(sym, threading.Lock())
+    return lk
+
+
+def log_event(sym, key, msg):
+    event_log.setdefault(sym, deque(maxlen=400)).append(f"{datetime.now().strftime('%H:%M:%S')} {key} {msg}")
 
 
 def get_symbol_memory(symbol, key, default=""):
@@ -179,12 +197,16 @@ def maybe_daily_reset(now_dt):
         symbol_states_memory.clear()
         morning_oi_dict.clear()
         persistent_quotes_cache.clear()
+        event_log.clear()
+        last_event_sig.clear()
         global_run_date = today
         reset_done_date = today if hms >= "09:14:50" else ""
     elif hms >= "09:14:50" and reset_done_date != today:
         symbol_states_memory.clear()
         morning_oi_dict.clear()
         persistent_quotes_cache.clear()
+        event_log.clear()
+        last_event_sig.clear()
         reset_done_date = today
 
 
@@ -254,11 +276,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike = float(r_dict['strike'])
             if not strike: continue
 
-            if idx >= (spot_idx - 1) and idx <= (spot_idx + 18):
+            if idx >= (spot_idx - 3) and idx <= (spot_idx + 18):
                 ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
                 ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            if idx >= (spot_idx - 18) and idx <= (spot_idx + 1):
+            if idx >= (spot_idx - 18) and idx <= (spot_idx + 3):
                 peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
@@ -388,67 +410,64 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike_str = str(int(strike)) if strike == int(strike) else str(strike)
             second_strike_str = str(int(secondStrike)) if secondStrike == int(secondStrike) else str(secondStrike)
 
+            # pichhle refresh ka leader strike (pehli baar = abhi wala)
             prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
-            if not prevStrikeStr:
-                set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                prevStrike = strike
 
             displayStatus = finalStatusText
             scenarioStatus = finalStatusText
             isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
-            shiftFromStrike = float(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
-            lastTargetStrike = float(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
+            shiftFrom = num(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
+            shifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
+            isStrongNow = rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText
+            reverted = False
 
-            if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
-                if strike == shiftFromStrike or (lastTargetStrike > 0 and secondStrike != lastTargetStrike):
-                    set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
-                    set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                    del_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey)   # Apps Script: removeProperty
+            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta)
+            if shifted:
+                if isStrongNow:
+                    shifted = False
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (strong): strike={strike_str} status={finalStatusText}")
+                elif strike == shiftFrom:
+                    shifted = False
+                    reverted = True
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (leader wapas purane strike {int(shiftFrom)} par)")
 
-            if strike != prevStrike and prevStrike > 0 and (finalStatusText == "wtb" or finalStatusText == "wtt"):
-                if strike < prevStrike:
-                    shiftType = "top to bottom"
-                    scenarioStatus = "wtb"
-                else:
-                    shiftType = "bottom to top"
-                    scenarioStatus = "wtt"
+            # 2) NAYA SHIFT: leader strike badla aur status weak (wtt/wtb)
+            if (not reverted) and strike != prevStrike and prevStrike > 0 and finalStatusText in ("wtb", "wtt"):
+                shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
+                shiftFrom = prevStrike
+                shifted = True
+                log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
+
+            if shifted:
+                isShifting = True
+                scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
                 set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
-                set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(prevStrike))
-                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))
-
-            if get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true":
-                if rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText:
-                    set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
-                    set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
-                    isShifting = False
-                    scenarioStatus = finalStatusText
-                else:
-                    isShifting = True
-                    shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey)
-                    scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
+                set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(shiftFrom))
             else:
-                set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
+                set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
                 scenarioStatus = finalStatusText
+            set_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey, str(strike))
 
             if not isWinner and rawState != "STRONG":
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
+            # 3) TIMESTAMP: jo card par dikhta hai wo badle (strike / second strike / status / shift) to naya time lock
+            if isShifting:
+                sig = f"S|{shiftType}|{strike_str}|{second_strike_str}|{displayStatus}"
+            elif displayStatus in ("wtb", "wtt"):
+                sig = f"W|{displayStatus}|{strike_str}|{second_strike_str}"
+            else:
+                sig = f"N|{displayStatus}|{strike_str}"
             displayTime = get_symbol_memory(symbol_name, "TIME_" + cacheKey)
-            lastRecordedStatus = get_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, "")
-            isTriggerStatus = displayStatus in ["wtb", "wtt", "wtb to strong", "wtt to strong"] or isShifting
-
-            if isTriggerStatus and displayStatus != lastRecordedStatus:
+            if not displayTime or get_symbol_memory(symbol_name, "LAST_SIG_" + cacheKey, "") != sig:
                 displayTime = currentTimeStr
                 set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
-                set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
-            elif not displayTime:
-                displayTime = currentTimeStr
-                set_symbol_memory(symbol_name, "TIME_" + cacheKey, displayTime)
-                set_symbol_memory(symbol_name, "LAST_STATUS_" + cacheKey, displayStatus)
+                set_symbol_memory(symbol_name, "LAST_SIG_" + cacheKey, sig)
+                log_event(symbol_name, cacheKey, f"TIME LOCK {displayTime} | {sig} | pct={round(topObj['pct'], 1)} raw={rawState} winner={isWinner}")
 
             if isShifting:
                 line1 = f"<div class='card-header-line'>{displayTime} - {sideLabel}-{strike_str}-{displayStatus}-{second_strike_str}</div>"
@@ -600,21 +619,42 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 # --- MARKET DATA ENGINE ---
-def rate_limited_market_data(smart_api, req, retries=3):
-    """Saari getMarketData calls yahin se: 1.1s gap, retry, unfetched log."""
+api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 5.0}
+
+
+def rate_limited_market_data(smart_api, req, priority=False, retries=2):
+    """Saari getMarketData calls yahin se: 1.1s gap, retry, 'access rate' error par backoff."""
     for attempt in range(retries):
         res = None
+        while time.time() < api_stats["pause_until"]:      # Angel ne rok diya to sab ruke
+            time.sleep(0.2)
+        if not priority:                      # background calls screen wale symbol ko aage jaane dete hain
+            while active_pending[0] > 0:
+                time.sleep(0.05)
         with api_lock:
             wait = MIN_API_GAP - (time.time() - _last_call[0])
             if wait > 0:
                 time.sleep(wait)
             _last_call[0] = time.time()
             try:
+                t0 = time.time()
                 res = smart_api.getMarketData("FULL", req)
+                dt = time.time() - t0
+                api_stats["req"] += 1
+                api_stats["lat"] += dt
+                if dt > 3:
+                    print(f"⏱ slow getMarketData: {dt:.1f}s")
             except Exception as e:
+                api_stats["req"] += 1
+                api_stats["fail"] += 1
                 print(f"⚠ getMarketData exception: {e}")
+                if "access denied" in str(e).lower() or "exceeding access rate" in str(e).lower():
+                    api_stats["pause_until"] = time.time() + api_stats["backoff"]
+                    print(f"⛔ Angel rate limit: {api_stats['backoff']:.0f}s ruk raha hu")
+                    api_stats["backoff"] = min(api_stats["backoff"] * 2, 60.0)
         if res and res.get('status') and res.get('data') is not None:
             fail_streak[0] = 0
+            api_stats["backoff"] = 5.0
             d = res['data']
             if d.get('unfetched'):
                 print(f"⚠ unfetched tokens: {len(d['unfetched'])}")
@@ -627,11 +667,11 @@ def rate_limited_market_data(smart_api, req, retries=3):
             if time.time() - last_login_ts[0] > 300:
                 need_relogin[0] = True
             fail_streak[0] = 0
-        time.sleep(1.5 * (attempt + 1))
+        time.sleep(1.0 * (attempt + 1))
     return []
 
 
-def fetch_quotes(smart_api, pairs):
+def fetch_quotes(smart_api, pairs, priority=False):
     """pairs = [(exch, token)]. Max 50 tokens per request. Returns {(exch, token): item}"""
     out = {}
     for i in range(0, len(pairs), 50):
@@ -640,7 +680,7 @@ def fetch_quotes(smart_api, pairs):
         for e, t in chunk:
             req.setdefault(e, []).append(t)
         default_exch = chunk[0][0] if len(req) == 1 else ""
-        for item in rate_limited_market_data(smart_api, req):
+        for item in rate_limited_market_data(smart_api, req, priority):
             e = str(item.get('exchange') or default_exch).strip()
             t = str(item.get('symbolToken', item.get('token', ''))).strip()
             out[(e, t)] = item
@@ -740,11 +780,17 @@ def option_quote(tokmap, st, tp, after_open):
     return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
 
 
-def fetch_symbol_data(smart_api, sym, light=False):
-    """light=True: sirf tracker ke tokens (background symbols). light=False: poori chain (screen wala symbol)."""
+def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
+    """mode: light = tracker tokens, bina greeks (background symbols)
+             core  = tracker tokens + greeks (screen wala symbol, har ~3s)
+             extra = baaki strikes ke tokens (screen wala symbol, har 3rd cycle)
+             full  = poori chain (screen par symbol pehli baar khulne par)"""
+    light = (mode == "light")
+    locked = False
     try:
         now_dt = datetime.now()
-        maybe_daily_reset(now_dt)
+        with state_lock:
+            maybe_daily_reset(now_dt)
 
         expiry_list = symbol_expiries_cache.get(sym) or []
         if not expiry_list or sym not in options_cache:
@@ -761,7 +807,7 @@ def fetch_symbol_data(smart_api, sym, light=False):
         tokmap, all_strikes = chain['tokmap'], chain['strikes']
         spot_ref = num(multi_symbol_runtime_states.get(sym, {}).get('spot_price'))
         if spot_ref <= 0:   # pehli baar: spot alag se (sirf ek baar)
-            spot_ref = spot_from(fetch_quotes(smart_api, [spot_src]), spot_src)
+            spot_ref = spot_from(fetch_quotes(smart_api, [spot_src], priority), spot_src)
             if spot_ref <= 0:
                 return
 
@@ -770,14 +816,20 @@ def fetch_symbol_data(smart_api, sym, light=False):
         pairs = [spot_src]
         for pos in range(lo, hi):
             st = all_strikes[pos]
-            need_ce = need_pe = True
-            if light:   # tracker window + 1 padding
-                need_ce = (closest - 4) <= pos <= (closest + 19)
-                need_pe = (closest - 19) <= pos <= (closest + 4)
+            core_ce = (closest - 4) <= pos <= (closest + 19)     # tracker window + 1 padding
+            core_pe = (closest - 19) <= pos <= (closest + 4)
+            if mode == "full":
+                need_ce = need_pe = True
+            elif mode == "extra":
+                need_ce, need_pe = (not core_ce), (not core_pe)
+            else:
+                need_ce, need_pe = core_ce, core_pe
             if need_ce and (st, 'CE') in tokmap: pairs.append(tokmap[(st, 'CE')])
             if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
 
-        quotes = fetch_quotes(smart_api, pairs)
+        quotes = fetch_quotes(smart_api, pairs, priority)
+        state_lock.acquire()
+        locked = True
         spot_price = spot_from(quotes, spot_src)
         if spot_price <= 0:
             return
@@ -811,17 +863,13 @@ def fetch_symbol_data(smart_api, sym, light=False):
 
         expiry_dt_val = chain['expiry_dt']
         t = max((expiry_dt_val.replace(hour=15, minute=30) - now_dt).total_seconds() / (365.0 * 24 * 3600), 0.0001)
-        zero_g = {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
 
         raw_grid_payload = []
         for st in strikes:
             ce_q = option_quote(tokmap, st, 'CE', after_open)
             pe_q = option_quote(tokmap, st, 'PE', after_open)
-            if light:
-                ce_g = pe_g = zero_g
-            else:
-                ce_g = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
-                pe_g = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
+            ce_g = calculate_iv_and_greeks('CE', spot_price, st, t, 0.07, ce_q['ltp'])
+            pe_g = calculate_iv_and_greeks('PE', spot_price, st, t, 0.07, pe_q['ltp'])
 
             raw_grid_payload.append({
                 'strike': st, 'ce_oi': ce_q['oi'], 'ce_vol': ce_q['volume'], 'pe_vol': pe_q['volume'], 'pe_oi': pe_q['oi'],
@@ -835,11 +883,17 @@ def fetch_symbol_data(smart_api, sym, light=False):
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=chain['lot'], active_expiry=current_expiry, symbol_name=sym)
         v = multi_symbol_runtime_states.get(sym)
         if v is not None:
-            v['is_light'] = light
-            v['fetched_ts'] = time.time()
-            v['updated_at'] = datetime.now().strftime("%H:%M:%S")
+            if mode in ("full", "extra"):
+                v['extra_ts'] = time.time()
+                v['extra_exp'] = current_expiry
+            if mode != "extra":
+                v['fetched_ts'] = time.time()
+                v['updated_at'] = datetime.now().strftime("%H:%M:%S")
     except Exception as e:
         print(f"❌ fetch_symbol_data Exception ({sym}): {e}")
+    finally:
+        if locked:
+            state_lock.release()
 
 
 # --- SCRIP MASTER ---
@@ -1035,6 +1089,7 @@ HTML_TEMPLATE = """
         let allExpiriesData = {};
         let isFirstLoad = true;
         let busy = false;
+        let fastPoll = false;
         const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
@@ -1077,6 +1132,7 @@ HTML_TEMPLATE = """
             let exp = document.getElementById("expirySelect").value;
             if (!sym) return;
             document.getElementById("gridBody").innerHTML = LOADING_ROW;
+            fastPoll = true;
             isFirstLoad = true;
             fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => fetchData());
         }
@@ -1097,8 +1153,10 @@ HTML_TEMPLATE = """
                 let tbody = document.getElementById("gridBody");
                 if (data.partial || (exp && data.expiry && data.expiry !== exp)) {
                     if (!tbody.innerHTML.includes("Loading data")) tbody.innerHTML = LOADING_ROW;
+                    fastPoll = true;
                     return;
                 }
+                fastPoll = false;
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 let upd = document.getElementById("updDisplay");
                 if (data.updated_at) {
@@ -1193,7 +1251,8 @@ HTML_TEMPLATE = """
                 }
             }).catch(() => { busy = false; });
         }
-        setInterval(fetchData, 2000); window.onload = initApp;
+        function pollLoop() { fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
+        window.onload = function() { initApp(); pollLoop(); };
     </script>
 </body>
 </html>
@@ -1224,6 +1283,7 @@ def home():
 @app.route('/api/init-meta')
 def get_initial_metadata():
     last_ui_poll[0] = time.time()
+    wake_active.set()
     return jsonify({
         "symbols": sorted(list(options_cache.keys())) if options_cache else INDICES,
         "expiries": symbol_expiries_cache,
@@ -1241,11 +1301,14 @@ def set_symbol_api(symbol, expiry):
     if expiry:
         user_selected_expiries[sym] = expiry.upper()
     last_ui_poll[0] = time.time()
+    wake_active.set()
     return jsonify({"status": "success"})
 
 
 @app.route('/api/data/<symbol>')
 def get_symbol_runtime_data(symbol):
+    if time.time() - last_ui_poll[0] > 10:
+        wake_active.set()
     last_ui_poll[0] = time.time()
     sym = symbol.upper()
     vault = multi_symbol_runtime_states.get(sym, {})
@@ -1260,10 +1323,18 @@ def get_symbol_runtime_data(symbol):
         "grid_rows": vault.get("grid_rows", []),
         "spot_price": vault.get("spot_price", 0),
         "expiry": vault.get("active_expiry", ""),
-        "partial": bool(vault.get("is_light", False)) or not vault.get("grid_rows"),
+        "partial": (not vault.get("grid_rows")) or (
+            market_open(symbol_exch_cache.get(sym, ""), datetime.now()) and not (
+                vault.get("extra_exp") == vault.get("active_expiry") and (time.time() - vault.get("extra_ts", 0)) < 30)),
         "updated_at": vault.get("updated_at", ""),
         "age": int(time.time() - ts) if ts else 0
     })
+
+
+@app.route('/api/log/<symbol>')
+def get_event_log(symbol):
+    lines = list(event_log.get(symbol.upper(), []))
+    return Response("\n".join(lines) or "no events yet", mimetype="text/plain")
 
 
 # --- BACKGROUND ENGINE ---
@@ -1283,7 +1354,8 @@ def do_login(smart_api):
         return False
     try:
         totp = pyotp.TOTP(TOTP_SECRET.replace(" ", "")).now()
-        res = smart_api.generateSession(CLIENT_ID, PIN, totp)
+        with api_lock:
+            res = smart_api.generateSession(CLIENT_ID, PIN, totp)
         if res and res.get('status'):
             print("🔐 Session generated")
             return True
@@ -1293,7 +1365,61 @@ def do_login(smart_api):
     return False
 
 
+def system_ready():
+    today = datetime.now().strftime("%Y-%m-%d")
+    return bool(options_cache) and last_session_date == today and scrip_master_date == today and not need_relogin[0]
+
+
+def active_loop():
+    """Screen wala symbol: alag thread, API par priority, ~3s cadence."""
+    n = 0
+    while True:
+        t0 = time.time()
+        try:
+            if system_ready() and (time.time() - last_ui_poll[0]) < 10:
+                active = current_active_symbol_ui
+                if active in options_cache:
+                    lk = get_sym_lock(active)
+                    if lk.acquire(timeout=5):
+                        try:
+                            now = time.time()
+                            v = multi_symbol_runtime_states.get(active, {})
+                            exp_list = symbol_expiries_cache.get(active) or []
+                            chosen = user_selected_expiries.get(active, exp_list[0] if exp_list else "")
+                            if exp_list and chosen not in exp_list:
+                                chosen = exp_list[0]
+                            is_open = market_open(symbol_exch_cache.get(active, ""), datetime.now())
+                            chain_ok = bool(v.get("grid_rows")) and v.get("active_expiry") == chosen
+                            extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 20
+                            core_age = now - v.get("fetched_ts", 0)
+                            mode = None
+                            if not is_open:
+                                if (not chain_ok) or v.get("extra_exp") != chosen or core_age > 60:
+                                    mode = "full"
+                            elif (not chain_ok) or (not extra_ok and core_age > 8):
+                                mode = "full"; n = 0
+                            elif not extra_ok:
+                                mode = "extra"
+                            else:
+                                mode = "core"; n += 1
+                            if mode:
+                                active_pending[0] += 1
+                                try:
+                                    fetch_symbol_data(smart_api_global, active, mode, True)
+                                    if mode == "core" and n % 3 == 0:
+                                        fetch_symbol_data(smart_api_global, active, "extra", True)
+                                finally:
+                                    active_pending[0] -= 1
+                        finally:
+                            lk.release()
+        except Exception as e:
+            print(f"⚠ Active loop error: {e}")
+        wake_active.wait(timeout=max(0.2, 3.0 - (time.time() - t0)))
+        wake_active.clear()
+
+
 def run_bot_lock_loop():
+    """Login, scrip master, state save aur background (light) scanning."""
     global last_session_date, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     time.sleep(3)
@@ -1306,9 +1432,11 @@ def run_bot_lock_loop():
         return
 
     load_state()
+    threading.Thread(target=active_loop, daemon=True).start()
     login_fail = 0
     last_save = time.time()
     last_sm_try = 0.0
+    last_stat = time.time()
     rot_i = 0
 
     while True:
@@ -1339,14 +1467,7 @@ def run_bot_lock_loop():
             ui_open = (time.time() - last_ui_poll[0]) < 10
             active = current_active_symbol_ui
 
-            # 1) Screen wala symbol: poori chain, har loop
-            if ui_open and active and active in options_cache:
-                v = multi_symbol_runtime_states.get(active, {})
-                fresh = (time.time() - v.get("fetched_ts", 0)) < 60
-                if market_open(symbol_exch_cache.get(active, ""), now_dt) or not fresh or v.get("is_light"):
-                    fetch_symbol_data(smart_api, active, light=False)
-
-            # 2) Background: ek symbol per loop (indices har ~10 symbols baad)
+            # Background: ek symbol per loop (indices har ~10 symbols baad)
             open_syms = [s for s in options_cache if market_open(symbol_exch_cache.get(s, ""), now_dt)]
             others = sorted(s for s in open_syms if s not in INDICES)
             idx_open = [s for s in INDICES if s in open_syms]
@@ -1357,16 +1478,45 @@ def run_bot_lock_loop():
                     rotation.extend(idx_open)
             if not others:
                 rotation = idx_open
+            # Hot symbol (jo last screen par tha): UI band ho tab bhi taaza rakho, taaki kholte hi data tayyar mile
+            if (not ui_open) and active in options_cache and market_open(symbol_exch_cache.get(active, ""), now_dt):
+                hv = multi_symbol_runtime_states.get(active, {})
+                hot_mode = None
+                if time.time() - hv.get("extra_ts", 0) > 25:
+                    hot_mode = "extra"
+                elif time.time() - hv.get("fetched_ts", 0) > 10:
+                    hot_mode = "core"
+                if hot_mode and hv.get("grid_rows"):
+                    hl = get_sym_lock(active)
+                    if hl.acquire(blocking=False):
+                        try:
+                            fetch_symbol_data(smart_api, active, hot_mode, False)
+                        finally:
+                            hl.release()
+
             if rotation:
                 sym = rotation[rot_i % len(rotation)]
                 rot_i += 1
                 if not (ui_open and sym == active):
-                    fetch_symbol_data(smart_api, sym, light=True)
+                    lk = get_sym_lock(sym)
+                    if lk.acquire(blocking=False):
+                        try:
+                            fetch_symbol_data(smart_api, sym, "light", False)
+                        finally:
+                            lk.release()
             else:
                 time.sleep(5)
 
+            if time.time() - last_stat > 60:
+                last_stat = time.time()
+                r = max(api_stats["req"], 1)
+                print(f"📊 API: {api_stats['req']} req/min, fail={api_stats['fail']}, avg latency={api_stats['lat'] / r:.2f}s")
+                api_stats["req"] = api_stats["fail"] = 0
+                api_stats["lat"] = 0.0
+
             if time.time() - last_save > 30:
-                save_state()
+                with state_lock:
+                    save_state()
                 last_save = time.time()
         except Exception as e:
             print(f"⚠ Loop Error: {e}")
