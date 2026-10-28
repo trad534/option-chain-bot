@@ -41,6 +41,21 @@ STATE_FILE = os.getenv("STATE_FILE", "/tmp/tracker_state.json")
 STATE_KEY = "option_tracker_state"
 MIN_API_GAP = 1.1                           # getMarketData ke beech minimum seconds
 INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
+NEAR_STRIKES = 2     # imaginary line ke dusri taraf kitne strike (PE: upar wale strikes, CE: neeche wale strikes)
+FAR_STRIKES = 10     # imaginary line ki apni taraf kitne strike (PE: neeche wale, CE: upar wale)
+
+
+def window_sets(strikes_list, spot):
+    """Imaginary line (spot) ke hisaab se CE / PE ke strike window (indexes). strikes_list ascending hona chahiye.
+    'neeche' = strike <= spot, 'upar' = strike > spot."""
+    below = [i for i, st in enumerate(strikes_list) if st <= spot]
+    above = [i for i, st in enumerate(strikes_list) if st > spot]
+    ce = set(below[-NEAR_STRIKES:]) | set(above[:FAR_STRIKES])
+    pe = set(below[-FAR_STRIKES:]) | set(above[:NEAR_STRIKES])
+    return ce, pe
+
+
+debug_info = {}
 INDEX_MAP = {
     "NIFTY": ("NSE", "99926000"),
     "BANKNIFTY": ("NSE", "99926009"),
@@ -200,8 +215,8 @@ def maybe_daily_reset(now_dt):
         event_log.clear()
         last_event_sig.clear()
         global_run_date = today
-        reset_done_date = today if hms >= "09:14:55" else ""
-    elif hms >= "09:14:55" and reset_done_date != today:
+        reset_done_date = today if hms >= "09:14:50" else ""
+    elif hms >= "09:14:50" and reset_done_date != today:
         symbol_states_memory.clear()
         morning_oi_dict.clear()
         persistent_quotes_cache.clear()
@@ -270,17 +285,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             spot_idx = min(range(len(strikes_list)), key=lambda i: abs(strikes_list[i] - spot_price))
 
         ceVolArray, ceOiArray, peVolArray, peOiArray = [], [], [], []
+        ce_idx_set, pe_idx_set = window_sets(strikes_list, spot_price)
 
         for idx, r_dict in enumerate(raw_rows):
             row_idx = 8 + idx
             strike = float(r_dict['strike'])
             if not strike: continue
 
-            if idx >= (spot_idx - 1) and idx <= (spot_idx + 18):
+            if idx in ce_idx_set:
                 ceOiArray.append({'strike': strike, 'val': float(r_dict.get('ce_oi', 0)), 'row': row_idx})
                 ceVolArray.append({'strike': strike, 'val': float(r_dict.get('ce_vol', 0)), 'row': row_idx})
 
-            if idx >= (spot_idx - 18) and idx <= (spot_idx + 1):
+            if idx in pe_idx_set:
                 peVolArray.append({'strike': strike, 'val': float(r_dict.get('pe_vol', 0)), 'row': row_idx})
                 peOiArray.append({'strike': strike, 'val': float(r_dict.get('pe_oi', 0)), 'row': row_idx})
 
@@ -301,6 +317,14 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiTop = extract_top_two(peOiArray)
 
         if not ceVolTop['highest'] or not ceOiTop['highest'] or not peVolTop['highest'] or not peOiTop['highest']: return
+
+        debug_info[symbol_name] = {
+            "time": now_dt.strftime("%H:%M:%S"), "spot": spot_price,
+            "ce_window": [strikes_list[i] for i in sorted(ce_idx_set)], "pe_window": [strikes_list[i] for i in sorted(pe_idx_set)],
+            "ce_vol_top2": [ceVolTop['highest']['strike'], ceVolTop['second']['strike'], round(ceVolTop['pct'], 2)],
+            "ce_oi_top2": [ceOiTop['highest']['strike'], ceOiTop['second']['strike'], round(ceOiTop['pct'], 2)],
+            "pe_vol_top2": [peVolTop['highest']['strike'], peVolTop['second']['strike'], round(peVolTop['pct'], 2)],
+            "pe_oi_top2": [peOiTop['highest']['strike'], peOiTop['second']['strike'], round(peOiTop['pct'], 2)]}
 
         def detect_live_state_advanced(top_obj, is_put_side):
             if not top_obj or top_obj['highest']['val'] == 0 or top_obj['pct'] < 75.0: return "STRONG"
@@ -419,11 +443,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
             shiftFrom = num(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText   # shift bante waqt ka wtt/wtb
             shifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "")
             isStrongNow = rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText
             reverted = False
 
-            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta)
+            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta, par wtt/wtb ki direction palti to tutta hai)
             if shifted:
                 if isStrongNow:
                     shifted = False
@@ -432,12 +458,20 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                     shifted = False
                     reverted = True
                     log_event(symbol_name, cacheKey, f"SHIFT CLEARED (leader wapas purane strike {int(shiftFrom)} par)")
+                elif finalStatusText in ("wtb", "wtt") and finalStatusText != shiftStatus:
+                    shifted = False
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (direction palti {shiftStatus} -> {finalStatusText}): strike={strike_str} second={second_strike_str}")
+                elif finalStatusText in ("wtb", "wtt") and shiftStatus and finalStatusText != shiftStatus:
+                    shifted = False
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (weak direction badli: {shiftStatus} -> {finalStatusText}) strike={strike_str} second={second_strike_str}")
 
             # 2) NAYA SHIFT: leader strike badla aur status weak (wtt/wtb)
             if (not reverted) and strike != prevStrike and prevStrike > 0 and finalStatusText in ("wtb", "wtt"):
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
                 shiftFrom = prevStrike
+                shiftStatus = finalStatusText
                 shifted = True
+                set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, finalStatusText)
                 log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
 
             if shifted:
@@ -446,6 +480,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
                 set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
                 set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(shiftFrom))
+                set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, shiftStatus)
             else:
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
                 scenarioStatus = finalStatusText
@@ -816,8 +851,8 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
         pairs = [spot_src]
         for pos in range(lo, hi):
             st = all_strikes[pos]
-            core_ce = (closest - 4) <= pos <= (closest + 19)     # tracker window + 1 padding
-            core_pe = (closest - 19) <= pos <= (closest + 4)
+            core_ce = (closest - 5) <= pos <= (closest + 14)     # tracker window + padding
+            core_pe = (closest - 14) <= pos <= (closest + 5)
             if mode == "full":
                 need_ce = need_pe = True
             elif mode == "extra":
@@ -828,11 +863,26 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
 
         quotes = fetch_quotes(smart_api, pairs, priority)
-        state_lock.acquire()
-        locked = True
         spot_price = spot_from(quotes, spot_src)
         if spot_price <= 0:
             return
+        if mode != "extra":
+            nc = nearest_idx(all_strikes, spot_price)
+            win = all_strikes[max(0, nc - 18):min(len(all_strikes), nc + 19)]
+            ce_set, pe_set = window_sets(win, spot_price)
+            have = set(pairs)
+            topup = []
+            for i in ce_set:
+                pr = tokmap.get((win[i], 'CE'))
+                if pr and pr not in have: topup.append(pr)
+            for i in pe_set:
+                pr = tokmap.get((win[i], 'PE'))
+                if pr and pr not in have: topup.append(pr)
+            if topup:     # spot kaafi hil gaya tha: window ke naye strikes ka taaza data
+                quotes.update(fetch_quotes(smart_api, topup, priority))
+                pairs.extend(topup)
+        state_lock.acquire()
+        locked = True
 
         missing = 0
         for e, t in pairs[1:]:
@@ -967,7 +1017,7 @@ HTML_TEMPLATE = """
 
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
 
-        .table-container { margin-top: 6px; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
 
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
 
@@ -1050,6 +1100,7 @@ HTML_TEMPLATE = """
     <div class="header">
         <h2>⚡ Arush LTP Calculator</h2>
         <div class="controls-group">
+            <button class="lot-size-badge" id="centerBtn" onclick="centerNow()" style="border:0;cursor:pointer;">⌖ Center</button>
             <div class="lot-size-badge upd-badge" id="updDisplay">Updated: -</div>
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
             <select id="symbolSelect" onchange="onSymbolChange()"></select>
@@ -1090,6 +1141,31 @@ HTML_TEMPLATE = """
         let isFirstLoad = true;
         let busy = false;
         let fastPoll = false;
+        let userInteracted = false;
+
+        function sizeContainer() {
+            const c = document.getElementById('tableContainer');
+            const top = c.getBoundingClientRect().top + window.scrollY;
+            c.style.maxHeight = Math.max(300, window.innerHeight - top - 8) + 'px';
+        }
+        function centerSpot() {
+            const c = document.getElementById('tableContainer');
+            const row = c.querySelector('.spot-target-row');
+            if (!row) return;
+            const headH = c.querySelector('thead').offsetHeight;
+            const cr = c.getBoundingClientRect(), rr = row.getBoundingClientRect();
+            const rowTop = rr.top - cr.top + c.scrollTop;
+            c.scrollTop = rowTop + rr.height / 2 - (headH + (c.clientHeight - headH) / 2);
+            const cell = row.querySelector('.strike-col');
+            if (cell) {
+                const cl = cell.getBoundingClientRect();
+                c.scrollLeft = (cl.left - cr.left + c.scrollLeft) + cl.width / 2 - c.clientWidth / 2;
+            }
+        }
+        function centerNow() { userInteracted = false; sizeContainer(); centerSpot(); }
+        window.addEventListener('resize', () => { sizeContainer(); if (!userInteracted) centerSpot(); });
+        ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
+        sizeContainer();
         const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
@@ -1133,6 +1209,7 @@ HTML_TEMPLATE = """
             if (!sym) return;
             document.getElementById("gridBody").innerHTML = LOADING_ROW;
             fastPoll = true;
+            userInteracted = false;
             isFirstLoad = true;
             fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => fetchData());
         }
@@ -1177,6 +1254,8 @@ HTML_TEMPLATE = """
                 else k3Div.style.color = "#000000";
 
                 if (data.grid_rows && data.grid_rows.length > 0) {
+                    const cont = document.getElementById('tableContainer');
+                    const keepTop = cont.scrollTop, keepLeft = cont.scrollLeft;
                     tbody.innerHTML = "";
                     data.grid_rows.forEach(row => {
                         let tr = document.createElement("tr");
@@ -1227,26 +1306,15 @@ HTML_TEMPLATE = """
                         tbody.appendChild(tr);
                     });
 
-                    if (isFirstLoad) {
-                        setTimeout(() => {
-                            let spotRowTarget = document.querySelector('.spot-target-row');
-                            let container = document.getElementById('tableContainer');
-                            if (spotRowTarget && container) {
-                                let rowTop = spotRowTarget.offsetTop;
-                                let rowHeight = spotRowTarget.offsetHeight;
-                                let containerHeight = container.clientHeight;
-                                container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
-
-                                let strikeCell = spotRowTarget.querySelector('.strike-col');
-                                if (strikeCell) {
-                                    let cellLeft = strikeCell.offsetLeft;
-                                    let cellWidth = strikeCell.offsetWidth;
-                                    let containerWidth = container.clientWidth;
-                                    container.scrollLeft = cellLeft - (containerWidth / 2) + (cellWidth / 2);
-                                }
-                            }
-                        }, 150);
+                    if (isFirstLoad || !userInteracted) {
+                        sizeContainer();
+                        centerSpot();
+                        requestAnimationFrame(centerSpot);
+                        if (isFirstLoad) { setTimeout(centerSpot, 300); setTimeout(centerSpot, 900); }
                         isFirstLoad = false;
+                    } else {
+                        cont.scrollTop = keepTop;
+                        cont.scrollLeft = keepLeft;
                     }
                 }
             }).catch(() => { busy = false; });
@@ -1329,6 +1397,11 @@ def get_symbol_runtime_data(symbol):
         "updated_at": vault.get("updated_at", ""),
         "age": int(time.time() - ts) if ts else 0
     })
+
+
+@app.route('/api/debug/<symbol>')
+def get_debug(symbol):
+    return jsonify(debug_info.get(symbol.upper(), {}))
 
 
 @app.route('/api/log/<symbol>')
