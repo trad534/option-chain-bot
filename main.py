@@ -56,6 +56,8 @@ def window_sets(strikes_list, spot):
 
 
 debug_info = {}
+INDEX_NAMES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX", "BANKEX", "SENSEX50"]
+symbol_kind_cache = {}            # symbol -> "INDEX" / "MCX" / "STOCK"
 INDEX_MAP = {
     "NIFTY": ("NSE", "99926000"),
     "BANKNIFTY": ("NSE", "99926009"),
@@ -945,9 +947,10 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
         if locked:
             state_lock.release()
 
+
 # --- SCRIP MASTER ---
 def initialize_scrip_master():
-    global full_scrip_df, options_cache, symbol_expiries_cache, symbol_exch_cache, scrip_master_date
+    global full_scrip_df, options_cache, symbol_expiries_cache, symbol_exch_cache, symbol_kind_cache, scrip_master_date
     try:
         url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
         resp = requests.get(url, timeout=120)
@@ -966,12 +969,14 @@ def initialize_scrip_master():
         fno['parsed_expiry'] = pd.to_datetime(fno['expiry'], format='mixed', errors='coerce')
 
         today_dt = pd.Timestamp(datetime.now().date())
-        new_opts, new_exp, new_exch = {}, {}, {}
+        new_opts, new_exp, new_exch, new_kind = {}, {}, {}, {}
         for name, group in fno.groupby('name_up'):
             clean_name = name
             if clean_name in ['BSX', 'BSEX']: clean_name = 'SENSEX'
             new_opts[clean_name] = group
             new_exch[clean_name] = str(group['exch_seg'].iloc[0])
+            itype = str(group['instrumenttype'].iloc[0]).upper() if 'instrumenttype' in group.columns else ""
+            new_kind[clean_name] = "MCX" if new_exch[clean_name] == "MCX" else ("INDEX" if (itype == "OPTIDX" or clean_name in INDEX_NAMES) else "STOCK")
             valid = group[group['parsed_expiry'] >= today_dt].sort_values(by='parsed_expiry')
             uniq = []
             for exp_dt in valid['parsed_expiry'].unique():
@@ -986,6 +991,7 @@ def initialize_scrip_master():
         options_cache = new_opts
         symbol_expiries_cache = new_exp
         symbol_exch_cache = new_exch
+        symbol_kind_cache = new_kind
         chain_cache.clear()
         spot_source_cache.clear()
         scrip_master_date = datetime.now().strftime("%Y-%m-%d")
@@ -1028,7 +1034,7 @@ HTML_TEMPLATE = """
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
 
-        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 2px 5px; line-height: 1.1; white-space: nowrap; position: relative; }
 
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
 
@@ -1093,6 +1099,9 @@ HTML_TEMPLATE = """
 
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
+
+        /* 11 upar + 11 neeche strike screen par fit karne ke liye: chhoti screen par % value number ke saath ek hi line me */
+        @media (max-height: 959px), (max-width: 640px) { .pct-sub { display: inline; margin-left: 4px; } }
     </style>
 </head>
 <body>
@@ -1161,8 +1170,21 @@ HTML_TEMPLATE = """
                 c.scrollLeft = (cl.left - cr.left + c.scrollLeft) + cl.width / 2 - c.clientWidth / 2;
             }
         }
-        function centerNow() { userInteracted = false; sizeContainer(); centerSpot(); }
-        window.addEventListener('resize', () => { sizeContainer(); if (!userInteracted) centerSpot(); });
+        const VIEW_ROWS = 11;               // imaginary line ke upar 11 aur neeche 11 strike screen par
+        function fitViewport() {
+            const c = document.getElementById('tableContainer');
+            const rows = document.getElementById('gridBody').children;
+            let si = -1;
+            for (let i = 0; i < rows.length; i++) if (rows[i].classList.contains('spot-target-row')) { si = i; break; }
+            if (si < 0) return;
+            const first = rows[Math.max(0, si - VIEW_ROWS)], last = rows[Math.min(rows.length - 1, si + VIEW_ROWS)];
+            const headH = c.querySelector('thead').offsetHeight;
+            const bodyH = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+            const extra = c.offsetHeight - c.clientHeight;          // border + horizontal scrollbar
+            c.style.height = Math.ceil(headH + bodyH + extra) + 'px';
+        }
+        function centerNow() { userInteracted = false; sizeContainer(); fitViewport(); centerSpot(); }
+        window.addEventListener('resize', () => { sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); });
         ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
         sizeContainer();
         const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
@@ -1172,17 +1194,16 @@ HTML_TEMPLATE = """
                 allExpiriesData = meta.expiries;
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
-                let priorityIndices = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"];
-                let sortedSymbols = meta.symbols.sort((a, b) => {
-                    let aIdx = priorityIndices.indexOf(a);
-                    let bIdx = priorityIndices.indexOf(b);
-                    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-                    if (aIdx !== -1) return -1;
-                    if (bIdx !== -1) return 1;
-                    return a.localeCompare(b);
-                });
-                sortedSymbols.forEach(sym => {
-                    let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; symSelect.appendChild(opt);
+                // 1st Index list, 2nd MCX list, 3rd F&O stocks
+                const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
+                ["INDEX", "MCX", "STOCK"].forEach(k => {
+                    let list = (meta.groups && meta.groups[k]) || [];
+                    if (!list.length) return;
+                    let og = document.createElement("optgroup"); og.label = groupLabels[k];
+                    list.forEach(sym => {
+                        let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; og.appendChild(opt);
+                    });
+                    symSelect.appendChild(og);
                 });
                 if (meta.symbols.length > 0) {
                     symSelect.value = meta.active_symbol || meta.symbols[0];
@@ -1307,9 +1328,10 @@ HTML_TEMPLATE = """
 
                     if (isFirstLoad || !userInteracted) {
                         sizeContainer();
+                        fitViewport();
                         centerSpot();
-                        requestAnimationFrame(centerSpot);
-                        if (isFirstLoad) { setTimeout(centerSpot, 300); setTimeout(centerSpot, 900); }
+                        requestAnimationFrame(() => { fitViewport(); centerSpot(); });
+                        if (isFirstLoad) { setTimeout(() => { fitViewport(); centerSpot(); }, 300); setTimeout(() => { fitViewport(); centerSpot(); }, 900); }
                         isFirstLoad = false;
                     } else {
                         cont.scrollTop = keepTop;
@@ -1351,8 +1373,18 @@ def home():
 def get_initial_metadata():
     last_ui_poll[0] = time.time()
     wake_active.set()
+    groups = {"INDEX": [], "MCX": [], "STOCK": []}
+    for sname in options_cache:
+        groups[symbol_kind_cache.get(sname, "INDEX" if sname in INDEX_NAMES else "STOCK")].append(sname)
+    rank = {n: i for i, n in enumerate(INDEX_NAMES)}
+    groups["INDEX"].sort(key=lambda n: (rank.get(n, 99), n))
+    groups["MCX"].sort()
+    groups["STOCK"].sort()
+    if not options_cache:
+        groups["INDEX"] = list(INDICES)
     return jsonify({
-        "symbols": sorted(list(options_cache.keys())) if options_cache else INDICES,
+        "symbols": groups["INDEX"] + groups["MCX"] + groups["STOCK"],
+        "groups": groups,
         "expiries": symbol_expiries_cache,
         "active_symbol": current_active_symbol_ui,
         "ready": bool(options_cache)
