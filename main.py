@@ -1034,7 +1034,7 @@ HTML_TEMPLATE = """
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
 
-        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 2px 5px; line-height: 1.1; white-space: nowrap; position: relative; }
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
 
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
 
@@ -1099,9 +1099,6 @@ HTML_TEMPLATE = """
 
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
-
-        /* 11 upar + 11 neeche strike screen par fit karne ke liye: chhoti screen par % value number ke saath ek hi line me */
-        @media (max-height: 959px), (max-width: 640px) { .pct-sub { display: inline; margin-left: 4px; } }
     </style>
 </head>
 <body>
@@ -1181,6 +1178,7 @@ HTML_TEMPLATE = """
             const headH = c.querySelector('thead').offsetHeight;
             const bodyH = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
             const extra = c.offsetHeight - c.clientHeight;          // border + horizontal scrollbar
+            c.style.maxHeight = 'none';
             c.style.height = Math.ceil(headH + bodyH + extra) + 'px';
         }
         function centerNow() { userInteracted = false; sizeContainer(); fitViewport(); centerSpot(); }
