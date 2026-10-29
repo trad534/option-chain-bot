@@ -442,35 +442,36 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             scenarioStatus = finalStatusText
             isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
-            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "")   # shift bante waqt ka wtt/wtb
-            wasShifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
+            shiftFrom = num(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText   # shift bante waqt ka wtt/wtb
+            shifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "")
             isStrongNow = rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText
-            isWeakNow = finalStatusText in ("wtb", "wtt")
-            shifted = wasShifted
-            if shifted and not shiftStatus:
-                shiftStatus = finalStatusText
+            reverted = False
 
-            # 1) SHIFT TUTNE KE RULES
-            #    - status "wtt to strong" / "wtb to strong" (strong) ho jaye
-            #    - leader strike doosra strike ban jaye (naya leader weak ho ya strong, plain situation dikhegi)
-            #    - wtt <-> wtb ki direction palat jaye
-            #    second strike badalne se shift NAHI tutta (sirf time badalta hai)
+            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta, par wtt/wtb ki direction palti to tutta hai)
             if shifted:
                 if isStrongNow:
                     shifted = False
                     log_event(symbol_name, cacheKey, f"SHIFT CLEARED (strong): strike={strike_str} status={finalStatusText}")
-                elif strike != prevStrike:
+                elif strike == shiftFrom:
                     shifted = False
-                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (leader doosre strike par): {int(prevStrike)} -> {strike_str} status={finalStatusText}")
-                elif isWeakNow and finalStatusText != shiftStatus:
+                    reverted = True
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (leader wapas purane strike {int(shiftFrom)} par)")
+                elif finalStatusText in ("wtb", "wtt") and finalStatusText != shiftStatus:
                     shifted = False
                     log_event(symbol_name, cacheKey, f"SHIFT CLEARED (direction palti {shiftStatus} -> {finalStatusText}): strike={strike_str} second={second_strike_str}")
+                elif finalStatusText in ("wtb", "wtt") and shiftStatus and finalStatusText != shiftStatus:
+                    shifted = False
+                    log_event(symbol_name, cacheKey, f"SHIFT CLEARED (weak direction badli: {shiftStatus} -> {finalStatusText}) strike={strike_str} second={second_strike_str}")
 
-            # 2) NAYA SHIFT: leader strike badla, status weak (wtt/wtb) aur pichhla state shifted nahi tha
-            if (not wasShifted) and strike != prevStrike and prevStrike > 0 and isWeakNow:
+            # 2) NAYA SHIFT: leader strike badla aur status weak (wtt/wtb)
+            if (not reverted) and strike != prevStrike and prevStrike > 0 and finalStatusText in ("wtb", "wtt"):
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
+                shiftFrom = prevStrike
                 shiftStatus = finalStatusText
                 shifted = True
+                set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, finalStatusText)
                 log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
 
             if shifted:
@@ -478,6 +479,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
                 set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
+                set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(shiftFrom))
                 set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, shiftStatus)
             else:
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "false")
@@ -943,7 +945,6 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
         if locked:
             state_lock.release()
 
-
 # --- SCRIP MASTER ---
 def initialize_scrip_master():
     global full_scrip_df, options_cache, symbol_expiries_cache, symbol_exch_cache, scrip_master_date
@@ -1005,23 +1006,19 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
-        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #eef1f5; color: #000000; margin: 0; padding: 8px; overflow-x: hidden; }
-        .app { max-width: 1800px; margin: 0 auto; }
-        .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 14px; background: #ffffff; padding: 6px 12px; border-radius: 8px; border: 1px solid #d0d7de; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-        .header h2 { margin: 0; font-size: 17px; letter-spacing: 0.2px; white-space: nowrap; }
-        .controls-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; white-space: nowrap; font-family: inherit; }
-        button.lot-size-badge { border: 0; cursor: pointer; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 6px; border: 1px solid #ced4da; }
+        .controls-group { display: flex; gap: 10px; align-items: center; }
+        .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
         .upd-badge { background: #2b8a3e; }
         .upd-stale { background: #c92a2a; }
-        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; max-width: 100%; }
+        select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
 
-        .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 8px; color: #0ca678; border: 1px solid #20c997; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
 
-        .table-container { margin-top: 6px; overflow-anchor: none; height: 70vh; max-width: 100%; overflow: auto; border: 1px solid #d0d7de; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); position: relative; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
 
-        table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: clamp(11px, calc(9.6px + 0.18vw), 13px); text-align: center; }
+        table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
 
         th { padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
 
@@ -1031,13 +1028,13 @@ HTML_TEMPLATE = """
         .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
         .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
 
-        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 3px 5px; line-height: 1.15; white-space: nowrap; position: relative; }
+        td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
 
-        #row-winners th { position: sticky; top: -1px; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
+        #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
 
         #row-columns th {
             position: sticky;
-            top: 49px;
+            top: 50px;
             z-index: 24;
             border-bottom: 3px solid #000000 !important;
             box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
@@ -1045,10 +1042,10 @@ HTML_TEMPLATE = """
         }
 
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
-        #row-winners th.strike-col { top: -1px; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
+        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
 
         #row-columns th.strike-col {
-            top: 49px;
+            top: 50px;
             z-index: 26;
             background: #ff922b !important;
             color: #ffffff !important;
@@ -1092,31 +1089,13 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
-        .pct-sub { font-size: 9px; font-weight: bold; display: block; line-height: 1.1; color: #000000; margin-top: 0; }
+        .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
 
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
-
-        /* chhoti height / phone par % value ke saath ek hi line me, taaki 11 upar + 11 neeche strike screen par aa jayein */
-        @media (max-height: 959px), (max-width: 640px) {
-            .pct-sub { display: inline; margin-left: 4px; }
-        }
-        @media (max-width: 640px) {
-            body { padding: 5px; }
-            .header { padding: 6px 8px; gap: 5px 8px; }
-            .header h2 { font-size: 15px; }
-            .controls-group { width: 100%; gap: 5px; }
-            .controls-group select { flex: 1 1 110px; min-width: 0; padding: 4px; font-size: 13px; }
-            .lot-size-badge { font-size: 11.5px; padding: 4px 7px; }
-            .k3-banner { padding: 5px 6px; font-size: 13px; margin-top: 4px; }
-            .table-container { margin-top: 4px; }
-            td { padding: 3px 4px; }
-            th { padding: 3px 4px; }
-        }
     </style>
 </head>
 <body>
-<div class="app">
     <div class="header">
         <h2>⚡ Arush LTP Calculator</h2>
         <div class="controls-group">
@@ -1156,7 +1135,6 @@ HTML_TEMPLATE = """
             </tbody>
         </table>
     </div>
-</div>
     <script>
         let allExpiriesData = {};
         let isFirstLoad = true;
@@ -1164,44 +1142,29 @@ HTML_TEMPLATE = """
         let fastPoll = false;
         let userInteracted = false;
 
-        const VIEW_ROWS = 11;                       // imaginary line ke upar 11 aur neeche 11 strike screen par
-        const tableBox = document.getElementById('tableContainer');
-
-        function spotRowIndex() {
-            const rows = document.getElementById('gridBody').children;
-            for (let i = 0; i < rows.length; i++) if (rows[i].classList.contains('spot-target-row')) return i;
-            return -1;
-        }
-        function fitViewport() {
-            const rows = document.getElementById('gridBody').children;
-            const si = spotRowIndex();
-            const maxH = Math.max(260, window.innerHeight - tableBox.getBoundingClientRect().top - 8);
-            if (si < 0) { tableBox.style.height = Math.min(maxH, 340) + 'px'; return; }
-            const first = rows[Math.max(0, si - VIEW_ROWS)], last = rows[Math.min(rows.length - 1, si + VIEW_ROWS)];
-            const headH = tableBox.querySelector('thead').offsetHeight;
-            const bodyH = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-            const extra = tableBox.offsetHeight - tableBox.clientHeight;        // border + horizontal scrollbar
-            tableBox.style.height = Math.min(Math.ceil(headH + bodyH + extra), maxH) + 'px';
+        function sizeContainer() {
+            const c = document.getElementById('tableContainer');
+            const top = c.getBoundingClientRect().top + window.scrollY;
+            c.style.maxHeight = Math.max(300, window.innerHeight - top - 8) + 'px';
         }
         function centerSpot() {
-            const row = tableBox.querySelector('.spot-target-row');
+            const c = document.getElementById('tableContainer');
+            const row = c.querySelector('.spot-target-row');
             if (!row) return;
-            const headH = tableBox.querySelector('thead').offsetHeight;
-            const cr = tableBox.getBoundingClientRect(), rr = row.getBoundingClientRect();
-            const rowTop = rr.top - cr.top + tableBox.scrollTop;
-            tableBox.scrollTop = rowTop + rr.height / 2 - (headH + (tableBox.clientHeight - headH) / 2);
+            const headH = c.querySelector('thead').offsetHeight;
+            const cr = c.getBoundingClientRect(), rr = row.getBoundingClientRect();
+            const rowTop = rr.top - cr.top + c.scrollTop;
+            c.scrollTop = rowTop + rr.height / 2 - (headH + (c.clientHeight - headH) / 2);
             const cell = row.querySelector('.strike-col');
             if (cell) {
                 const cl = cell.getBoundingClientRect();
-                tableBox.scrollLeft = (cl.left - cr.left + tableBox.scrollLeft) + cl.width / 2 - tableBox.clientWidth / 2;
+                c.scrollLeft = (cl.left - cr.left + c.scrollLeft) + cl.width / 2 - c.clientWidth / 2;
             }
         }
-        function relayout() { fitViewport(); if (!userInteracted) centerSpot(); }
-        function centerNow() { userInteracted = false; fitViewport(); centerSpot(); }
-        window.addEventListener('resize', relayout);
-        window.addEventListener('orientationchange', () => setTimeout(relayout, 250));
-        ['touchstart', 'wheel', 'mousedown'].forEach(ev => tableBox.addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
-        if (window.ResizeObserver) new ResizeObserver(() => { if (!userInteracted) { fitViewport(); centerSpot(); } }).observe(document.getElementById('optionChainTable'));
+        function centerNow() { userInteracted = false; sizeContainer(); centerSpot(); }
+        window.addEventListener('resize', () => { sizeContainer(); if (!userInteracted) centerSpot(); });
+        ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
+        sizeContainer();
         const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
@@ -1343,9 +1306,10 @@ HTML_TEMPLATE = """
                     });
 
                     if (isFirstLoad || !userInteracted) {
-                        relayout();
-                        requestAnimationFrame(relayout);
-                        if (isFirstLoad) { setTimeout(relayout, 300); setTimeout(relayout, 900); }
+                        sizeContainer();
+                        centerSpot();
+                        requestAnimationFrame(centerSpot);
+                        if (isFirstLoad) { setTimeout(centerSpot, 300); setTimeout(centerSpot, 900); }
                         isFirstLoad = false;
                     } else {
                         cont.scrollTop = keepTop;
