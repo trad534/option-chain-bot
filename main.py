@@ -600,6 +600,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
+        # imaginary line se 2 strike se door wale strike: CE me line ke upar (kam strike), PE me line ke neeche (zyada strike)
+        ce_out_set = {i for i, stv in enumerate(strikes_list) if stv <= spot_price and i not in ce_idx_set}
+        pe_out_set = {i for i, stv in enumerate(strikes_list) if stv > spot_price and i not in pe_idx_set}
+
         grid_rows_built = []
         spot_inserted = False
         spot_insert_idx = spot_idx
@@ -637,6 +641,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
+            # window se bahar gaye strike par 75% ya zyada ho to dark-grey highlight (100% / 75% highlight ki tarah)
+            for col in ('ce_oi', 'ce_vol'):
+                if not r_copy[col + '_color'] and idx in ce_out_set and r_copy[col + '_pct'] >= 75.0:
+                    r_copy[col + '_color'] = 'bg-out'
+            for col in ('pe_vol', 'pe_oi'):
+                if not r_copy[col + '_color'] and idx in pe_out_set and r_copy[col + '_pct'] >= 75.0:
+                    r_copy[col + '_color'] = 'bg-out'
             grid_rows_built.append(r_copy)
 
         if not spot_inserted:
@@ -1095,6 +1106,8 @@ HTML_TEMPLATE = """
         .pe-vol-col.bg-100 { background: #a5d8ff !important; color: #000000 !important; font-weight: bold; }
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
+        .bg-out { background: #5b636b !important; color: #ffffff !important; font-weight: bold; }
+        .bg-out .pct-sub { color: #ffffff; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
 
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
