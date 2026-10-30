@@ -115,6 +115,7 @@ user_selected_expiries = {}
 smart_api_global = None
 symbol_states_memory = {}
 last_ui_poll = [0.0]
+viewed_symbols = {}     # symbol -> last time koi viewer ne is symbol ka data maanga
 need_relogin = [False]
 last_login_ts = [0.0]
 fail_streak = [0]
@@ -474,11 +475,15 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 shiftStatus = finalStatusText
                 shifted = True
                 set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, finalStatusText)
+                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))   # shift banne ke waqt ka second strike
                 log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
 
             if shifted:
-                isShifting = True
-                scenarioStatus = "wtb" if shiftType == "top to bottom" else "wtt"
+                # label tab tak jab tak second strike wahi hai jo shift banne par tha; doosra strike aaye to plain weak dikhe,
+                # second strike wapas wahi aaye to shifted wapas
+                shiftTarget = num(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
+                isShifting = (shiftTarget <= 0) or (secondStrike == shiftTarget)
+                scenarioStatus = ("wtb" if shiftType == "top to bottom" else "wtt") if isShifting else finalStatusText
                 set_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey, "true")
                 set_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, shiftType)
                 set_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, str(shiftFrom))
@@ -1408,6 +1413,7 @@ def set_symbol_api(symbol, expiry):
     global current_active_symbol_ui
     sym = symbol.upper()
     current_active_symbol_ui = sym
+    viewed_symbols[sym] = time.time()
     if expiry:
         user_selected_expiries[sym] = expiry.upper()
     last_ui_poll[0] = time.time()
@@ -1417,10 +1423,11 @@ def set_symbol_api(symbol, expiry):
 
 @app.route('/api/data/<symbol>')
 def get_symbol_runtime_data(symbol):
-    if time.time() - last_ui_poll[0] > 10:
+    sym = symbol.upper()
+    if time.time() - last_ui_poll[0] > 10 or time.time() - viewed_symbols.get(sym, 0) > 10:
         wake_active.set()
     last_ui_poll[0] = time.time()
-    sym = symbol.upper()
+    viewed_symbols[sym] = time.time()
     vault = multi_symbol_runtime_states.get(sym, {})
     ts = vault.get("fetched_ts")
     return jsonify({
@@ -1486,47 +1493,54 @@ def system_ready():
 
 
 def active_loop():
-    """Screen wala symbol: alag thread, API par priority, ~3s cadence."""
-    n = 0
+    """Screen par khule saare symbols (kitne bhi viewers / tabs): alag thread, API par priority."""
+    counters = {}
     while True:
         t0 = time.time()
         try:
-            if system_ready() and (time.time() - last_ui_poll[0]) < 10:
-                active = current_active_symbol_ui
-                if active in options_cache:
+            if system_ready():
+                now0 = time.time()
+                for s_, ts_ in list(viewed_symbols.items()):
+                    if now0 - ts_ > 120:
+                        viewed_symbols.pop(s_, None)
+                syms = [s_ for s_, ts_ in list(viewed_symbols.items()) if now0 - ts_ < 10 and s_ in options_cache]
+                for active in syms:
                     lk = get_sym_lock(active)
-                    if lk.acquire(timeout=5):
-                        try:
-                            now = time.time()
-                            v = multi_symbol_runtime_states.get(active, {})
-                            exp_list = symbol_expiries_cache.get(active) or []
-                            chosen = user_selected_expiries.get(active, exp_list[0] if exp_list else "")
-                            if exp_list and chosen not in exp_list:
-                                chosen = exp_list[0]
-                            is_open = market_open(symbol_exch_cache.get(active, ""), datetime.now())
-                            chain_ok = bool(v.get("grid_rows")) and v.get("active_expiry") == chosen
-                            extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 20
-                            core_age = now - v.get("fetched_ts", 0)
-                            mode = None
-                            if not is_open:
-                                if (not chain_ok) or v.get("extra_exp") != chosen or core_age > 60:
-                                    mode = "full"
-                            elif (not chain_ok) or (not extra_ok and core_age > 8):
-                                mode = "full"; n = 0
-                            elif not extra_ok:
-                                mode = "extra"
-                            else:
-                                mode = "core"; n += 1
-                            if mode:
-                                active_pending[0] += 1
-                                try:
-                                    fetch_symbol_data(smart_api_global, active, mode, True)
-                                    if mode == "core" and n % 3 == 0:
-                                        fetch_symbol_data(smart_api_global, active, "extra", True)
-                                finally:
-                                    active_pending[0] -= 1
-                        finally:
-                            lk.release()
+                    if not lk.acquire(timeout=5):
+                        continue
+                    try:
+                        n = counters.get(active, 0)
+                        now = time.time()
+                        v = multi_symbol_runtime_states.get(active, {})
+                        exp_list = symbol_expiries_cache.get(active) or []
+                        chosen = user_selected_expiries.get(active, exp_list[0] if exp_list else "")
+                        if exp_list and chosen not in exp_list:
+                            chosen = exp_list[0]
+                        is_open = market_open(symbol_exch_cache.get(active, ""), datetime.now())
+                        chain_ok = bool(v.get("grid_rows")) and v.get("active_expiry") == chosen
+                        extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 20
+                        core_age = now - v.get("fetched_ts", 0)
+                        mode = None
+                        if not is_open:
+                            if (not chain_ok) or v.get("extra_exp") != chosen or core_age > 60:
+                                mode = "full"
+                        elif (not chain_ok) or (not extra_ok and core_age > 8):
+                            mode = "full"; n = 0
+                        elif not extra_ok:
+                            mode = "extra"
+                        else:
+                            mode = "core"; n += 1
+                        if mode:
+                            active_pending[0] += 1
+                            try:
+                                fetch_symbol_data(smart_api_global, active, mode, True)
+                                if mode == "core" and n % 3 == 0:
+                                    fetch_symbol_data(smart_api_global, active, "extra", True)
+                            finally:
+                                active_pending[0] -= 1
+                        counters[active] = n
+                    finally:
+                        lk.release()
         except Exception as e:
             print(f"⚠ Active loop error: {e}")
         wake_active.wait(timeout=max(0.2, 3.0 - (time.time() - t0)))
@@ -1579,6 +1593,7 @@ def run_bot_lock_loop():
                     time.sleep(5)
                     continue
 
+            viewed_now = {s_ for s_, ts_ in list(viewed_symbols.items()) if time.time() - ts_ < 10}
             ui_open = (time.time() - last_ui_poll[0]) < 10
             active = current_active_symbol_ui
 
@@ -1612,7 +1627,7 @@ def run_bot_lock_loop():
             if rotation:
                 sym = rotation[rot_i % len(rotation)]
                 rot_i += 1
-                if not (ui_open and sym == active):
+                if sym not in viewed_now:
                     lk = get_sym_lock(sym)
                     if lk.acquire(blocking=False):
                         try:
