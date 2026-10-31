@@ -232,7 +232,7 @@ def maybe_daily_reset(now_dt):
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
-        return {'iv': 0, 'delta': round(delta, 3), 'gamma': 0, 'theta': 0, 'vega': 0}
+        return {'iv': 0, 'delta': round(delta, 3), 'delta_raw': float(delta), 'gamma': 0, 'theta': 0, 'vega': 0}
 
     intrinsic = max(0, S - K * np.exp(-r * t)) if flag == 'CE' else max(0, K * np.exp(-r * t) - S)
     if ltp < intrinsic: ltp = intrinsic + 0.05
@@ -270,7 +270,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
         delta = norm.cdf(d1) - 1
         theta = (- (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t)) + r * K * np.exp(-r * t) * norm.cdf(-d2)) / 365 if t > 0 else 0
 
-    return {'iv': iv_val, 'delta': round(delta, 3), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
+    return {'iv': iv_val, 'delta': round(delta, 3), 'delta_raw': float(delta), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
 # --- APPS SCRIPT LOGIC (Python replica) ---
@@ -833,6 +833,34 @@ def option_quote(tokmap, st, tp, after_open):
     return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
 
 
+def compute_extension_levels(rows, spot):
+    """Apps Script dynamicGreeksEngineV5 ka replica.
+    Level(i) = spot - (CE LTP[i] - PE LTP[i-1]) / (CE delta[i] + |PE delta[i-1]|)   (CE = strike i, PE = pichhla strike i-1)
+    EOS (PE side)  : level(i) strike i ki row par  -> line ke neeche ke 8 strike + line ke upar ke 2 strike
+    EOR (CE side)  : level(i) strike i-1 ki row par -> line ke neeche ke 2 strike + line ke upar ke 9 strike
+    (rows ascending; 'neeche' = strike <= spot, 'upar' = strike > spot)"""
+    n = len(rows)
+    for r in rows:
+        r['ce_eor'] = None
+        r['pe_eos'] = None
+    below = [i for i in range(n) if rows[i]['strike'] <= spot]
+    above = [i for i in range(n) if rows[i]['strike'] > spot]
+
+    def level(i):
+        if i < 1 or i >= n:
+            return None
+        ce, pe = rows[i], rows[i - 1]
+        cd, pdl = ce.get('ce_delta_raw', ce.get('ce_delta', 0)), pe.get('pe_delta_raw', pe.get('pe_delta', 0))
+        if cd == 0 or pdl == 0:
+            return None
+        return round(spot - (ce['ce_ltp'] - pe['pe_ltp']) / (cd + abs(pdl)), 2)
+
+    for i in below[-8:] + above[:2]:
+        rows[i]['pe_eos'] = level(i)
+    for j in below[-2:] + above[:9]:
+        rows[j]['ce_eor'] = level(j + 1)
+
+
 def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
     """mode: light = tracker tokens, bina greeks (background symbols)
              core  = tracker tokens + greeks (screen wala symbol, har ~3s)
@@ -945,8 +973,10 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 'ce_oi_chg': ce_q['oi_chg'], 'ce_change': ce_q['net_change'], 'ce_ltp': ce_q['ltp'],
                 'pe_ltp': pe_q['ltp'], 'pe_change': pe_q['net_change'], 'pe_oi_chg': pe_q['oi_chg'],
                 'pe_iv': pe_g['iv'] if pe_g['iv'] > 1 else 0, 'pe_delta': pe_g['delta'], 'pe_gamma': pe_g['gamma'], 'pe_theta': pe_g['theta'], 'pe_vega': pe_g['vega'],
-                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price)
+                'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price),
+                'ce_delta_raw': ce_g['delta_raw'], 'pe_delta_raw': pe_g['delta_raw']
             })
+        compute_extension_levels(raw_grid_payload, spot_price)
 
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=chain['lot'], active_expiry=current_expiry, symbol_name=sym)
         v = multi_symbol_runtime_states.get(sym)
@@ -1117,6 +1147,9 @@ HTML_TEMPLATE = """
 
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
+        .ext-th, .ext-td { min-width: 62px; }
+        .eor-val { color: #e00000; font-weight: bold; }
+        .eos-val { color: #0000ee; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -1140,7 +1173,9 @@ HTML_TEMPLATE = """
                     <th class="bg-call-side"></th>
                     <th colspan="3" class="bg-call-side" id="cell-h5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-call-side"></th>
+                    <th class="bg-call-side"></th>
                     <th class="strike-col">STRIKE</th>
+                    <th class="bg-put-side"></th>
                     <th class="bg-put-side"></th>
                     <th colspan="3" class="bg-put-side" id="cell-q5"><div class="winner-card-top">-----</div></th>
                     <th class="bg-put-side"></th>
@@ -1148,14 +1183,14 @@ HTML_TEMPLATE = """
                 </tr>
                 <tr id="row-columns">
                     <th class="th-ce">Vega</th><th class="th-ce">Theta</th><th class="th-ce">Gamma</th><th class="th-ce">Delta</th><th class="th-ce">IV</th>
-                    <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th>
+                    <th class="th-ce">OI Chg</th><th class="ce-oi-col th-ce">OI</th><th class="ce-vol-col th-ce">Vol</th><th class="th-ce">Change</th><th class="th-ce">LTP</th><th class="th-ce ext-th">EOR</th>
                     <th class="strike-col">STRIKE</th>
-                    <th class="th-pe">LTP</th><th class="th-pe">Change</th><th class="pe-vol-col th-pe">Vol</th><th class="pe-oi-col th-pe">OI</th><th class="th-pe">OI Chg</th>
+                    <th class="th-pe ext-th">EOS</th><th class="th-pe">LTP</th><th class="th-pe">Change</th><th class="pe-vol-col th-pe">Vol</th><th class="pe-oi-col th-pe">OI</th><th class="th-pe">OI Chg</th>
                     <th class="th-pe">IV</th><th class="th-pe">Delta</th><th class="th-pe">Gamma</th><th class="th-pe">Theta</th><th class="th-pe">Vega</th>
                 </tr>
             </thead>
             <tbody id="gridBody">
-                <tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
+                <tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
             </tbody>
         </table>
     </div>
@@ -1203,7 +1238,7 @@ HTML_TEMPLATE = """
         window.addEventListener('resize', () => { sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); });
         ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
         sizeContainer();
-        const LOADING_ROW = '<tr><td colspan="21" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
+        const LOADING_ROW = '<tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
@@ -1310,7 +1345,7 @@ HTML_TEMPLATE = """
                             if (peOiHtml) peBadges.push(peOiHtml);
                             let ceOverlay = ceBadges.length > 0 ? `<div class="spot-badges-wrapper">${ceBadges.join('')}</div>` : '';
                             let peOverlay = peBadges.length > 0 ? `<div class="spot-badges-wrapper">${peBadges.join('')}</div>` : '';
-                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+                            tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${ceOverlay}</td><td></td><td></td><td></td><td class="spot-price-cell strike-col"><span class="spot-tag-red">SPOT</span><span class="spot-value-green">${renderSpotValue}</span></td><td></td><td></td><td></td><td colspan="2" style="position:relative;">${peOverlay}</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
                         } else {
                             let ceOiChgCls = row.ce_oi_chg >= 0 ? 'chg-pos' : 'chg-neg';
                             let ceChgCls   = row.ce_change >= 0 ? 'chg-pos' : 'chg-neg';
@@ -1327,7 +1362,9 @@ HTML_TEMPLATE = """
                                 `<td class="ce-vol-col ${row.ce_vol_color}">${row.ce_vol}<span class="pct-sub">${row.ce_vol_pct}%</span></td>` +
                                 `<td class="${ceChgCls} ${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_change}</td>` +
                                 `<td class="${row.is_itm_ce ? 'itm-ce' : ''}">${row.ce_ltp}</td>` +
+                                `<td class="ext-td eor-val ${row.is_itm_ce ? 'itm-ce' : ''}">${(row.ce_eor === null || row.ce_eor === undefined) ? '' : row.ce_eor}</td>` +
                                 `<td class="strike-col">${row.strike}</td>` +
+                                `<td class="ext-td eos-val ${row.is_itm_pe ? 'itm-pe' : ''}">${(row.pe_eos === null || row.pe_eos === undefined) ? '' : row.pe_eos}</td>` +
                                 `<td class="${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_ltp}</td>` +
                                 `<td class="${peChgCls} ${row.is_itm_pe ? 'itm-pe' : ''}">${row.pe_change}</td>` +
                                 `<td class="pe-vol-col ${row.pe_vol_color}">${row.pe_vol}<span class="pct-sub">${row.pe_vol_pct}%</span></td>` +
