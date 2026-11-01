@@ -833,16 +833,23 @@ def option_quote(tokmap, st, tp, after_open):
     return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
 
 
+EOR_ABOVE_LINE, EOR_BELOW_LINE = 2, 19     # EOR (CE side): imaginary line ke 2 strike upar se, line ke 19 strike neeche tak
+EOS_ABOVE_LINE, EOS_BELOW_LINE = 18, 2     # EOS (PE side): line ke 2 strike neeche se, line ke 18 strike upar tak
+                                           # ("upar" = screen par line ke upar = spot se chhote/barabar strike, "neeche" = spot se bade strike)
+
+
 def compute_extension_levels(rows, spot):
-    """Apps Script dynamicGreeksEngineV5 wala formula, ab poore table ke har strike ke liye.
+    """Apps Script dynamicGreeksEngineV5 wala formula.
     Level(i) = spot - (CE LTP[i] - PE LTP[i-1]) / (CE delta[i] + |PE delta[i-1]|)   (CE = strike i, PE = pichhla strike i-1)
-    EOS (PE side) : level(i) strike i ki row par
-    EOR (CE side) : level(i) strike i-1 ki row par (yaani strike j par level(j+1))
+    EOS (PE side) : level(i) strike i ki row par     -> line ke upar 18 strike + line ke neeche 2 strike
+    EOR (CE side) : level(i) strike i-1 ki row par   -> line ke upar 2 strike + line ke neeche 19 strike
     Value me point nahi: decimal seedha hata diya jata hai (23515.83 -> 23515). rows ascending strike order me."""
     n = len(rows)
     for r in rows:
         r['ce_eor'] = None
         r['pe_eos'] = None
+    up = [i for i in range(n) if rows[i]['strike'] <= spot]       # screen par line ke upar
+    down = [i for i in range(n) if rows[i]['strike'] > spot]      # screen par line ke neeche
 
     def level(i):
         if i < 1 or i >= n:
@@ -853,9 +860,9 @@ def compute_extension_levels(rows, spot):
             return None
         return int(spot - (ce['ce_ltp'] - pe['pe_ltp']) / (cd + abs(pdl)))
 
-    for i in range(1, n):
+    for i in up[-EOS_ABOVE_LINE:] + down[:EOS_BELOW_LINE]:
         rows[i]['pe_eos'] = level(i)
-    for j in range(0, n - 1):
+    for j in up[-EOR_ABOVE_LINE:] + down[:EOR_BELOW_LINE]:
         rows[j]['ce_eor'] = level(j + 1)
 
 
@@ -891,7 +898,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 return
 
         closest = nearest_idx(all_strikes, spot_ref)
-        lo, hi = max(0, closest - 18), min(len(all_strikes), closest + 19)
+        lo, hi = max(0, closest - 19), min(len(all_strikes), closest + 20)
         pairs = [spot_src]
         for pos in range(lo, hi):
             st = all_strikes[pos]
@@ -955,7 +962,8 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             print(f"⚠ {sym}: {missing}/{len(pairs) - 1} tokens ka quote nahi aaya (purani value dikh rahi hai)")
 
         closest = nearest_idx(all_strikes, spot_price)
-        strikes = all_strikes[max(0, closest - 18):min(len(all_strikes), closest + 19)]
+        below_n = sum(1 for x_ in all_strikes if x_ <= spot_price)       # line ke upar (spot se chhote/barabar) kitne strike
+        strikes = all_strikes[max(0, below_n - 19):min(len(all_strikes), below_n + 19)]
         after_open = (now_dt.hour, now_dt.minute) >= (9, 15)
 
         expiry_dt_val = chain['expiry_dt']
