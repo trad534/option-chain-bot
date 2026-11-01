@@ -834,17 +834,15 @@ def option_quote(tokmap, st, tp, after_open):
 
 
 def compute_extension_levels(rows, spot):
-    """Apps Script dynamicGreeksEngineV5 ka replica.
+    """Apps Script dynamicGreeksEngineV5 wala formula, ab poore table ke har strike ke liye.
     Level(i) = spot - (CE LTP[i] - PE LTP[i-1]) / (CE delta[i] + |PE delta[i-1]|)   (CE = strike i, PE = pichhla strike i-1)
-    EOS (PE side)  : level(i) strike i ki row par  -> line ke neeche ke 8 strike + line ke upar ke 2 strike
-    EOR (CE side)  : level(i) strike i-1 ki row par -> line ke neeche ke 2 strike + line ke upar ke 9 strike
-    (rows ascending; 'neeche' = strike <= spot, 'upar' = strike > spot)"""
+    EOS (PE side) : level(i) strike i ki row par
+    EOR (CE side) : level(i) strike i-1 ki row par (yaani strike j par level(j+1))
+    Value me point nahi: decimal seedha hata diya jata hai (23515.83 -> 23515). rows ascending strike order me."""
     n = len(rows)
     for r in rows:
         r['ce_eor'] = None
         r['pe_eos'] = None
-    below = [i for i in range(n) if rows[i]['strike'] <= spot]
-    above = [i for i in range(n) if rows[i]['strike'] > spot]
 
     def level(i):
         if i < 1 or i >= n:
@@ -853,11 +851,11 @@ def compute_extension_levels(rows, spot):
         cd, pdl = ce.get('ce_delta_raw', ce.get('ce_delta', 0)), pe.get('pe_delta_raw', pe.get('pe_delta', 0))
         if cd == 0 or pdl == 0:
             return None
-        return round(spot - (ce['ce_ltp'] - pe['pe_ltp']) / (cd + abs(pdl)), 2)
+        return int(spot - (ce['ce_ltp'] - pe['pe_ltp']) / (cd + abs(pdl)))
 
-    for i in below[-8:] + above[:2]:
+    for i in range(1, n):
         rows[i]['pe_eos'] = level(i)
-    for j in below[-2:] + above[:9]:
+    for j in range(0, n - 1):
         rows[j]['ce_eor'] = level(j + 1)
 
 
@@ -907,6 +905,9 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 need_ce, need_pe = core_ce, core_pe
             if need_ce and (st, 'CE') in tokmap: pairs.append(tokmap[(st, 'CE')])
             if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
+        if mode in ("full", "extra"):      # EOR / EOS ke liye table ke bahar ka ek-ek edge strike
+            if lo >= 1 and (all_strikes[lo - 1], 'PE') in tokmap: pairs.append(tokmap[(all_strikes[lo - 1], 'PE')])
+            if hi < len(all_strikes) and (all_strikes[hi], 'CE') in tokmap: pairs.append(tokmap[(all_strikes[hi], 'CE')])
 
         quotes = fetch_quotes(smart_api, pairs, priority)
         spot_price = spot_from(quotes, spot_src)
@@ -976,7 +977,17 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price),
                 'ce_delta_raw': ce_g['delta_raw'], 'pe_delta_raw': pe_g['delta_raw']
             })
-        compute_extension_levels(raw_grid_payload, spot_price)
+        # EOR / EOS: table ki pehli aur aakhri row bhi bhare, isliye bahar ka ek-ek strike sirf gine jaane ke liye
+        ext_rows = list(raw_grid_payload)
+        fpos, lpos = all_strikes.index(strikes[0]), all_strikes.index(strikes[-1])
+        def _edge_row(stv):
+            cq, pq = option_quote(tokmap, stv, 'CE', after_open), option_quote(tokmap, stv, 'PE', after_open)
+            return {'strike': stv, 'ce_ltp': cq['ltp'], 'pe_ltp': pq['ltp'],
+                    'ce_delta_raw': calculate_iv_and_greeks('CE', spot_price, stv, t, 0.07, cq['ltp'])['delta_raw'],
+                    'pe_delta_raw': calculate_iv_and_greeks('PE', spot_price, stv, t, 0.07, pq['ltp'])['delta_raw']}
+        if fpos >= 1: ext_rows.insert(0, _edge_row(all_strikes[fpos - 1]))
+        if lpos + 1 < len(all_strikes): ext_rows.append(_edge_row(all_strikes[lpos + 1]))
+        compute_extension_levels(ext_rows, spot_price)
 
         execute_python_scenario_tracker(raw_rows=raw_grid_payload, spot_price=spot_price, lot_size=chain['lot'], active_expiry=current_expiry, symbol_name=sym)
         v = multi_symbol_runtime_states.get(sym)
@@ -1694,4 +1705,3 @@ def run_bot_lock_loop():
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     run_bot_lock_loop()
-
