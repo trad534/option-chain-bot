@@ -2,6 +2,7 @@ import time
 import os
 import json
 import hmac
+from decimal import Decimal, ROUND_HALF_UP
 from collections import deque
 import builtins
 import threading
@@ -56,6 +57,9 @@ def window_sets(strikes_list, spot):
 
 
 debug_info = {}
+# Daily / Weekly range engine ka data (din badalne par clear NAHI hota)
+range_state = {"close": {}, "open": {}, "api_close": {}, "daily": {}, "weekly": {}}
+range_flags = {}
 INDEX_NAMES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX", "BANKEX", "SENSEX50"]
 symbol_kind_cache = {}            # symbol -> "INDEX" / "MCX" / "STOCK"
 INDEX_MAP = {
@@ -169,7 +173,8 @@ def save_state():
     try:
         payload = json.dumps({
             "run_date": global_run_date, "reset_done": reset_done_date,
-            "states": symbol_states_memory, "morning_oi": morning_oi_dict
+            "states": symbol_states_memory, "morning_oi": morning_oi_dict,
+            "range_state": range_state, "range_flags": range_flags
         })
         if redis_client:
             redis_client.set(STATE_KEY, payload, ex=172800)
@@ -196,6 +201,13 @@ def load_state():
         if not raw:
             return
         d = json.loads(raw)
+        rs = d.get("range_state")
+        if isinstance(rs, dict):
+            for k_, v_ in rs.items():
+                if isinstance(v_, dict):
+                    range_state.setdefault(k_, {}).update(v_)
+        if isinstance(d.get("range_flags"), dict):
+            range_flags.update(d["range_flags"])
         if d.get("run_date") == datetime.now().strftime("%Y-%m-%d"):
             symbol_states_memory.update(d.get("states", {}))
             morning_oi_dict.update(d.get("morning_oi", {}))
@@ -1067,6 +1079,195 @@ def initialize_scrip_master():
         return False
 
 
+# --- DAILY / WEEKLY RANGE ENGINE (Apps Script rangeEngine ka Python version) ---
+# Din ke hisaab se kitne strike door ke CE/PE ka LTP (Apps Script: Mon L20/P16, Tue L19/P17, Wed L25/P11, Thu L24/P12, Fri L23/P13)
+RANGE_DAILY_K = {0: 1, 1: 0, 2: 6, 3: 5, 4: 4}
+RANGE_TASKS = [
+    ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),                    # MCX: 8:59 ka LTP = open
+    ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),                    # Index + F&O stocks: 9:14 ka LTP = open
+    ("NSE_CLOSE", "NSE", "close", lambda hm: "15:35" <= hm <= "23:59"),       # 3:30 ke baad ka LTP = close
+    ("MCX_CLOSE_A", "MCX", "close", lambda hm: "23:35" <= hm < "23:58"),      # MCX band hone ke baad (summer 23:30)
+    ("MCX_CLOSE_B", "MCX", "close", lambda hm: "23:58" <= hm <= "23:59"),     # winter me MCX 23:55 par band hota hai, ye wahi final value rakhta hai
+]
+
+
+def range_group_symbols(group):
+    return [s_ for s_ in list(options_cache.keys()) if (symbol_exch_cache.get(s_) == "MCX") == (group == "MCX")]
+
+
+def expiry_divisor(sym):
+    """Weekly expiry wale symbol: /2, monthly expiry wale: /4"""
+    exps = symbol_expiries_cache.get(sym) or []
+    if len(exps) >= 2:
+        try:
+            if (datetime.strptime(exps[1], '%d%b%Y') - datetime.strptime(exps[0], '%d%b%Y')).days <= 10:
+                return 2, "weekly"
+        except Exception:
+            pass
+    return 4, "monthly"
+
+
+def pick_strikes(strikes, spot, k):
+    """(CE strike, PE strike): CE = line ke neeche-screen wala k-th strike (spot se bada), PE = line ke upar-screen wala k-th strike (spot se chhota/barabar)"""
+    below = [x for x in strikes if x <= spot]
+    above = [x for x in strikes if x > spot]
+    if len(above) <= k or len(below) <= k:
+        return None
+    return above[k], below[-1 - k]
+
+
+def range_targets(group):
+    out = []
+    for sym in range_group_symbols(group):
+        exps = symbol_expiries_cache.get(sym) or []
+        if not exps:
+            continue
+        chain = build_chain(sym, exps[0])
+        if not chain:
+            continue
+        src = resolve_spot_source(sym, chain['expiry_dt'])
+        if src:
+            out.append((sym, chain, src))
+    return out
+
+
+def range_fetch_spots(api, targets):
+    pairs, seen = [], set()
+    for sym, chain, src in targets:
+        if src not in seen:
+            seen.add(src)
+            pairs.append(src)
+    quotes = fetch_quotes(api, pairs, True) if pairs else {}
+    spots = {}
+    for sym, chain, src in targets:
+        it = get_item(quotes, src[0], src[1])
+        if it and num(it.get('ltp')) > 0:
+            spots[sym] = (num(it.get('ltp')), num(it.get('close')))
+    return spots
+
+
+def resolve_prev_close(sym, today_str):
+    """Kal ka close: pehle kal 3:35pm (MCX: raat) ka capture, nahi mila to API ka previous close"""
+    c = range_state["close"].get(sym)
+    if c and c.get("date", "") < today_str and num(c.get("value")) > 0:
+        try:
+            age = (datetime.strptime(today_str, "%Y-%m-%d") - datetime.strptime(c["date"], "%Y-%m-%d")).days
+        except Exception:
+            age = 99
+        if age <= 5:
+            return float(c["value"]), f"{c['date']} {c.get('time', '')} capture"
+    a = range_state["api_close"].get(sym)
+    if a and a.get("date") == today_str and num(a.get("value")) > 0:
+        return float(a["value"]), "API previous close"
+    return None, ""
+
+
+def fmt2(x):
+    """JavaScript toFixed(2) jaisa rounding (exact half par upar), taaki sheet ke R1/S1... se value same aaye"""
+    return str(Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def range_levels(ref, ans2):
+    r1 = ref + ans2
+    r2 = r1 + ans2
+    r3 = r2 + ans2
+    s1 = ref - ans2
+    s2 = s1 - ans2
+    s3 = s2 - ans2
+    return {"R1": fmt2(r1), "R2": fmt2(r2), "R3": fmt2(r3), "S1": fmt2(s1), "S2": fmt2(s2), "S3": fmt2(s3)}
+
+
+def run_range_open(api, group, now):
+    today, hms, wd = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), now.weekday()
+    k = RANGE_DAILY_K.get(wd)
+    if k is None:
+        return 0
+    targets = range_targets(group)
+    spots = range_fetch_spots(api, targets)
+    plan, pairs, seen = {}, [], set()
+    for sym, chain, src in targets:
+        if sym not in spots:
+            continue
+        entry = {}
+        for name, kk in (("daily", k),) + ((("weekly", 0),) if wd == 2 else ()):
+            pick = pick_strikes(chain['strikes'], spots[sym][0], kk)
+            if not pick:
+                continue
+            ce, pe = chain['tokmap'].get((pick[0], 'CE')), chain['tokmap'].get((pick[1], 'PE'))
+            if not ce or not pe:
+                continue
+            entry[name] = (kk, pick[0], pick[1], ce, pe)
+            for pr in (ce, pe):
+                if pr not in seen:
+                    seen.add(pr)
+                    pairs.append(pr)
+        plan[sym] = entry
+    quotes = fetch_quotes(api, pairs, True) if pairs else {}
+    done = 0
+    with state_lock:
+        for sym, chain, src in targets:
+            if sym not in spots:
+                continue
+            spot, api_close = spots[sym]
+            range_state["open"][sym] = {"date": today, "value": spot, "time": hms}
+            if api_close > 0:
+                range_state["api_close"][sym] = {"date": today, "value": api_close}
+            prev, prev_src = resolve_prev_close(sym, today)
+            div, etype = expiry_divisor(sym)
+            for name, (kk, a, b, ce, pe) in plan.get(sym, {}).items():
+                ci, pi = get_item(quotes, ce[0], ce[1]), get_item(quotes, pe[0], pe[1])
+                cl, pl = (num(ci.get('ltp')) if ci else 0.0), (num(pi.get('ltp')) if pi else 0.0)
+                range_state[name][sym] = {
+                    "date": today, "time": hms, "k": kk, "div": div, "etype": etype,
+                    "ce_strike": a, "pe_strike": b, "ce_ltp": cl, "pe_ltp": pl,
+                    "ans2": ((cl + pl) / div) if (cl > 0 and pl > 0) else None,
+                    "ref_open": spot, "ref_close": prev, "close_src": prev_src}
+                done += 1
+    return done
+
+
+def run_range_close(api, group, now):
+    today, hms = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S")
+    spots = range_fetch_spots(api, range_targets(group))
+    with state_lock:
+        for sym, (ltp, _c) in spots.items():
+            range_state["close"][sym] = {"date": today, "value": ltp, "time": hms}
+    return len(spots)
+
+
+def range_loop():
+    """Roz: MCX 8:59 / index+stocks 9:14 par open + daily (Wednesday ko weekly bhi); 3:35pm ke baad aur MCX band hone ke baad close."""
+    prepared = None
+    retries = {}
+    while True:
+        try:
+            if system_ready() and smart_api_global is not None:
+                now = datetime.now()
+                if prepared != scrip_master_date:      # chains / spot tokens pehle se taiyaar, taaki 9:14 par der na lage
+                    n_ = len(range_targets("NSE")) + len(range_targets("MCX"))
+                    print(f"📐 Range engine taiyaar: {n_} symbols")
+                    prepared = scrip_master_date
+                if now.weekday() < 5:
+                    today, hm = now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
+                    for key, grp, kind, cond in RANGE_TASKS:
+                        if cond(hm) and range_flags.get(key) != today:
+                            range_flags[key] = today
+                            active_pending[0] += 1
+                            try:
+                                n_ = run_range_open(smart_api_global, grp, now) if kind == "open" else run_range_close(smart_api_global, grp, now)
+                                print(f"📐 Range {key}: {n_} symbols")
+                            except Exception as e:
+                                print(f"❌ Range {key} error: {e}")
+                                retries[key] = retries.get(key, 0) + 1
+                                if retries[key] <= 2:
+                                    range_flags[key] = ""
+                            finally:
+                                active_pending[0] -= 1
+        except Exception as e:
+            print(f"⚠ Range loop error: {e}")
+        time.sleep(0.5)
+
+
 # --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -1169,6 +1370,25 @@ HTML_TEMPLATE = """
         .ext-th, .ext-td { min-width: 62px; }
         .eor-val { color: #e00000; font-weight: bold; }
         .eos-val { color: #0000ee; font-weight: bold; }
+
+        .range-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .rbtn { border: 0; cursor: pointer; font-family: inherit; font-weight: bold; font-size: 12px; padding: 6px 12px; border-radius: 4px; color: #ffffff; }
+        .rb-dclose { background: #212529; }
+        .rb-dopen { background: #7048e8; }
+        .rb-wclose { background: #e03131; }
+        .rb-wopen { background: #15d0e0; color: #00363d; }
+        .range-overlay { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); z-index: 1000; align-items: flex-start; justify-content: center; padding-top: 60px; }
+        .range-card { background: #ffffff; border-radius: 10px; width: min(92vw, 360px); box-shadow: 0 8px 28px rgba(0,0,0,0.3); overflow: hidden; }
+        .rc-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; color: #ffffff; font-weight: bold; font-size: 14px; }
+        .rc-x { border: 0; background: transparent; color: inherit; font-size: 18px; cursor: pointer; padding: 0 4px; }
+        .rc-sub { padding: 6px 12px; font-size: 11px; color: #495057; background: #f8f9fa; border-bottom: 1px solid #e9ecef; line-height: 1.4; }
+        .rc-msg { padding: 16px 12px; font-size: 13px; color: #495057; }
+        .rv-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #f1f3f5; }
+        .rv-label { font-weight: bold; width: 28px; }
+        .rv-r { color: #c92a2a; }
+        .rv-s { color: #2b8a3e; }
+        .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; -webkit-user-select: all; }
+        .rv-copy { border: 1px solid #ced4da; background: #f1f3f5; border-radius: 4px; font-size: 11px; padding: 4px 10px; cursor: pointer; min-width: 62px; }
     </style>
 </head>
 <body>
@@ -1180,6 +1400,19 @@ HTML_TEMPLATE = """
             <div class="lot-size-badge" id="lotSizeDisplay">Lot Size: -</div>
             <select id="symbolSelect" onchange="onSymbolChange()"></select>
             <select id="expirySelect" onchange="updateSelectedSymbolSheet()"></select>
+        </div>
+    </div>
+    <div class="range-bar">
+        <button class="rbtn rb-dclose" onclick="showRange('daily', 'close')">Daily Close</button>
+        <button class="rbtn rb-dopen" onclick="showRange('daily', 'open')">Daily Open</button>
+        <button class="rbtn rb-wclose" onclick="showRange('weekly', 'close')">Weekly Close</button>
+        <button class="rbtn rb-wopen" onclick="showRange('weekly', 'open')">Weekly Open</button>
+    </div>
+    <div class="range-overlay" id="rangeOverlay" onclick="if (event.target === this) closeRange()">
+        <div class="range-card">
+            <div class="rc-head" id="rcHead"><span id="rcTitle"></span><button class="rc-x" onclick="closeRange()">&#10005;</button></div>
+            <div class="rc-sub" id="rcSub"></div>
+            <div id="rcBody"></div>
         </div>
     </div>
     <div class="k3-banner" id="k3Display">Loading Framework...</div>
@@ -1412,6 +1645,65 @@ HTML_TEMPLATE = """
                 }
             }).catch(() => { busy = false; });
         }
+        // ---- Daily / Weekly range (R1-R3, S1-S3), har value alag se copy ----
+        const RANGE_STYLE = {
+            'daily-close': ['Daily Close', '#212529', '#ffffff'], 'daily-open': ['Daily Open', '#7048e8', '#ffffff'],
+            'weekly-close': ['Weekly Close', '#e03131', '#ffffff'], 'weekly-open': ['Weekly Open', '#15d0e0', '#00363d']
+        };
+        function closeRange() { document.getElementById('rangeOverlay').style.display = 'none'; }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRange(); });
+        function copyValue(text, el) {
+            const row = el.closest('.rv-row');
+            const btn = row ? row.querySelector('.rv-copy') : null;
+            const done = () => { if (btn) { btn.textContent = '\u2713 Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1000); } };
+            const fallback = () => {
+                const ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(ta); done();
+            };
+            if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done).catch(fallback);
+            else fallback();
+        }
+        document.getElementById('rcBody').addEventListener('click', e => {
+            const t = e.target.closest('[data-copy]');
+            if (t) copyValue(t.getAttribute('data-copy'), t);
+        });
+        function showRange(kind, basis) {
+            const sym = document.getElementById('symbolSelect').value;
+            if (!sym) return;
+            fetch('/api/range/' + encodeURIComponent(sym) + '?t=' + Date.now()).then(r => r.json()).then(d => renderRange(d, sym, kind, basis)).catch(() => renderRange(null, sym, kind, basis));
+        }
+        function renderRange(d, sym, kind, basis) {
+            const st = RANGE_STYLE[kind + '-' + basis];
+            const head = document.getElementById('rcHead');
+            head.style.background = st[1]; head.style.color = st[2];
+            document.getElementById('rcTitle').textContent = sym + ' \u2022 ' + st[0];
+            const sub = document.getElementById('rcSub'), body = document.getElementById('rcBody');
+            const rec = d ? d[kind] : null;
+            let msg = '';
+            if (!d) msg = 'Data nahi aa paya, dobara try kijiye.';
+            else if (!rec) msg = kind === 'daily'
+                ? 'Daily range abhi nahi bani. Ye har trading din ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.'
+                : 'Weekly range abhi nahi bani. Ye har Wednesday ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.';
+            else if (!rec.ans2) msg = 'Option ka LTP nahi mila, isliye range nahi ban payi (' + rec.date + ').';
+            else if (!rec[basis]) msg = basis === 'close' ? 'Pichhle din ka close nahi mila.' : 'Open ka LTP nahi mila.';
+            if (msg) {
+                sub.textContent = ''; body.innerHTML = '<div class="rc-msg">' + msg + '</div>';
+            } else {
+                const x = rec[basis];
+                sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')  \u2022  '
+                    + rec.date + (rec.is_today ? '' : ' (aaj ki nahi)') + (basis === 'close' && x.src ? '  \u2022  ' + x.src : '');
+                body.innerHTML = ['R1', 'R2', 'R3', 'S1', 'S2', 'S3'].map(L => {
+                    const v = x.levels[L];
+                    return '<div class="rv-row"><span class="rv-label ' + (L[0] === 'R' ? 'rv-r' : 'rv-s') + '">' + L + '</span>'
+                        + '<span class="rv-val" data-copy="' + v + '">' + v + '</span><button class="rv-copy" data-copy="' + v + '">Copy</button></div>';
+                }).join('');
+            }
+            document.getElementById('rangeOverlay').style.display = 'flex';
+        }
+
         function pollLoop() { fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
         window.onload = function() { initApp(); pollLoop(); };
     </script>
@@ -1502,6 +1794,29 @@ def get_symbol_runtime_data(symbol):
         "updated_at": vault.get("updated_at", ""),
         "age": int(time.time() - ts) if ts else 0
     })
+
+
+@app.route('/api/range/<symbol>')
+def get_range(symbol):
+    sym = symbol.upper()
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    def build(rec):
+        if not rec:
+            return None
+        d = {"date": rec["date"], "time": rec.get("time", ""), "is_today": rec["date"] == today, "div": rec.get("div"), "etype": rec.get("etype"),
+             "ce_strike": rec.get("ce_strike"), "pe_strike": rec.get("pe_strike"), "ce_ltp": rec.get("ce_ltp"), "pe_ltp": rec.get("pe_ltp"),
+             "ans2": None, "close": None, "open": None}
+        ans2 = rec.get("ans2")
+        if ans2:
+            d["ans2"] = round(ans2, 2)
+            if rec.get("ref_close"):
+                d["close"] = {"ref": round(rec["ref_close"], 2), "src": rec.get("close_src", ""), "levels": range_levels(rec["ref_close"], ans2)}
+            if rec.get("ref_open"):
+                d["open"] = {"ref": round(rec["ref_open"], 2), "levels": range_levels(rec["ref_open"], ans2)}
+        return d
+    return jsonify({"symbol": sym, "today": today, "mcx": symbol_exch_cache.get(sym) == "MCX",
+                    "daily": build(range_state["daily"].get(sym)), "weekly": build(range_state["weekly"].get(sym))})
 
 
 @app.route('/api/debug/<symbol>')
@@ -1618,6 +1933,7 @@ def run_bot_lock_loop():
 
     load_state()
     threading.Thread(target=active_loop, daemon=True).start()
+    threading.Thread(target=range_loop, daemon=True).start()
     login_fail = 0
     last_save = time.time()
     last_sm_try = 0.0
