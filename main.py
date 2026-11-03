@@ -1080,8 +1080,9 @@ def initialize_scrip_master():
 
 
 # --- DAILY / WEEKLY RANGE ENGINE (Apps Script rangeEngine ka Python version) ---
-# Din ke hisaab se kitne strike door ke CE/PE ka LTP (Apps Script: Mon L20/P16, Tue L19/P17, Wed L25/P11, Thu L24/P12, Fri L23/P13)
-RANGE_DAILY_K = {0: 1, 1: 0, 2: 6, 3: 5, 4: 4}
+# Daily range: CE/PE LTP kitne strike door ka liya jaye = us symbol ki APNI nearest expiry me kitne din bache (calendar days).
+# NIFTY (Tuesday expiry) par ye bilkul Apps Script wala hai: Mon 1, Tue 0, Wed 6, Thu 5, Fri 4. Dusre symbols par unki apni expiry se.
+RANGE_MAX_K = None      # None = koi limit nahi. Monthly expiry me din zyada hote hain; limit lagani ho to yahan number likhein (jaise 6)
 RANGE_TASKS = [
     ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),                    # MCX: 8:59 ka LTP = open
     ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),                    # Index + F&O stocks: 9:14 ka LTP = open
@@ -1179,8 +1180,7 @@ def range_levels(ref, ans2):
 
 def run_range_open(api, group, now):
     today, hms, wd = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), now.weekday()
-    k = RANGE_DAILY_K.get(wd)
-    if k is None:
+    if wd >= 5:
         return 0
     targets = range_targets(group)
     spots = range_fetch_spots(api, targets)
@@ -1189,12 +1189,14 @@ def run_range_open(api, group, now):
         if sym not in spots:
             continue
         entry = {}
-        for name, kk in (("daily", k),) + ((("weekly", 0),) if wd == 2 else ()):
+        dte = max(0, (chain['expiry_dt'].date() - now.date()).days)          # is symbol ki nearest expiry me kitne din bache
+        kd = dte if RANGE_MAX_K is None else min(dte, RANGE_MAX_K)
+        for name, kk in (("daily", kd),) + ((("weekly", 0),) if wd == 2 else ()):
             pick = pick_strikes(chain['strikes'], spots[sym][0], kk)
-            if not pick:
-                continue
-            ce, pe = chain['tokmap'].get((pick[0], 'CE')), chain['tokmap'].get((pick[1], 'PE'))
-            if not ce or not pe:
+            ce = chain['tokmap'].get((pick[0], 'CE')) if pick else None
+            pe = chain['tokmap'].get((pick[1], 'PE')) if pick else None
+            if not pick or not ce or not pe:
+                entry[name] = (kk, None, None, None, None)           # itne door ke strike chain me nahi
                 continue
             entry[name] = (kk, pick[0], pick[1], ce, pe)
             for pr in (ce, pe):
@@ -1214,13 +1216,21 @@ def run_range_open(api, group, now):
                 range_state["api_close"][sym] = {"date": today, "value": api_close}
             prev, prev_src = resolve_prev_close(sym, today)
             div, etype = expiry_divisor(sym)
+            exps_ = symbol_expiries_cache.get(sym) or []
+            dte_ = max(0, (chain['expiry_dt'].date() - now.date()).days)
             for name, (kk, a, b, ce, pe) in plan.get(sym, {}).items():
-                ci, pi = get_item(quotes, ce[0], ce[1]), get_item(quotes, pe[0], pe[1])
-                cl, pl = (num(ci.get('ltp')) if ci else 0.0), (num(pi.get('ltp')) if pi else 0.0)
+                if ce is None:
+                    cl = pl = 0.0
+                    reason = "strikes"
+                else:
+                    ci, pi = get_item(quotes, ce[0], ce[1]), get_item(quotes, pe[0], pe[1])
+                    cl, pl = (num(ci.get('ltp')) if ci else 0.0), (num(pi.get('ltp')) if pi else 0.0)
+                    reason = "ltp"
                 range_state[name][sym] = {
                     "date": today, "time": hms, "k": kk, "div": div, "etype": etype,
+                    "expiry": exps_[0] if exps_ else "", "dte": dte_,
                     "ce_strike": a, "pe_strike": b, "ce_ltp": cl, "pe_ltp": pl,
-                    "ans2": ((cl + pl) / div) if (cl > 0 and pl > 0) else None,
+                    "ans2": ((cl + pl) / div) if (cl > 0 and pl > 0) else None, "reason": reason,
                     "ref_open": spot, "ref_close": prev, "close_src": prev_src}
                 done += 1
     return done
@@ -1403,10 +1413,10 @@ HTML_TEMPLATE = """
         </div>
     </div>
     <div class="range-bar">
-        <button class="rbtn rb-dclose" onclick="showRange('daily', 'close')">Daily Close</button>
-        <button class="rbtn rb-dopen" onclick="showRange('daily', 'open')">Daily Open</button>
-        <button class="rbtn rb-wclose" onclick="showRange('weekly', 'close')">Weekly Close</button>
-        <button class="rbtn rb-wopen" onclick="showRange('weekly', 'open')">Weekly Open</button>
+        <button class="rbtn rb-dclose" onclick="showRange('daily', 'close')">Daily range</button>
+        <button class="rbtn rb-dopen" onclick="showRange('daily', 'open')">Daily range</button>
+        <button class="rbtn rb-wclose" onclick="showRange('weekly', 'close')">Weekly range</button>
+        <button class="rbtn rb-wopen" onclick="showRange('weekly', 'open')">Weekly range</button>
     </div>
     <div class="range-overlay" id="rangeOverlay" onclick="if (event.target === this) closeRange()">
         <div class="range-card">
@@ -1647,8 +1657,8 @@ HTML_TEMPLATE = """
         }
         // ---- Daily / Weekly range (R1-R3, S1-S3), har value alag se copy ----
         const RANGE_STYLE = {
-            'daily-close': ['Daily Close', '#212529', '#ffffff'], 'daily-open': ['Daily Open', '#7048e8', '#ffffff'],
-            'weekly-close': ['Weekly Close', '#e03131', '#ffffff'], 'weekly-open': ['Weekly Open', '#15d0e0', '#00363d']
+            'daily-close': ['Daily range', '#212529', '#ffffff'], 'daily-open': ['Daily range', '#7048e8', '#ffffff'],
+            'weekly-close': ['Weekly range', '#e03131', '#ffffff'], 'weekly-open': ['Weekly range', '#15d0e0', '#00363d']
         };
         function closeRange() { document.getElementById('rangeOverlay').style.display = 'none'; }
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRange(); });
@@ -1687,13 +1697,16 @@ HTML_TEMPLATE = """
             else if (!rec) msg = kind === 'daily'
                 ? 'Daily range abhi nahi bani. Ye har trading din ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.'
                 : 'Weekly range abhi nahi bani. Ye har Wednesday ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.';
-            else if (!rec.ans2) msg = 'Option ka LTP nahi mila, isliye range nahi ban payi (' + rec.date + ').';
+            else if (!rec.ans2) msg = rec.reason === 'strikes'
+                ? 'Is expiry me itne door (' + rec.k + ' strike) ka CE/PE strike chain me nahi mila, isliye range nahi ban payi (' + rec.date + ').'
+                : 'Option ka LTP nahi mila, isliye range nahi ban payi (' + rec.date + ').';
             else if (!rec[basis]) msg = basis === 'close' ? 'Pichhle din ka close nahi mila.' : 'Open ka LTP nahi mila.';
             if (msg) {
                 sub.textContent = ''; body.innerHTML = '<div class="rc-msg">' + msg + '</div>';
             } else {
                 const x = rec[basis];
                 sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')  \u2022  '
+                    + (rec.expiry ? 'expiry ' + rec.expiry + ' (' + rec.dte + ' din)  \u2022  ' : '')
                     + rec.date + (rec.is_today ? '' : ' (aaj ki nahi)') + (basis === 'close' && x.src ? '  \u2022  ' + x.src : '');
                 body.innerHTML = ['R1', 'R2', 'R3', 'S1', 'S2', 'S3'].map(L => {
                     const v = x.levels[L];
@@ -1806,6 +1819,7 @@ def get_range(symbol):
             return None
         d = {"date": rec["date"], "time": rec.get("time", ""), "is_today": rec["date"] == today, "div": rec.get("div"), "etype": rec.get("etype"),
              "ce_strike": rec.get("ce_strike"), "pe_strike": rec.get("pe_strike"), "ce_ltp": rec.get("ce_ltp"), "pe_ltp": rec.get("pe_ltp"),
+             "expiry": rec.get("expiry", ""), "dte": rec.get("dte"), "k": rec.get("k"), "reason": rec.get("reason", "ltp"),
              "ans2": None, "close": None, "open": None}
         ans2 = rec.get("ans2")
         if ans2:
