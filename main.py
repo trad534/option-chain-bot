@@ -1288,7 +1288,7 @@ HTML_TEMPLATE = """
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; padding-top: 25px; min-width: 1200px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; padding-top: 50px; min-width: 1200px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 6px; border: 1px solid #ced4da; }
         .controls-group { display: flex; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
