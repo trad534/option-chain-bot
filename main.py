@@ -18,6 +18,9 @@ from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 from flask import Flask, jsonify, render_template_string, request, Response
 
+from SmartApi.smartWebSocketV2 import SmartWebSocketV2
+
+
 # --- TIMEZONE: server chahe UTC ho, saara code IST me chalega ---
 os.environ["TZ"] = "Asia/Kolkata"
 try:
@@ -46,6 +49,52 @@ MIN_API_GAP = 1.1                           # getMarketData ke beech minimum sec
 INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
 NEAR_STRIKES = 2     # imaginary line ke dusri taraf kitne strike (PE: upar wale strikes, CE: neeche wale strikes)
 FAR_STRIKES = 10     # imaginary line ki apni taraf kitne strike (PE: neeche wale, CE: upar wale)
+
+
+# Global tokens for WebSocket
+ws_jwt_token = [None]
+ws_feed_token = [None]
+
+def start_live_websocket(api_key, client_code, jwt_token, feed_token):
+    if not jwt_token or not feed_token:
+        print("⚠ WebSocket tokens missing, skipping connection.")
+        return
+        
+    sws = SmartWebSocketV2(jwt_token, api_key, client_code, feed_token)
+
+    def on_data(wsapp, message):
+        try:
+            token = str(message.get('token'))
+            exch = str(message.get('exchange_type'))
+            key = f"{exch}:{token}"
+            
+            if key in persistent_quotes_cache:
+                persistent_quotes_cache[key]['ltp'] = float(message.get('last_traded_price', 0)) / 100.0
+                persistent_quotes_cache[key]['volume'] = float(message.get('volume_traded_for_the_day', 0))
+                persistent_quotes_cache[key]['oi'] = float(message.get('open_interest', 0))
+        except Exception as e:
+            pass
+
+    def on_open(wsapp):
+        print("⚡ Angel One Live WebSocket Connected!")
+        tokens_to_subscribe = [
+            {"exchangeType": 1, "tokens": ["99926000"]} # Nifty Index Token
+        ]
+        sws.subscribe("correlation_id_live", 3, tokens_to_subscribe)
+
+    def on_error(wsapp, error):
+        print(f"⚠ WebSocket Connection Error: {error}")
+
+    def on_close(wsapp):
+        print("⚠ WebSocket Connection Closed")
+
+    sws.on_data = on_data
+    sws.on_open = on_open
+    sws.on_error = on_error
+    sws.on_close = on_close
+
+    threading.Thread(target=sws.connect, daemon=True).start()
+
 
 
 def window_sets(strikes_list, spot):
@@ -2459,6 +2508,13 @@ def do_login(smart_api):
             res = smart_api.generateSession(CLIENT_ID, PIN, totp)
         if res and res.get('status'):
             print("🔐 Session generated")
+
+
+            ws_jwt_token[0] = res.get('data', {}).get('jwtToken')
+ws_feed_token[0] = res.get('data', {}).get('feedToken')
+start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
+
+            
             return True
         print(f"❌ Login failed: {str(res)[:150]}")
     except Exception as e:
