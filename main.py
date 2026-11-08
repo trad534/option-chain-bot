@@ -2,6 +2,8 @@ import time
 import os
 import json
 import hmac
+import re
+import gzip
 from decimal import Decimal, ROUND_HALF_UP
 from collections import deque
 import builtins
@@ -12,7 +14,7 @@ import numpy as np
 import pyotp
 from scipy.stats import norm
 from scipy.optimize import brentq
-from datetime import datetime
+from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 from flask import Flask, jsonify, render_template_string, request, Response
 
@@ -286,10 +288,11 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
 
 
 # --- APPS SCRIPT LOGIC (Python replica) ---
-def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY"):
+def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY", now_dt=None):
     global multi_symbol_runtime_states
     try:
-        now_dt = datetime.now()
+        if now_dt is None:
+            now_dt = datetime.now()
         currentTimeStr = now_dt.strftime("%I:%M %p").lower()
 
         if not raw_rows: return
@@ -1278,17 +1281,332 @@ def range_loop():
         time.sleep(0.5)
 
 
+# --- HISTORICAL REPLAY (Angel One historical candle + OI data se option chain, kisi bhi din / minute ka) ---
+HIST_DIR = os.getenv("HIST_DIR", "/tmp/hist_cache")
+HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}                   # candle minutes (15:30 chuna jaye to aakhri candle)
+HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}   # ek request me 500 candle se kam
+HIST_MAX_DATASETS = 3
+HIST_MIN_GAP = 0.4        # historical API ke beech minimum seconds (limit 3/sec)
+HIST_PER_MIN, HIST_PER_HOUR = 170, 4800     # Angel limit: 180/min, 5000/ghanta
+hist_datasets = {}
+hist_order = []
+hist_jobs = {}
+hist_load_lock = threading.Lock()
+hist_api_lock = threading.Lock()
+hist_call_times = deque()
+hist_hour_calls = deque()
+hist_last_call = [0.0]
+
+
+def hist_key(sym, expiry, date):
+    return f"{sym}|{expiry}|{date}"
+
+
+def hist_minutes(grp):
+    a, b = HIST_SESSION[grp]
+    h, mi = int(a[:2]), int(a[3:])
+    out = []
+    while f"{h:02d}:{mi:02d}" <= b:
+        out.append(f"{h:02d}:{mi:02d}")
+        mi += 1
+        if mi == 60:
+            h, mi = h + 1, 0
+    return out
+
+
+def hist_call(kind, params, retries=3):
+    """Angel historical API: 3 request/sec, 180/min, 5000/ghanta ke andar. kind = candle / oi"""
+    last_err = "unknown error"
+    for attempt in range(retries):
+        if smart_api_global is None:
+            raise RuntimeError("Angel login abhi nahi hua, thodi der baad try kijiye")
+        with hist_api_lock:
+            now = time.time()
+            while hist_call_times and now - hist_call_times[0] > 60:
+                hist_call_times.popleft()
+            while hist_hour_calls and now - hist_hour_calls[0] > 3600:
+                hist_hour_calls.popleft()
+            if len(hist_hour_calls) >= HIST_PER_HOUR:
+                raise RuntimeError("Angel ka ghante ka historical limit (5000) lagbhag poora ho gaya, thodi der baad try kijiye")
+            if len(hist_call_times) >= HIST_PER_MIN:
+                time.sleep(max(0.0, 60 - (now - hist_call_times[0]) + 0.3))
+            gap = HIST_MIN_GAP - (time.time() - hist_last_call[0])
+            if gap > 0:
+                time.sleep(gap)
+            hist_last_call[0] = time.time()
+            hist_call_times.append(hist_last_call[0])
+            hist_hour_calls.append(hist_last_call[0])
+            try:
+                res = smart_api_global.getCandleData(params) if kind == "candle" else smart_api_global.getOIData(params)
+            except Exception as e:
+                res = {"status": False, "message": str(e)}
+        if res and res.get("status"):
+            return res.get("data") or []
+        last_err = str((res or {}).get("message") or (res or {}).get("errorcode") or res)[:160]
+        low = last_err.lower()
+        time.sleep(15 * (attempt + 1) if ("access" in low or "rate" in low) else 1.5 * (attempt + 1))
+    raise RuntimeError("Angel historical API: " + last_err)
+
+
+def hist_series(exch, token, date, grp, with_oi):
+    """{minute: (close, volume)} aur {minute: oi}"""
+    candles, oi = {}, {}
+    for a, b in HIST_CHUNKS[grp]:
+        params = {"exchange": exch, "symboltoken": token, "interval": "ONE_MINUTE", "fromdate": f"{date} {a}", "todate": f"{date} {b}"}
+        for it in hist_call("candle", params) or []:
+            try:
+                ts = str(it[0])
+                if ts[:10] == date:
+                    candles[ts[11:16]] = (num(it[4]), num(it[5]))
+            except Exception:
+                continue
+        if with_oi:
+            for it in hist_call("oi", params) or []:
+                try:
+                    if isinstance(it, dict):
+                        ts, val = str(it.get("time") or it.get("timestamp") or ""), it.get("oi", it.get("openInterest"))
+                    else:
+                        ts, val = str(it[0]), it[1]
+                    if ts[:10] == date and val is not None:
+                        oi[ts[11:16]] = num(val)
+                except Exception:
+                    continue
+    return candles, oi
+
+
+def hist_prev_close(exch, token, date):
+    d0 = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=10)).strftime("%Y-%m-%d")
+    data = hist_call("candle", {"exchange": exch, "symboltoken": token, "interval": "ONE_DAY", "fromdate": f"{d0} 09:15", "todate": f"{date} 15:30"})
+    prev = None
+    for it in data or []:
+        try:
+            if str(it[0])[:10] < date:
+                prev = num(it[4])
+        except Exception:
+            pass
+    return prev
+
+
+def hist_dt(ds, i):
+    return datetime.strptime(f"{ds['date']} {ds['times'][i]}", "%Y-%m-%d %H:%M")
+
+
+def hist_build(sym, expiry, date, job):
+    chain = build_chain(sym, expiry)
+    if not chain:
+        raise RuntimeError("Ye expiry scrip master me nahi hai (expire ho chuki ya galat). Abhi chalu expiry chuniye.")
+    src = resolve_spot_source(sym, chain['expiry_dt'])
+    if not src:
+        raise RuntimeError("Is symbol ka spot (underlying) token nahi mila")
+    grp = "MCX" if symbol_exch_cache.get(sym) == "MCX" else "NSE"
+    times = hist_minutes(grp)
+    nch = len(HIST_CHUNKS[grp])
+    job.update(state="loading", done=0, total=nch, msg="Spot ka data aa raha hai...")
+    candles, _ = hist_series(src[0], src[1], date, grp, False)
+    job["done"] += nch
+    if not candles:
+        raise RuntimeError(f"{date} ko is symbol ka data nahi mila (chhutti ya data available nahi).")
+    spot, last = [], 0.0
+    for t in times:
+        if t in candles and candles[t][0] > 0:
+            last = candles[t][0]
+        spot.append(last)
+    first_pos = next((k for k, v in enumerate(spot) if v > 0), None)
+    for k in range(first_pos):                       # pehli candle se pehle ka time pehli value se bharo
+        spot[k] = spot[first_pos]
+    strikes_all = chain['strikes']
+    below_min = sum(1 for x in strikes_all if x <= min(spot))
+    below_max = sum(1 for x in strikes_all if x <= max(spot))
+    sel = strikes_all[max(0, below_min - 21):min(len(strikes_all), below_max + 21)]
+    toks = [(st, tp) for st in sel for tp in ('CE', 'PE') if (st, tp) in chain['tokmap']]
+    job["total"] = nch + len(toks) * (2 * nch + 1)
+    tok_data, warn = {}, 0
+    for n, (st, tp) in enumerate(toks):
+        if job.get("cancel"):
+            raise RuntimeError("Cancel kar diya gaya")
+        job["msg"] = f"Strike {int(st) if st == int(st) else st} {tp} ({n + 1}/{len(toks)})"
+        exch, tk = chain['tokmap'][(st, tp)]
+        cmap, omap = hist_series(exch, tk, date, grp, True)
+        prev = hist_prev_close(exch, tk, date)
+        job["done"] += 2 * nch + 1
+        ltp, vol, oi_arr, last_l, cum, last_o = [], [], [], 0.0, 0.0, None
+        first_o = next((omap[t] for t in times if t in omap), None)
+        if first_o is None:
+            warn += 1
+        for t in times:
+            if t in cmap:
+                if cmap[t][0] > 0:
+                    last_l = cmap[t][0]
+                cum += cmap[t][1]
+            if t in omap:
+                last_o = omap[t]
+            ltp.append(last_l)
+            vol.append(cum)
+            oi_arr.append(last_o if last_o is not None else (first_o or 0.0))
+        oi0 = next((v for v in oi_arr if v > 0), 0.0)
+        tok_data[f"{st}|{tp}"] = {"ltp": ltp, "vol": vol, "oi": oi_arr, "oi0": oi0, "prev": prev}
+    return {"sym": sym, "expiry": expiry, "date": date, "grp": grp, "times": times, "spot": spot, "strikes": sel, "tok": tok_data,
+            "lot": chain['lot'], "expiry_iso": chain['expiry_dt'].strftime("%Y-%m-%d"), "oi_missing": warn, "states": [], "cache": {}}
+
+
+def hist_rows(ds, i, greeks=True):
+    strikes, spot = ds["strikes"], ds["spot"][i]
+    below_n = sum(1 for x in strikes if x <= spot)
+    a, b = max(0, below_n - 19), min(len(strikes), below_n + 19)
+    exp_dt = datetime.strptime(ds["expiry_iso"], "%Y-%m-%d").replace(hour=15, minute=30)
+    t = max((exp_dt - hist_dt(ds, i)).total_seconds() / (365.0 * 24 * 3600), 0.0001)
+    zero_g = {'iv': 0, 'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0, 'delta_raw': 0.0}
+
+    def row(st):
+        def q(tp):
+            d = ds["tok"].get(f"{st}|{tp}")
+            if not d:
+                return {'ltp': 0.0, 'volume': 0.0, 'oi': 0.0, 'oi_chg': 0.0, 'net_change': 0.0}
+            ltp = d["ltp"][i]
+            return {'ltp': ltp, 'volume': d["vol"][i], 'oi': d["oi"][i], 'oi_chg': d["oi"][i] - d["oi0"],
+                    'net_change': round(ltp - d["prev"], 2) if (d["prev"] and ltp > 0) else 0.0}
+        cq, pq = q('CE'), q('PE')
+        cg = calculate_iv_and_greeks('CE', spot, st, t, 0.07, cq['ltp']) if greeks else zero_g
+        pg = calculate_iv_and_greeks('PE', spot, st, t, 0.07, pq['ltp']) if greeks else zero_g
+        return {
+            'strike': st, 'ce_oi': cq['oi'], 'ce_vol': cq['volume'], 'pe_vol': pq['volume'], 'pe_oi': pq['oi'],
+            'ce_vega': cg['vega'], 'ce_theta': cg['theta'], 'ce_gamma': cg['gamma'], 'ce_delta': cg['delta'], 'ce_iv': cg['iv'] if cg['iv'] > 1 else 0,
+            'ce_oi_chg': cq['oi_chg'], 'ce_change': cq['net_change'], 'ce_ltp': cq['ltp'],
+            'pe_ltp': pq['ltp'], 'pe_change': pq['net_change'], 'pe_oi_chg': pq['oi_chg'],
+            'pe_iv': pg['iv'] if pg['iv'] > 1 else 0, 'pe_delta': pg['delta'], 'pe_gamma': pg['gamma'], 'pe_theta': pg['theta'], 'pe_vega': pg['vega'],
+            'is_itm_ce': bool(st < spot), 'is_itm_pe': bool(st > spot),
+            'ce_delta_raw': cg['delta_raw'], 'pe_delta_raw': pg['delta_raw']}
+    rows = [row(st) for st in strikes[a:b]]
+    ext = list(rows)
+    if a >= 1:
+        ext.insert(0, row(strikes[a - 1]))
+    if b < len(strikes):
+        ext.append(row(strikes[b]))
+    return rows, ext
+
+
+def hist_precompute(ds):
+    """Har minute ke baad tracker ki state (shift lock, time lock...) yaad rakhta hai, taaki kisi bhi minute par seedha jump ho sake"""
+    key = "HISTP" + str(threading.get_ident())
+    states = []
+    try:
+        for i in range(len(ds["times"])):
+            rows, _ = hist_rows(ds, i, greeks=False)
+            with state_lock:
+                if i == 0:
+                    symbol_states_memory[key] = {}
+                execute_python_scenario_tracker(raw_rows=rows, spot_price=ds["spot"][i], lot_size=ds["lot"], active_expiry=ds["expiry"], symbol_name=key, now_dt=hist_dt(ds, i))
+                states.append(dict(symbol_states_memory.get(key, {})))
+    finally:
+        with state_lock:
+            for d_ in (symbol_states_memory, multi_symbol_runtime_states, debug_info, event_log):
+                d_.pop(key, None)
+    ds["states"] = states
+    ds["tidx"] = {t: k for k, t in enumerate(ds["times"])}
+
+
+def hist_output(ds, i):
+    if i in ds["cache"]:
+        return ds["cache"][i]
+    key = "HISTO" + str(threading.get_ident())
+    rows, ext = hist_rows(ds, i, greeks=True)
+    spot = ds["spot"][i]
+    compute_extension_levels(ext, spot)
+    try:
+        with state_lock:
+            symbol_states_memory[key] = dict(ds["states"][i - 1]) if i > 0 else {}
+            execute_python_scenario_tracker(raw_rows=rows, spot_price=spot, lot_size=ds["lot"], active_expiry=ds["expiry"], symbol_name=key, now_dt=hist_dt(ds, i))
+            vault = multi_symbol_runtime_states.get(key)
+    finally:
+        with state_lock:
+            for d_ in (symbol_states_memory, debug_info, event_log):
+                d_.pop(key, None)
+            vault = multi_symbol_runtime_states.pop(key, None) or vault
+    if not vault:
+        raise RuntimeError("Is minute ka data banane me dikkat aayi")
+    resp = {"lot_size": ds["lot"], "D5": vault["D5_TEXT"], "H5": vault["H5_TEXT"], "Q5": vault["Q5_TEXT"], "U5": vault["U5_TEXT"],
+            "K3": vault["K3_TEXT"].replace(key, ds["sym"]), "grid_rows": vault["grid_rows"], "spot_price": vault["spot_price"],
+            "expiry": ds["expiry"], "partial": False, "hist": True, "age": 0, "time": ds["times"][i],
+            "updated_at": f"{ds['date']} {ds['times'][i]}"}
+    if len(ds["cache"]) > 600:
+        ds["cache"].clear()
+    ds["cache"][i] = resp
+    return resp
+
+
+def hist_time_index(ds, t):
+    tidx = ds["tidx"]
+    if t in tidx:
+        return tidx[t]
+    return len(ds["times"]) - 1 if t > ds["times"][-1] else 0
+
+
+def hist_put(key, ds):
+    hist_datasets[key] = ds
+    if key in hist_order:
+        hist_order.remove(key)
+    hist_order.append(key)
+    while len(hist_order) > HIST_MAX_DATASETS:
+        hist_datasets.pop(hist_order.pop(0), None)
+
+
+def hist_disk_path(key):
+    return os.path.join(HIST_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", key) + ".json.gz")
+
+
+def hist_disk_save(key, ds):
+    try:
+        os.makedirs(HIST_DIR, exist_ok=True)
+        slim = {k: v for k, v in ds.items() if k not in ("states", "cache", "tidx")}
+        with gzip.open(hist_disk_path(key), "wt") as f:
+            json.dump(slim, f)
+    except Exception as e:
+        print(f"⚠ Historical cache save error: {e}")
+
+
+def hist_disk_load(key):
+    try:
+        path = hist_disk_path(key)
+        if not os.path.exists(path):
+            return None
+        with gzip.open(path, "rt") as f:
+            ds = json.load(f)
+        ds["states"], ds["cache"] = [], {}
+        hist_precompute(ds)
+        return ds
+    except Exception as e:
+        print(f"⚠ Historical cache load error: {e}")
+        return None
+
+
+def hist_job_run(key, sym, expiry, date):
+    job = hist_jobs[key]
+    try:
+        ds = hist_build(sym, expiry, date, job)
+        job.update(msg="Tracker ki state ban rahi hai...")
+        hist_precompute(ds)
+        if date != datetime.now().strftime("%Y-%m-%d"):
+            hist_disk_save(key, ds)
+        hist_put(key, ds)
+        job.update(state="ready", msg="Ready" + (f" (OI {ds['oi_missing']} option ka nahi mila)" if ds["oi_missing"] else ""))
+    except Exception as e:
+        print(f"❌ Historical load error ({key}): {e}")
+        job.update(state="error", msg=str(e))
+    finally:
+        hist_load_lock.release()
+
+
 # --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200, initial-scale=0.35, maximum-scale=3.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; padding-top: 100px; min-width: 1200px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; }
         .header { display: flex; justify-content: space-between; align-items: center; background: #f1f3f5; padding: 8px 12px; border-radius: 6px; border: 1px solid #ced4da; }
         .controls-group { display: flex; gap: 10px; align-items: center; }
         .lot-size-badge { background: #1c7ed6; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; }
@@ -1298,7 +1616,7 @@ HTML_TEMPLATE = """
 
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
 
-        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; width: 100%; min-width: 1200px; }
+        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
 
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
 
@@ -1399,6 +1717,35 @@ HTML_TEMPLATE = """
         .rv-s { color: #2b8a3e; }
         .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; -webkit-user-select: all; }
         .rv-copy { border: 1px solid #ced4da; background: #f1f3f5; border-radius: 4px; font-size: 11px; padding: 4px 10px; cursor: pointer; min-width: 62px; }
+
+        .range-btns { display: contents; }
+        .rb-live { background: #2b8a3e; }
+        .rb-hist { background: #f26a21; }
+        .rb-off { opacity: 0.45; }
+        .hist-bar { display: none; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; padding: 6px 8px; background: #fff4ea; border: 1px solid #f7c59f; border-radius: 6px; font-size: 12px; }
+        .hist-bar .hb-info { font-weight: bold; color: #a8470d; margin-right: 4px; }
+        .hist-bar .hb { border: 1px solid #f26a21; background: #ffffff; color: #c2540f; border-radius: 4px; padding: 5px 10px; font-size: 12px; font-weight: bold; cursor: pointer; font-family: inherit; }
+        .hist-bar .hb-play { background: #f26a21; color: #ffffff; }
+        .hist-bar select { padding: 4px; font-size: 12px; }
+        .hist-bar .hb-clock { font-weight: bold; color: #212529; }
+        .hist-card { width: min(94vw, 470px); max-height: 92vh; overflow-y: auto; }
+        .hist-head { background: #ffffff; color: #212529; border-bottom: 1px solid #e9ecef; font-size: 15px; }
+        .hist-body { padding: 10px 14px 14px; }
+        .hist-body label { display: block; font-size: 12px; color: #495057; margin: 10px 0 4px; }
+        .hist-body select, .hist-body input[type=date] { width: 100%; padding: 9px; font-size: 14px; border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; font-family: inherit; }
+        .hist-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .hist-sep { border: 0; border-top: 1px dotted #adb5bd; margin: 14px 0 2px; }
+        .hist-note { color: #e03131; font-size: 12px; text-align: center; margin: 12px 0 4px; line-height: 1.4; min-height: 16px; }
+        .hist-prog { display: none; margin: 8px 0; }
+        .hist-prog .hp-bar { height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+        .hist-prog #hBar { height: 8px; width: 0%; background: #f26a21; transition: width 0.4s; }
+        .hist-prog #hProgTxt { font-size: 11px; color: #495057; margin-top: 4px; }
+        .hist-prog .hb-cancel { margin-top: 4px; border: 0; background: transparent; color: #e03131; font-size: 11px; cursor: pointer; padding: 0; text-decoration: underline; }
+        .hist-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+        .hist-btns button { padding: 9px 22px; font-size: 14px; border-radius: 4px; cursor: pointer; font-family: inherit; }
+        .hb-reset { border: 1px solid #f26a21; background: #ffffff; color: #f26a21; }
+        .hb-submit { border: 1px solid #f26a21; background: #f26a21; color: #ffffff; }
+        .hb-submit:disabled { opacity: 0.6; cursor: default; }
     </style>
 </head>
 <body>
@@ -1413,10 +1760,45 @@ HTML_TEMPLATE = """
         </div>
     </div>
     <div class="range-bar">
-        <button class="rbtn rb-dclose" onclick="showRange('daily', 'close')">Daily range</button>
-        <button class="rbtn rb-dopen" onclick="showRange('daily', 'open')">Daily range</button>
-        <button class="rbtn rb-wclose" onclick="showRange('weekly', 'close')">Weekly range</button>
-        <button class="rbtn rb-wopen" onclick="showRange('weekly', 'open')">Weekly range</button>
+        <button class="rbtn rb-live" id="modeLive" onclick="goLive()">Live</button>
+        <button class="rbtn rb-hist rb-off" id="modeHist" onclick="openHist()">Historical</button>
+        <span class="range-btns" id="rangeBtns">
+            <button class="rbtn rb-dclose" onclick="showRange('daily', 'close')">Daily range</button>
+            <button class="rbtn rb-dopen" onclick="showRange('daily', 'open')">Daily range</button>
+            <button class="rbtn rb-wclose" onclick="showRange('weekly', 'close')">Weekly range</button>
+            <button class="rbtn rb-wopen" onclick="showRange('weekly', 'open')">Weekly range</button>
+        </span>
+    </div>
+    <div class="hist-bar" id="histBar">
+        <span class="hb-info" id="histInfo"></span>
+        <button class="hb" onclick="histStep(-1)">&lsaquo; Prev</button>
+        <button class="hb hb-play" id="histPlayBtn" onclick="histTogglePlay()">&#9654; Play</button>
+        <button class="hb" onclick="histStep(1)">Next &rsaquo;</button>
+        <select id="histJump" onchange="histJump()"></select>
+        <span class="hb-clock" id="histClock"></span>
+    </div>
+    <div class="range-overlay" id="histOverlay" onclick="if (event.target === this) closeHist()">
+        <div class="range-card hist-card">
+            <div class="rc-head hist-head"><span>Selector</span><button class="rc-x" onclick="closeHist()">&#10005;</button></div>
+            <div class="hist-body">
+                <label>Symbol</label>
+                <select id="hSym" onchange="hFillExp()"></select>
+                <div class="hist-two">
+                    <div><label>Expire Date</label><select id="hExp"></select></div>
+                    <div><label>Data Date</label><input type="date" id="hDate"></div>
+                </div>
+                <label>Data Time</label>
+                <select id="hTime"></select>
+                <hr class="hist-sep">
+                <div class="hist-two">
+                    <div><label>Speed Timer</label><select id="hTimer"><option value="1">1s</option><option value="2">2s</option><option value="3">3s</option><option value="5">5s</option><option value="10">10s</option></select></div>
+                    <div><label>Speed Interval</label><select id="hStep"><option value="1">1m</option><option value="2">2m</option><option value="3">3m</option><option value="5">5m</option><option value="10">10m</option><option value="15">15m</option><option value="30">30m</option></select></div>
+                </div>
+                <div class="hist-note" id="hNote"></div>
+                <div class="hist-prog" id="hProg"><div class="hp-bar"><div id="hBar"></div></div><div id="hProgTxt"></div><button class="hb-cancel" onclick="histCancel()">Cancel</button></div>
+                <div class="hist-btns"><button class="hb-reset" onclick="histReset()">Reset</button><button class="hb-submit" id="hSubmit" onclick="histSubmit()">Submit</button></div>
+            </div>
+        </div>
     </div>
     <div class="range-overlay" id="rangeOverlay" onclick="if (event.target === this) closeRange()">
         <div class="range-card">
@@ -1462,6 +1844,7 @@ HTML_TEMPLATE = """
         let busy = false;
         let fastPoll = false;
         let userInteracted = false;
+        let histMode = false, hist = null, histPending = false;
 
         function sizeContainer() {
             const c = document.getElementById('tableContainer');
@@ -1505,6 +1888,7 @@ HTML_TEMPLATE = """
         function initApp() {
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
+                window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
                 // 1st Index list, 2nd MCX list, 3rd F&O stocks
@@ -1537,6 +1921,7 @@ HTML_TEMPLATE = """
             updateSelectedSymbolSheet();
         }
         function updateSelectedSymbolSheet() {
+            if (histMode) return;
             let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
             if (!sym) return;
@@ -1555,12 +1940,20 @@ HTML_TEMPLATE = """
         function fetchData() {
             let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
-            if (!sym || busy) return;
+            if (!sym) return;
+            if (busy) { if (histMode) histPending = true; return; }
             busy = true;
-            fetch('/api/data/' + encodeURIComponent(sym) + '?t=' + new Date().getTime()).then(res => res.json()).then(data => {
+            const url = histMode ? histDataUrl() : ('/api/data/' + encodeURIComponent(sym) + '?t=' + new Date().getTime());
+            fetch(url).then(res => res.json()).then(data => {
                 busy = false;
+                if (histPending) { histPending = false; setTimeout(fetchData, 0); }
                 if (document.getElementById("symbolSelect").value !== sym) return;
+                if (!!data.hist !== histMode) return;
                 let tbody = document.getElementById("gridBody");
+                if (data.error) {
+                    tbody.innerHTML = '<tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #c92a2a;">' + data.error + '</td></tr>';
+                    return;
+                }
                 if (data.partial || (exp && data.expiry && data.expiry !== exp)) {
                     if (!tbody.innerHTML.includes("Loading data")) tbody.innerHTML = LOADING_ROW;
                     fastPoll = true;
@@ -1569,7 +1962,10 @@ HTML_TEMPLATE = """
                 fastPoll = false;
                 document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 let upd = document.getElementById("updDisplay");
-                if (data.updated_at) {
+                if (data.hist) {
+                    upd.innerText = "Historical: " + data.updated_at;
+                    upd.className = "lot-size-badge upd-badge";
+                } else if (data.updated_at) {
                     upd.innerText = "Updated: " + data.updated_at + " (" + data.age + "s ago)";
                     upd.className = "lot-size-badge " + (data.age > 20 ? "upd-stale" : "upd-badge");
                 }
@@ -1717,7 +2113,145 @@ HTML_TEMPLATE = """
             document.getElementById('rangeOverlay').style.display = 'flex';
         }
 
-        function pollLoop() { fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
+        // ---- Historical replay: Selector, load progress, play / pause ----
+        const MONTHS = {JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'};
+        const enc = encodeURIComponent;
+        const val = id => document.getElementById(id).value;
+        function expLabel(e) { return e.length >= 9 ? e.slice(0, 2) + '-' + (MONTHS[e.slice(2, 5)] || '??') + '-' + e.slice(5) : e; }
+        function isMcxSym(sym) { return !!(window.mcxSyms && window.mcxSyms.has(sym)); }
+        function histTimes(isMcx) {
+            const out = []; let h = isMcx ? 9 : 9, m = isMcx ? 0 : 15; const end = isMcx ? '23:50' : '15:30';
+            for (;;) {
+                const t = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); out.push(t);
+                if (t >= end) break;
+                m++; if (m === 60) { h++; m = 0; }
+            }
+            return out;
+        }
+        function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+        function histDefaultDate() { const d = new Date(); d.setDate(d.getDate() - 1); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1); return ymd(d); }
+        function hFillExp() {
+            const sym = val('hSym');
+            const exp = document.getElementById('hExp'); exp.innerHTML = '';
+            (allExpiriesData[sym] || []).forEach(e => { const o = document.createElement('option'); o.value = e; o.textContent = expLabel(e); exp.appendChild(o); });
+            const tsel = document.getElementById('hTime'), prev = tsel.value; tsel.innerHTML = '';
+            const times = histTimes(isMcxSym(sym));
+            times.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; tsel.appendChild(o); });
+            tsel.value = times.includes(prev) ? prev : times[1];
+        }
+        function histMsg(t) { document.getElementById('hNote').textContent = t || ''; }
+        function histProgHide() { document.getElementById('hProg').style.display = 'none'; document.getElementById('hSubmit').disabled = false; }
+        function histProg(done, total, msg) {
+            document.getElementById('hProg').style.display = 'block';
+            const pct = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
+            document.getElementById('hBar').style.width = pct + '%';
+            document.getElementById('hProgTxt').textContent = (msg || '') + '  \u2022  ' + pct + '%  (Angel ki limit ke kaaran pehli baar 1-3 minute lagte hain)';
+        }
+        function histFail(msg) { histProgHide(); histMsg(msg); }
+        function openHist() {
+            const sel = document.getElementById('hSym');
+            sel.innerHTML = document.getElementById('symbolSelect').innerHTML;
+            sel.value = (hist && hist.sym) || document.getElementById('symbolSelect').value || sel.value;
+            document.getElementById('hDate').max = ymd(new Date());
+            if (!val('hDate')) document.getElementById('hDate').value = histDefaultDate();
+            hFillExp();
+            if (hist) { document.getElementById('hExp').value = hist.exp; document.getElementById('hDate').value = hist.date; }
+            histMsg(''); histProgHide();
+            document.getElementById('histOverlay').style.display = 'flex';
+        }
+        function closeHist() { document.getElementById('histOverlay').style.display = 'none'; }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHist(); });
+        function histReset() {
+            document.getElementById('hSym').value = document.getElementById('symbolSelect').value || document.getElementById('hSym').value;
+            document.getElementById('hDate').value = histDefaultDate();
+            document.getElementById('hTimer').value = '1'; document.getElementById('hStep').value = '1';
+            document.getElementById('hTime').innerHTML = '';
+            hFillExp(); histMsg(''); histProgHide();
+        }
+        function histSubmit() {
+            const body = {symbol: val('hSym'), expiry: val('hExp'), date: val('hDate'), time: val('hTime'), timer: parseInt(val('hTimer'), 10), step: parseInt(val('hStep'), 10)};
+            if (!body.date) { histMsg('Data Date chuniye'); return; }
+            if (!body.expiry) { histMsg('Expire Date chuniye'); return; }
+            histMsg(''); histProg(0, 1, 'Shuru ho raha hai...');
+            document.getElementById('hSubmit').disabled = true;
+            fetch('/api/hist/load', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => histFail('Server se jawab nahi aaya, dobara try kijiye.'));
+        }
+        function histHandle(j, body) {
+            if (j.state === 'ready') { histProgHide(); startHist(body); }
+            else if (j.state === 'loading' || j.state === 'queued') { histProg(j.done, j.total, j.msg); setTimeout(() => histPollStatus(body), 1000); }
+            else histFail(j.msg || 'Load nahi hua');
+        }
+        function histPollStatus(body) {
+            fetch('/api/hist/status?symbol=' + enc(body.symbol) + '&expiry=' + enc(body.expiry) + '&date=' + body.date)
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => setTimeout(() => histPollStatus(body), 2000));
+        }
+        function histCancel() { fetch('/api/hist/cancel', {method: 'POST'}); }
+        function histDataUrl() { return '/api/hist/data?symbol=' + enc(hist.sym) + '&expiry=' + enc(hist.exp) + '&date=' + hist.date + '&time=' + hist.times[hist.idx]; }
+        function histSync() {
+            document.getElementById('histClock').textContent = hist.date + '  ' + hist.times[hist.idx];
+            document.getElementById('histJump').value = hist.times[hist.idx];
+        }
+        function histPause() {
+            if (hist && hist.timerId) { clearInterval(hist.timerId); hist.timerId = null; }
+            document.getElementById('histPlayBtn').innerHTML = '&#9654; Play';
+        }
+        function histTogglePlay() {
+            if (!hist) return;
+            if (hist.timerId) { histPause(); return; }
+            if (hist.idx >= hist.times.length - 1) { hist.idx = 0; histSync(); fetchData(); }
+            document.getElementById('histPlayBtn').innerHTML = '&#10074;&#10074; Pause';
+            hist.timerId = setInterval(() => {
+                if (hist.idx >= hist.times.length - 1) { histPause(); return; }
+                hist.idx = Math.min(hist.times.length - 1, hist.idx + hist.step);
+                histSync(); fetchData();
+            }, hist.timerSec * 1000);
+        }
+        function histStep(dir) {
+            if (!hist) return;
+            histPause();
+            hist.idx = Math.max(0, Math.min(hist.times.length - 1, hist.idx + dir * hist.step));
+            histSync(); fetchData();
+        }
+        function histJump() {
+            if (!hist) return;
+            const i = hist.times.indexOf(val('histJump'));
+            if (i >= 0) { hist.idx = i; histSync(); fetchData(); }
+        }
+        function startHist(body) {
+            if (hist) histPause();
+            const times = histTimes(isMcxSym(body.symbol));
+            hist = {sym: body.symbol, exp: body.expiry, date: body.date, times: times, idx: Math.max(0, times.indexOf(body.time)), timerSec: body.timer || 1, step: body.step || 1, timerId: null};
+            histMode = true;
+            closeHist();
+            const symSel = document.getElementById('symbolSelect');
+            symSel.value = hist.sym; onSymbolChange();
+            document.getElementById('expirySelect').value = hist.exp;
+            symSel.disabled = true; document.getElementById('expirySelect').disabled = true;
+            document.getElementById('rangeBtns').style.display = 'none';
+            document.getElementById('histBar').style.display = 'flex';
+            document.getElementById('histInfo').textContent = hist.sym + ' \u2022 exp ' + expLabel(hist.exp) + ' \u2022 ' + hist.date;
+            const jump = document.getElementById('histJump'); jump.innerHTML = '';
+            times.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; jump.appendChild(o); });
+            document.getElementById('modeLive').classList.add('rb-off'); document.getElementById('modeHist').classList.remove('rb-off');
+            document.getElementById('histPlayBtn').innerHTML = '&#9654; Play';
+            document.getElementById('gridBody').innerHTML = LOADING_ROW;
+            isFirstLoad = true; userInteracted = false;
+            histSync(); fetchData();
+        }
+        function goLive() {
+            if (!histMode) return;
+            histPause(); histMode = false; hist = null; histPending = false;
+            const symSel = document.getElementById('symbolSelect');
+            symSel.disabled = false; document.getElementById('expirySelect').disabled = false;
+            document.getElementById('rangeBtns').style.display = '';
+            document.getElementById('histBar').style.display = 'none';
+            document.getElementById('modeLive').classList.remove('rb-off'); document.getElementById('modeHist').classList.add('rb-off');
+            const upd = document.getElementById('updDisplay'); upd.innerText = 'Updated: -'; upd.className = 'lot-size-badge upd-badge';
+            updateSelectedSymbolSheet();
+        }
+
+        function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
         window.onload = function() { initApp(); pollLoop(); };
     </script>
 </body>
@@ -1807,6 +2341,66 @@ def get_symbol_runtime_data(symbol):
         "updated_at": vault.get("updated_at", ""),
         "age": int(time.time() - ts) if ts else 0
     })
+
+
+@app.route('/api/hist/load', methods=['POST'])
+def hist_load_api():
+    j = request.get_json(silent=True) or {}
+    sym, expiry, date = str(j.get("symbol", "")).upper(), str(j.get("expiry", "")).upper(), str(j.get("date", ""))
+    if sym not in options_cache or expiry not in (symbol_expiries_cache.get(sym) or []):
+        return jsonify({"state": "error", "msg": "Symbol ya expiry galat hai"})
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date) or date > datetime.now().strftime("%Y-%m-%d"):
+        return jsonify({"state": "error", "msg": "Data Date galat hai (aaj tak ki hi chuniye)"})
+    key = hist_key(sym, expiry, date)
+    if key in hist_datasets:
+        return jsonify({"state": "ready", "msg": "Ready"})
+    job = hist_jobs.get(key)
+    if job and job.get("state") == "loading":
+        return jsonify(job)
+    ds = hist_disk_load(key)
+    if ds:
+        hist_put(key, ds)
+        hist_jobs[key] = {"state": "ready", "done": 1, "total": 1, "msg": "Ready (saved data)"}
+        return jsonify(hist_jobs[key])
+    if not hist_load_lock.acquire(blocking=False):
+        busy = next((k for k, v in hist_jobs.items() if v.get("state") == "loading"), "")
+        return jsonify({"state": "busy", "msg": f"Pehle wala historical load chal raha hai ({busy.replace('|', ' ')}). Wo khatam hone do."})
+    hist_jobs[key] = {"state": "loading", "done": 0, "total": 1, "msg": "Shuru ho raha hai..."}
+    threading.Thread(target=hist_job_run, args=(key, sym, expiry, date), daemon=True).start()
+    return jsonify(hist_jobs[key])
+
+
+@app.route('/api/hist/status')
+def hist_status_api():
+    key = hist_key(request.args.get("symbol", "").upper(), request.args.get("expiry", "").upper(), request.args.get("date", ""))
+    if key in hist_datasets:
+        return jsonify({"state": "ready", "done": 1, "total": 1, "msg": "Ready"})
+    return jsonify(hist_jobs.get(key) or {"state": "idle", "msg": ""})
+
+
+@app.route('/api/hist/cancel', methods=['POST'])
+def hist_cancel_api():
+    for v in hist_jobs.values():
+        if v.get("state") == "loading":
+            v["cancel"] = True
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/hist/data')
+def hist_data_api():
+    sym, expiry, date = request.args.get("symbol", "").upper(), request.args.get("expiry", "").upper(), request.args.get("date", "")
+    key = hist_key(sym, expiry, date)
+    ds = hist_datasets.get(key)
+    if ds is None:
+        ds = hist_disk_load(key)
+        if ds:
+            hist_put(key, ds)
+    if ds is None:
+        return jsonify({"error": "Historical data load nahi hua. Historical button se dobara Submit kijiye."})
+    try:
+        return jsonify(hist_output(ds, hist_time_index(ds, request.args.get("time", ds["times"][0]))))
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 @app.route('/api/range/<symbol>')
