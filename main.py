@@ -2511,8 +2511,8 @@ def do_login(smart_api):
 
 
             ws_jwt_token[0] = res.get('data', {}).get('jwtToken')
-ws_feed_token[0] = res.get('data', {}).get('feedToken')
-start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
+            ws_feed_token[0] = res.get('data', {}).get('feedToken')
+            start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
 
             
             return True
