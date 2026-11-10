@@ -1092,6 +1092,11 @@ def initialize_scrip_master():
         spot_source_cache.clear()
         scrip_master_date = datetime.now().strftime("%Y-%m-%d")
         print(f"📚 Scrip master loaded: {len(new_opts)} symbols")
+
+        # Initial fast fetch for active symbol (NIFTY) so UI gets immediate data
+        if smart_api_global:
+            fetch_symbol_data(smart_api_global, "NIFTY", "full", True)
+
         return True
     except Exception as e:
         print(f"⚠ Scrip master error: {e}")
@@ -1607,7 +1612,15 @@ def hist_job_run(key, sym, expiry, date):
 def get_chart_data():
     sym = request.args.get("symbol", "NIFTY").upper()
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
-    interval = request.args.get("interval", "ONE_MINUTE")
+    tf = request.args.get("tf", "1")
+
+    # Timeframe mapping for SmartAPI
+    tf_map = {
+        "1": "ONE_MINUTE", "3": "THREE_MINUTE", "5": "FIVE_MINUTE", "10": "TEN_MINUTE",
+        "15": "FIFTEEN_MINUTE", "30": "THIRTY_MINUTE", "60": "ONE_HOUR", "120": "ONE_HOUR",
+        "180": "ONE_HOUR", "240": "ONE_HOUR"
+    }
+    interval = tf_map.get(tf, "ONE_MINUTE")
 
     if not smart_api_global:
         return jsonify({"status": False, "message": "Angel API Login nahi hua hai", "data": []})
@@ -1663,7 +1676,7 @@ def get_chart_data():
         return jsonify({"status": False, "message": str(e), "data": []})
 
 
-# --- HTML TEMPLATE WITH INTEGRATED TRADINGVIEW CHART ---
+# --- HTML TEMPLATE WITH INTEGRATED TRADINGVIEW CHART & TIMEFRAMES ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1820,6 +1833,7 @@ HTML_TEMPLATE = """
         .chart-box { margin-top: 10px; border: 1px solid #ced4da; border-radius: 6px; padding: 8px; background: #ffffff; }
         .chart-title { font-weight: bold; font-size: 13px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #e9ecef; }
         #chartContainer { width: 100%; height: 350px; }
+        .tf-select { font-size: 12px; padding: 2px 6px; font-weight: bold; border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -1913,11 +1927,26 @@ HTML_TEMPLATE = """
         </table>
     </div>
 
-    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER -->
+    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER WITH TIMEFRAME SELECTOR -->
     <div class="chart-box">
         <div class="chart-title">
             <span id="chartSymbolHeader">📈 Candle Chart</span>
-            <span style="font-size:11px; color:#555;">Angel One SmartAPI (OHLCV)</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <label style="font-size:11px; font-weight:bold;">TF:</label>
+                <select id="tfSelect" class="tf-select" onchange="loadCandleChartData()">
+                    <option value="1">1m</option>
+                    <option value="3">3m</option>
+                    <option value="5">5m</option>
+                    <option value="10">10m</option>
+                    <option value="15">15m</option>
+                    <option value="30">30m</option>
+                    <option value="60">1hr</option>
+                    <option value="120">2hr</option>
+                    <option value="180">3hr</option>
+                    <option value="240">4hr</option>
+                </select>
+                <span style="font-size:11px; color:#555;">Angel One SmartAPI</span>
+            </div>
         </div>
         <div id="chartContainer"></div>
     </div>
@@ -1950,13 +1979,14 @@ HTML_TEMPLATE = """
 
         function loadCandleChartData() {
             const sym = document.getElementById('symbolSelect').value;
+            const tf = document.getElementById('tfSelect').value;
             if (!sym || !candlestickSeries) return;
             const dateStr = histMode ? (hist ? hist.date : '') : new Date().toISOString().split('T')[0];
             if (!dateStr) return;
 
             document.getElementById('chartSymbolHeader').innerText = '📈 ' + sym + ' Candle Chart (' + dateStr + ')';
 
-            fetch('/api/chart-data?symbol=' + encodeURIComponent(sym) + '&date=' + encodeURIComponent(dateStr))
+            fetch('/api/chart-data?symbol=' + encodeURIComponent(sym) + '&date=' + encodeURIComponent(dateStr) + '&tf=' + encodeURIComponent(tf))
                 .then(r => r.json())
                 .then(j => {
                     if (j.status && j.data && j.data.length > 0) {
@@ -2009,6 +2039,8 @@ HTML_TEMPLATE = """
 
         function initApp() {
             initCandleChart();
+            // Call fetchData immediately so user gets data without waiting
+            fetchData();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
                 window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
@@ -2048,7 +2080,6 @@ HTML_TEMPLATE = """
             let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
             if (!sym) return;
-            document.getElementById("gridBody").innerHTML = LOADING_ROW;
             fastPoll = true;
             userInteracted = false;
             isFirstLoad = true;
@@ -2064,16 +2095,15 @@ HTML_TEMPLATE = """
             return `<div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div>`;
         }
         function fetchData() {
-            let sym = document.getElementById("symbolSelect").value;
+            let sym = document.getElementById("symbolSelect").value || "NIFTY";
             let exp = document.getElementById("expirySelect").value;
-            if (!sym) return;
             if (busy) { if (histMode) histPending = true; return; }
             busy = true;
             const url = histMode ? histDataUrl() : ('/api/data/' + encodeURIComponent(sym) + '?t=' + new Date().getTime());
             fetch(url).then(res => res.json()).then(data => {
                 busy = false;
                 if (histPending) { histPending = false; setTimeout(fetchData, 0); }
-                if (document.getElementById("symbolSelect").value !== sym) return;
+                if (document.getElementById("symbolSelect").value && document.getElementById("symbolSelect").value !== sym) return;
                 if (!!data.hist !== histMode) return;
                 let tbody = document.getElementById("gridBody");
                 if (data.error) {
@@ -2081,7 +2111,7 @@ HTML_TEMPLATE = """
                     return;
                 }
                 if (data.partial || (exp && data.expiry && data.expiry !== exp)) {
-                    if (!tbody.innerHTML.includes("Loading data")) tbody.innerHTML = LOADING_ROW;
+                    if (!tbody.innerHTML.includes("Loading data") && !data.grid_rows) tbody.innerHTML = LOADING_ROW;
                     fastPoll = true;
                     return;
                 }
