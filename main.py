@@ -461,7 +461,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -1676,7 +1676,7 @@ def get_chart_data():
         return jsonify({"status": False, "message": str(e), "data": []})
 
 
-# --- HTML TEMPLATE WITH AUTO-RETRY & IMMEDIATE BOOTSTRAP ---
+# --- HTML TEMPLATE WITH ROBUST FALLBACK & AUTO-RETRY ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1895,7 +1895,7 @@ HTML_TEMPLATE = """
             <div id="rcBody"></div>
         </div>
     </div>
-    <div class="k3-banner" id="k3Display">Loading Framework...</div>
+    <div class="k3-banner" id="k3Display">Connecting to Angel One & loading Scrip Master...</div>
 
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
@@ -1922,7 +1922,7 @@ HTML_TEMPLATE = """
                 </tr>
             </thead>
             <tbody id="gridBody">
-                <tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
+                <tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Waiting for Scrip Master & Market Data sync...</td></tr>
             </tbody>
         </table>
     </div>
@@ -2039,14 +2039,8 @@ HTML_TEMPLATE = """
 
         function initApp() {
             initCandleChart();
-            fetchData();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
-                if (!meta.ready) {
-                    // Agar abhi scrip master load nahi hua hai to 2 second baad dobara try karega
-                    setTimeout(initApp, 2000);
-                    return;
-                }
-                allExpiriesData = meta.expiries;
+                allExpiriesData = meta.expiries || {};
                 window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
                 let symSelect = document.getElementById("symbolSelect");
                 if (symSelect.children.length === 0) {
@@ -2060,21 +2054,35 @@ HTML_TEMPLATE = """
                         });
                         symSelect.appendChild(og);
                     });
-                    if (meta.symbols.length > 0) {
-                        symSelect.value = meta.active_symbol || meta.symbols[0];
-                        onSymbolChange();
-                    }
                 }
-            }).catch(() => setTimeout(initApp, 3000));
+                if (meta.symbols && meta.symbols.length > 0) {
+                    if (!symSelect.value) {
+                        symSelect.value = meta.active_symbol || meta.symbols[0];
+                    }
+                    onSymbolChange();
+                }
+                if (!meta.ready) {
+                    document.getElementById('k3Display').innerText = "Scrip master loading from Angel One... Please wait.";
+                    setTimeout(initApp, 3000);
+                } else {
+                    document.getElementById('k3Display').innerText = "System Ready - Fetching live quotes...";
+                    fetchData();
+                }
+            }).catch(() => {
+                document.getElementById('k3Display').innerText = "Connecting to server... retrying...";
+                setTimeout(initApp, 3000);
+            });
         }
         function onSymbolChange() {
             let sym = document.getElementById("symbolSelect").value;
             let expSelect = document.getElementById("expirySelect");
+            let prevExp = expSelect.value;
             expSelect.innerHTML = "";
             let list = allExpiriesData[sym] || [];
             list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
+            if (list.includes(prevExp)) expSelect.value = prevExp;
             isFirstLoad = true;
             updateSelectedSymbolSheet();
             loadCandleChartData();
@@ -2120,7 +2128,7 @@ HTML_TEMPLATE = """
                     return;
                 }
                 fastPoll = false;
-                document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
+                document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + (data.lot_size || '-');
                 let upd = document.getElementById("updDisplay");
                 if (data.hist) {
                     upd.innerText = "Historical: " + data.updated_at;
@@ -2136,11 +2144,11 @@ HTML_TEMPLATE = """
                 if (data.U5) document.getElementById("cell-u5").innerHTML = data.U5;
 
                 let k3Div = document.getElementById("k3Display");
-                k3Div.innerText = data.K3;
-                let k3TextLower = data.K3.toLowerCase();
+                k3Div.innerText = data.K3 || "Market matrix synced";
+                let k3TextLower = (data.K3 || "").toLowerCase();
                 if (k3TextLower.includes("bull")) k3Div.style.color = "#0000FF";
                 else if (k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
-                else k3Div.style.color = "#000000";
+                else k3Div.style.color = "#0ca678";
 
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     const cont = document.getElementById('tableContainer');
