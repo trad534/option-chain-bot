@@ -45,10 +45,10 @@ DASH_PASS = os.getenv("DASH_PASS")
 REDIS_URL = os.getenv("REDIS_URL")          # optional (state save). Nahi ho to file use hogi
 STATE_FILE = os.getenv("STATE_FILE", "/tmp/tracker_state.json")
 STATE_KEY = "option_tracker_state"
-MIN_API_GAP = 1.1                           # getMarketData ke beech minimum seconds
+MIN_API_GAP = 0.5                           # Optimized gap for faster fetching
 INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
-NEAR_STRIKES = 2     # imaginary line ke dusri taraf kitne strike (PE: upar wale strikes, CE: neeche wale strikes)
-FAR_STRIKES = 10     # imaginary line ki apni taraf kitne strike (PE: neeche wale, CE: upar wale)
+NEAR_STRIKES = 2
+FAR_STRIKES = 10
 
 
 # Global tokens for WebSocket
@@ -458,10 +458,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
+            ceWinner = "VOL" # handled properly
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -720,7 +721,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 5.0}
 
 
-def rate_limited_market_data(smart_api, req, priority=False, retries=2):
+def rate_limited_market_data(smart_api, req, priority=False, retries=3):
     for attempt in range(retries):
         res = None
         while time.time() < api_stats["pause_until"]:
@@ -770,8 +771,9 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=2):
 
 def fetch_quotes(smart_api, pairs, priority=False):
     out = {}
-    for i in range(0, len(pairs), 50):
-        chunk = pairs[i:i + 50]
+    # Chunk size 25 rakha hai taaki Angel API par timeout / connection reset na aaye
+    for i in range(0, len(pairs), 25):
+        chunk = pairs[i:i + 25]
         req = {}
         for e, t in chunk:
             req.setdefault(e, []).append(t)
@@ -1927,7 +1929,7 @@ HTML_TEMPLATE = """
         </table>
     </div>
 
-    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER WITH TIMEFRAME SELECTOR -->
+    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER WITH TIMEFRAMES -->
     <div class="chart-box">
         <div class="chart-title">
             <span id="chartSymbolHeader">📈 Candle Chart</span>
@@ -2039,7 +2041,6 @@ HTML_TEMPLATE = """
 
         function initApp() {
             initCandleChart();
-            // Call fetchData immediately so user gets data without waiting
             fetchData();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
