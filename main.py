@@ -424,7 +424,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -458,7 +458,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
-            ceWinner = "VOL" # handled properly
             peWinner = "VOL"
         elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
@@ -771,7 +770,6 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=3):
 
 def fetch_quotes(smart_api, pairs, priority=False):
     out = {}
-    # Chunk size 25 rakha hai taaki Angel API par timeout / connection reset na aaye
     for i in range(0, len(pairs), 25):
         chunk = pairs[i:i + 25]
         req = {}
@@ -1678,7 +1676,7 @@ def get_chart_data():
         return jsonify({"status": False, "message": str(e), "data": []})
 
 
-# --- HTML TEMPLATE WITH INTEGRATED TRADINGVIEW CHART & TIMEFRAMES ---
+# --- HTML TEMPLATE WITH AUTO-RETRY & IMMEDIATE BOOTSTRAP ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -2043,25 +2041,30 @@ HTML_TEMPLATE = """
             initCandleChart();
             fetchData();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
+                if (!meta.ready) {
+                    // Agar abhi scrip master load nahi hua hai to 2 second baad dobara try karega
+                    setTimeout(initApp, 2000);
+                    return;
+                }
                 allExpiriesData = meta.expiries;
                 window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
                 let symSelect = document.getElementById("symbolSelect");
-                symSelect.innerHTML = "";
-                const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
-                ["INDEX", "MCX", "STOCK"].forEach(k => {
-                    let list = (meta.groups && meta.groups[k]) || [];
-                    if (!list.length) return;
-                    let og = document.createElement("optgroup"); og.label = groupLabels[k];
-                    list.forEach(sym => {
-                        let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; og.appendChild(opt);
+                if (symSelect.children.length === 0) {
+                    const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
+                    ["INDEX", "MCX", "STOCK"].forEach(k => {
+                        let list = (meta.groups && meta.groups[k]) || [];
+                        if (!list.length) return;
+                        let og = document.createElement("optgroup"); og.label = groupLabels[k];
+                        list.forEach(sym => {
+                            let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; og.appendChild(opt);
+                        });
+                        symSelect.appendChild(og);
                     });
-                    symSelect.appendChild(og);
-                });
-                if (meta.symbols.length > 0) {
-                    symSelect.value = meta.active_symbol || meta.symbols[0];
-                    onSymbolChange();
+                    if (meta.symbols.length > 0) {
+                        symSelect.value = meta.active_symbol || meta.symbols[0];
+                        onSymbolChange();
+                    }
                 }
-                if (!meta.ready) setTimeout(initApp, 3000);
             }).catch(() => setTimeout(initApp, 3000));
         }
         function onSymbolChange() {
