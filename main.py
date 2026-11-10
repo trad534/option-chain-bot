@@ -96,10 +96,7 @@ def start_live_websocket(api_key, client_code, jwt_token, feed_token):
     threading.Thread(target=sws.connect, daemon=True).start()
 
 
-
 def window_sets(strikes_list, spot):
-    """Imaginary line (spot) ke hisaab se CE / PE ke strike window (indexes). strikes_list ascending hona chahiye.
-    'neeche' = strike <= spot, 'upar' = strike > spot."""
     below = [i for i, st in enumerate(strikes_list) if st <= spot]
     above = [i for i, st in enumerate(strikes_list) if st > spot]
     ce = set(below[-NEAR_STRIKES:]) | set(above[:FAR_STRIKES])
@@ -108,11 +105,10 @@ def window_sets(strikes_list, spot):
 
 
 debug_info = {}
-# Daily / Weekly range engine ka data (din badalne par clear NAHI hota)
 range_state = {"close": {}, "open": {}, "api_close": {}, "daily": {}, "weekly": {}}
 range_flags = {}
 INDEX_NAMES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX", "BANKEX", "SENSEX50"]
-symbol_kind_cache = {}            # symbol -> "INDEX" / "MCX" / "STOCK"
+symbol_kind_cache = {}
 INDEX_MAP = {
     "NIFTY": ("NSE", "99926000"),
     "BANKNIFTY": ("NSE", "99926009"),
@@ -154,7 +150,7 @@ def run_flask():
 # --- GLOBAL STORAGE ---
 global_run_date = ""
 reset_done_date = ""
-persistent_quotes_cache = {}      # "EXCH:token" -> quote
+persistent_quotes_cache = {}
 multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
 options_cache = {}
@@ -170,7 +166,7 @@ user_selected_expiries = {}
 smart_api_global = None
 symbol_states_memory = {}
 last_ui_poll = [0.0]
-viewed_symbols = {}     # symbol -> last time koi viewer ne is symbol ka data maanga
+viewed_symbols = {}
 need_relogin = [False]
 last_login_ts = [0.0]
 fail_streak = [0]
@@ -219,7 +215,6 @@ def num(v, default=0.0):
         return default
 
 
-# --- STATE SAVE / LOAD (restart par history na jaye) ---
 def save_state():
     try:
         payload = json.dumps({
@@ -270,7 +265,6 @@ def load_state():
 
 
 def maybe_daily_reset(now_dt):
-    """Apps Script jaisa: roz 09:14:50 par saari history saaf (aur date badalne par)."""
     global global_run_date, reset_done_date
     today = now_dt.strftime("%Y-%m-%d")
     hms = now_dt.strftime("%H:%M:%S")
@@ -291,7 +285,6 @@ def maybe_daily_reset(now_dt):
         reset_done_date = today
 
 
-# --- BLACK-SCHOLES GREEKS (aapka original, bina badlav) ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -336,7 +329,6 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': iv_val, 'delta': round(delta, 3), 'delta_raw': float(delta), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
-# --- APPS SCRIPT LOGIC (Python replica) ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY", now_dt=None):
     global multi_symbol_runtime_states
     try:
@@ -429,7 +421,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
-        # CALL (CE) SIDE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
@@ -439,10 +430,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "OI"   # FIX: Apps Script jaisa (ceVolTop.highest)
+            ceWinner = "OI"
         elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
@@ -457,11 +448,10 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
-        # PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -469,7 +459,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
         elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
@@ -501,7 +491,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike_str = str(int(strike)) if strike == int(strike) else str(strike)
             second_strike_str = str(int(secondStrike)) if secondStrike == int(secondStrike) else str(secondStrike)
 
-            # pichhle refresh ka leader strike (pehli baar = abhi wala)
             prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
 
@@ -510,13 +499,12 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
             shiftFrom = num(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
-            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText   # shift bante waqt ka wtt/wtb
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText
             shifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
             shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "")
             isStrongNow = rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText
             reverted = False
 
-            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta, par wtt/wtb ki direction palti to tutta hai)
             if shifted:
                 if isStrongNow:
                     shifted = False
@@ -532,19 +520,16 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                     shifted = False
                     log_event(symbol_name, cacheKey, f"SHIFT CLEARED (weak direction badli: {shiftStatus} -> {finalStatusText}) strike={strike_str} second={second_strike_str}")
 
-            # 2) NAYA SHIFT: leader strike badla aur status weak (wtt/wtb)
             if (not reverted) and strike != prevStrike and prevStrike > 0 and finalStatusText in ("wtb", "wtt"):
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
                 shiftFrom = prevStrike
                 shiftStatus = finalStatusText
                 shifted = True
                 set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, finalStatusText)
-                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))   # shift banne ke waqt ka second strike
+                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))
                 log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
 
             if shifted:
-                # label tab tak jab tak second strike wahi hai jo shift banne par tha; doosra strike aaye to plain weak dikhe,
-                # second strike wapas wahi aaye to shifted wapas
                 shiftTarget = num(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
                 isShifting = (shiftTarget <= 0) or (secondStrike == shiftTarget)
                 scenarioStatus = ("wtb" if shiftType == "top to bottom" else "wtt") if isShifting else finalStatusText
@@ -561,7 +546,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
-            # 3) TIMESTAMP: jo card par dikhta hai wo badle (strike / second strike / status / shift) to naya time lock
             if isShifting:
                 sig = f"S|{shiftType}|{strike_str}|{second_strike_str}|{displayStatus}"
             elif displayStatus in ("wtb", "wtt"):
@@ -611,7 +595,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkPe = finalPeState
         SS = "stable strong"
 
-        # K3 SCENARIOS: bilkul Apps Script jaisa (default Neutral, "strong" alag se nahi)
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -669,7 +652,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
-        # imaginary line se 2 strike se door wale strike: CE me line ke upar (kam strike), PE me line ke neeche (zyada strike)
         ce_out_set = {i for i, stv in enumerate(strikes_list) if stv <= spot_price and i not in ce_idx_set}
         pe_out_set = {i for i, stv in enumerate(strikes_list) if stv > spot_price and i not in pe_idx_set}
 
@@ -710,7 +692,6 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
-            # window se bahar gaye strike par 75% ya zyada ho to dark-grey highlight (100% / 75% highlight ki tarah)
             for col in ('ce_oi', 'ce_vol'):
                 if not r_copy[col + '_color'] and idx in ce_out_set and r_copy[col + '_pct'] >= 75.0:
                     r_copy[col + '_color'] = 'bg-out'
@@ -740,12 +721,11 @@ api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 5.0
 
 
 def rate_limited_market_data(smart_api, req, priority=False, retries=2):
-    """Saari getMarketData calls yahin se: 1.1s gap, retry, 'access rate' error par backoff."""
     for attempt in range(retries):
         res = None
-        while time.time() < api_stats["pause_until"]:      # Angel ne rok diya to sab ruke
+        while time.time() < api_stats["pause_until"]:
             time.sleep(0.2)
-        if not priority:                      # background calls screen wale symbol ko aage jaane dete hain
+        if not priority:
             while active_pending[0] > 0:
                 time.sleep(0.05)
         with api_lock:
@@ -789,7 +769,6 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=2):
 
 
 def fetch_quotes(smart_api, pairs, priority=False):
-    """pairs = [(exch, token)]. Max 50 tokens per request. Returns {(exch, token): item}"""
     out = {}
     for i in range(0, len(pairs), 50):
         chunk = pairs[i:i + 50]
@@ -845,7 +824,6 @@ def build_chain(sym, expiry_str):
 
 
 def resolve_spot_source(sym, expiry_dt):
-    """(exchange, token) of underlying: index / MCX near future / NSE equity."""
     key = (sym, str(expiry_dt))
     if key in spot_source_cache:
         return spot_source_cache[key]
@@ -897,23 +875,17 @@ def option_quote(tokmap, st, tp, after_open):
     return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
 
 
-EOR_ABOVE_LINE, EOR_BELOW_LINE = 2, 19     # EOR (CE side): imaginary line ke 2 strike upar se, line ke 19 strike neeche tak
-EOS_ABOVE_LINE, EOS_BELOW_LINE = 18, 2     # EOS (PE side): line ke 2 strike neeche se, line ke 18 strike upar tak
-                                           # ("upar" = screen par line ke upar = spot se chhote/barabar strike, "neeche" = spot se bade strike)
+EOR_ABOVE_LINE, EOR_BELOW_LINE = 2, 19
+EOS_ABOVE_LINE, EOS_BELOW_LINE = 18, 2
 
 
 def compute_extension_levels(rows, spot):
-    """Apps Script dynamicGreeksEngineV5 wala formula.
-    Level(i) = spot - (CE LTP[i] - PE LTP[i-1]) / (CE delta[i] + |PE delta[i-1]|)   (CE = strike i, PE = pichhla strike i-1)
-    EOS (PE side) : level(i) strike i ki row par     -> line ke upar 18 strike + line ke neeche 2 strike
-    EOR (CE side) : level(i) strike i-1 ki row par   -> line ke upar 2 strike + line ke neeche 19 strike
-    Value me point nahi: decimal seedha hata diya jata hai (23515.83 -> 23515). rows ascending strike order me."""
     n = len(rows)
     for r in rows:
         r['ce_eor'] = None
         r['pe_eos'] = None
-    up = [i for i in range(n) if rows[i]['strike'] <= spot]       # screen par line ke upar
-    down = [i for i in range(n) if rows[i]['strike'] > spot]      # screen par line ke neeche
+    up = [i for i in range(n) if rows[i]['strike'] <= spot]
+    down = [i for i in range(n) if rows[i]['strike'] > spot]
 
     def level(i):
         if i < 1 or i >= n:
@@ -931,10 +903,6 @@ def compute_extension_levels(rows, spot):
 
 
 def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
-    """mode: light = tracker tokens, bina greeks (background symbols)
-             core  = tracker tokens + greeks (screen wala symbol, har ~3s)
-             extra = baaki strikes ke tokens (screen wala symbol, har 3rd cycle)
-             full  = poori chain (screen par symbol pehli baar khulne par)"""
     light = (mode == "light")
     locked = False
     try:
@@ -956,7 +924,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
 
         tokmap, all_strikes = chain['tokmap'], chain['strikes']
         spot_ref = num(multi_symbol_runtime_states.get(sym, {}).get('spot_price'))
-        if spot_ref <= 0:   # pehli baar: spot alag se (sirf ek baar)
+        if spot_ref <= 0:
             spot_ref = spot_from(fetch_quotes(smart_api, [spot_src], priority), spot_src)
             if spot_ref <= 0:
                 return
@@ -966,7 +934,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
         pairs = [spot_src]
         for pos in range(lo, hi):
             st = all_strikes[pos]
-            core_ce = (closest - 5) <= pos <= (closest + 14)     # tracker window + padding
+            core_ce = (closest - 5) <= pos <= (closest + 14)
             core_pe = (closest - 14) <= pos <= (closest + 5)
             if mode == "full":
                 need_ce = need_pe = True
@@ -976,7 +944,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 need_ce, need_pe = core_ce, core_pe
             if need_ce and (st, 'CE') in tokmap: pairs.append(tokmap[(st, 'CE')])
             if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
-        if mode in ("full", "extra"):      # EOR / EOS ke liye table ke bahar ka ek-ek edge strike
+        if mode in ("full", "extra"):
             if lo >= 1 and (all_strikes[lo - 1], 'PE') in tokmap: pairs.append(tokmap[(all_strikes[lo - 1], 'PE')])
             if hi < len(all_strikes) and (all_strikes[hi], 'CE') in tokmap: pairs.append(tokmap[(all_strikes[hi], 'CE')])
 
@@ -996,7 +964,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             for i in pe_set:
                 pr = tokmap.get((win[i], 'PE'))
                 if pr and pr not in have: topup.append(pr)
-            if topup:     # spot kaafi hil gaya tha: window ke naye strikes ka taaza data
+            if topup:
                 quotes.update(fetch_quotes(smart_api, topup, priority))
                 pairs.extend(topup)
         state_lock.acquire()
@@ -1026,7 +994,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             print(f"⚠ {sym}: {missing}/{len(pairs) - 1} tokens ka quote nahi aaya (purani value dikh rahi hai)")
 
         closest = nearest_idx(all_strikes, spot_price)
-        below_n = sum(1 for x_ in all_strikes if x_ <= spot_price)       # line ke upar (spot se chhote/barabar) kitne strike
+        below_n = sum(1 for x_ in all_strikes if x_ <= spot_price)
         strikes = all_strikes[max(0, below_n - 19):min(len(all_strikes), below_n + 19)]
         after_open = (now_dt.hour, now_dt.minute) >= (9, 15)
 
@@ -1049,7 +1017,6 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price),
                 'ce_delta_raw': ce_g['delta_raw'], 'pe_delta_raw': pe_g['delta_raw']
             })
-        # EOR / EOS: table ki pehli aur aakhri row bhi bhare, isliye bahar ka ek-ek strike sirf gine jaane ke liye
         ext_rows = list(raw_grid_payload)
         fpos, lpos = all_strikes.index(strikes[0]), all_strikes.index(strikes[-1])
         def _edge_row(stv):
@@ -1131,16 +1098,14 @@ def initialize_scrip_master():
         return False
 
 
-# --- DAILY / WEEKLY RANGE ENGINE (Apps Script rangeEngine ka Python version) ---
-# Daily range: CE/PE LTP kitne strike door ka liya jaye = us symbol ki APNI nearest expiry me kitne din bache (calendar days).
-# NIFTY (Tuesday expiry) par ye bilkul Apps Script wala hai: Mon 1, Tue 0, Wed 6, Thu 5, Fri 4. Dusre symbols par unki apni expiry se.
-RANGE_MAX_K = None      # None = koi limit nahi. Monthly expiry me din zyada hote hain; limit lagani ho to yahan number likhein (jaise 6)
+# --- DAILY / WEEKLY RANGE ENGINE ---
+RANGE_MAX_K = None
 RANGE_TASKS = [
-    ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),                    # MCX: 8:59 ka LTP = open
-    ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),                    # Index + F&O stocks: 9:14 ka LTP = open
-    ("NSE_CLOSE", "NSE", "close", lambda hm: "15:35" <= hm <= "23:59"),       # 3:30 ke baad ka LTP = close
-    ("MCX_CLOSE_A", "MCX", "close", lambda hm: "23:35" <= hm < "23:58"),      # MCX band hone ke baad (summer 23:30)
-    ("MCX_CLOSE_B", "MCX", "close", lambda hm: "23:58" <= hm <= "23:59"),     # winter me MCX 23:55 par band hota hai, ye wahi final value rakhta hai
+    ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),
+    ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),
+    ("NSE_CLOSE", "NSE", "close", lambda hm: "15:35" <= hm <= "23:59"),
+    ("MCX_CLOSE_A", "MCX", "close", lambda hm: "23:35" <= hm < "23:58"),
+    ("MCX_CLOSE_B", "MCX", "close", lambda hm: "23:58" <= hm <= "23:59"),
 ]
 
 
@@ -1149,7 +1114,6 @@ def range_group_symbols(group):
 
 
 def expiry_divisor(sym):
-    """Weekly expiry wale symbol: /2, monthly expiry wale: /4"""
     exps = symbol_expiries_cache.get(sym) or []
     if len(exps) >= 2:
         try:
@@ -1161,7 +1125,6 @@ def expiry_divisor(sym):
 
 
 def pick_strikes(strikes, spot, k):
-    """(CE strike, PE strike): CE = line ke neeche-screen wala k-th strike (spot se bada), PE = line ke upar-screen wala k-th strike (spot se chhota/barabar)"""
     below = [x for x in strikes if x <= spot]
     above = [x for x in strikes if x > spot]
     if len(above) <= k or len(below) <= k:
@@ -1200,7 +1163,6 @@ def range_fetch_spots(api, targets):
 
 
 def resolve_prev_close(sym, today_str):
-    """Kal ka close: pehle kal 3:35pm (MCX: raat) ka capture, nahi mila to API ka previous close"""
     c = range_state["close"].get(sym)
     if c and c.get("date", "") < today_str and num(c.get("value")) > 0:
         try:
@@ -1216,7 +1178,6 @@ def resolve_prev_close(sym, today_str):
 
 
 def fmt2(x):
-    """JavaScript toFixed(2) jaisa rounding (exact half par upar), taaki sheet ke R1/S1... se value same aaye"""
     return str(Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
@@ -1241,14 +1202,14 @@ def run_range_open(api, group, now):
         if sym not in spots:
             continue
         entry = {}
-        dte = max(0, (chain['expiry_dt'].date() - now.date()).days)          # is symbol ki nearest expiry me kitne din bache
+        dte = max(0, (chain['expiry_dt'].date() - now.date()).days)
         kd = dte if RANGE_MAX_K is None else min(dte, RANGE_MAX_K)
         for name, kk in (("daily", kd),) + ((("weekly", 0),) if wd == 2 else ()):
             pick = pick_strikes(chain['strikes'], spots[sym][0], kk)
             ce = chain['tokmap'].get((pick[0], 'CE')) if pick else None
             pe = chain['tokmap'].get((pick[1], 'PE')) if pick else None
             if not pick or not ce or not pe:
-                entry[name] = (kk, None, None, None, None)           # itne door ke strike chain me nahi
+                entry[name] = (kk, None, None, None, None)
                 continue
             entry[name] = (kk, pick[0], pick[1], ce, pe)
             for pr in (ce, pe):
@@ -1298,14 +1259,13 @@ def run_range_close(api, group, now):
 
 
 def range_loop():
-    """Roz: MCX 8:59 / index+stocks 9:14 par open + daily (Wednesday ko weekly bhi); 3:35pm ke baad aur MCX band hone ke baad close."""
     prepared = None
     retries = {}
     while True:
         try:
             if system_ready() and smart_api_global is not None:
                 now = datetime.now()
-                if prepared != scrip_master_date:      # chains / spot tokens pehle se taiyaar, taaki 9:14 par der na lage
+                if prepared != scrip_master_date:
                     n_ = len(range_targets("NSE")) + len(range_targets("MCX"))
                     print(f"📐 Range engine taiyaar: {n_} symbols")
                     prepared = scrip_master_date
@@ -1330,13 +1290,13 @@ def range_loop():
         time.sleep(0.5)
 
 
-# --- HISTORICAL REPLAY (Angel One historical candle + OI data se option chain, kisi bhi din / minute ka) ---
+# --- HISTORICAL REPLAY ---
 HIST_DIR = os.getenv("HIST_DIR", "/tmp/hist_cache")
-HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}                   # candle minutes (15:30 chuna jaye to aakhri candle)
-HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}   # ek request me 500 candle se kam
+HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}
+HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}
 HIST_MAX_DATASETS = 3
-HIST_MIN_GAP = 0.4        # historical API ke beech minimum seconds (limit 3/sec)
-HIST_PER_MIN, HIST_PER_HOUR = 170, 4800     # Angel limit: 180/min, 5000/ghanta
+HIST_MIN_GAP = 0.4
+HIST_PER_MIN, HIST_PER_HOUR = 170, 4800
 hist_datasets = {}
 hist_order = []
 hist_jobs = {}
@@ -1364,7 +1324,6 @@ def hist_minutes(grp):
 
 
 def hist_call(kind, params, retries=3):
-    """Angel historical API: 3 request/sec, 180/min, 5000/ghanta ke andar. kind = candle / oi"""
     last_err = "unknown error"
     for attempt in range(retries):
         if smart_api_global is None:
@@ -1398,7 +1357,6 @@ def hist_call(kind, params, retries=3):
 
 
 def hist_series(exch, token, date, grp, with_oi):
-    """{minute: (close, volume)} aur {minute: oi}"""
     candles, oi = {}, {}
     for a, b in HIST_CHUNKS[grp]:
         params = {"exchange": exch, "symboltoken": token, "interval": "ONE_MINUTE", "fromdate": f"{date} {a}", "todate": f"{date} {b}"}
@@ -1461,7 +1419,7 @@ def hist_build(sym, expiry, date, job):
             last = candles[t][0]
         spot.append(last)
     first_pos = next((k for k, v in enumerate(spot) if v > 0), None)
-    for k in range(first_pos):                       # pehli candle se pehle ka time pehli value se bharo
+    for k in range(first_pos):
         spot[k] = spot[first_pos]
     strikes_all = chain['strikes']
     below_min = sum(1 for x in strikes_all if x <= min(spot))
@@ -1535,7 +1493,6 @@ def hist_rows(ds, i, greeks=True):
 
 
 def hist_precompute(ds):
-    """Har minute ke baad tracker ki state (shift lock, time lock...) yaad rakhta hai, taaki kisi bhi minute par seedha jump ho sake"""
     key = "HISTP" + str(threading.get_ident())
     states = []
     try:
@@ -1645,7 +1602,68 @@ def hist_job_run(key, sym, expiry, date):
         hist_load_lock.release()
 
 
-# --- HTML TEMPLATE ---
+# --- ANGEL ONE getCandleData ROUTE FOR CANDLESTICK CHART ---
+@app.route('/api/chart-data')
+def get_chart_data():
+    sym = request.args.get("symbol", "NIFTY").upper()
+    date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    interval = request.args.get("interval", "ONE_MINUTE")
+
+    if not smart_api_global:
+        return jsonify({"status": False, "message": "Angel API Login nahi hua hai", "data": []})
+
+    exp_list = symbol_expiries_cache.get(sym) or []
+    chosen = user_selected_expiries.get(sym, exp_list[0] if exp_list else "")
+    chain = build_chain(sym, chosen) if chosen else None
+    if not chain and exp_list:
+        chain = build_chain(sym, exp_list[0])
+
+    if not chain:
+        return jsonify({"status": False, "message": "Symbol metadata not ready", "data": []})
+
+    src = resolve_spot_source(sym, chain['expiry_dt'])
+    if not src:
+        return jsonify({"status": False, "message": "Spot source not found", "data": []})
+
+    exch, token = src[0], src[1]
+    from_date = f"{date_str} 09:15" if exch != "MCX" else f"{date_str} 09:00"
+    to_date = f"{date_str} 15:30" if exch != "MCX" else f"{date_str} 23:50"
+
+    params = {
+        "exchange": exch,
+        "symboltoken": token,
+        "interval": interval,
+        "fromdate": from_date,
+        "todate": to_date
+    }
+
+    try:
+        res = smart_api_global.getCandleData(params)
+        if res and res.get("status"):
+            candles = []
+            for item in res.get("data", []):
+                ts = str(item[0])
+                if 'T' in ts:
+                    dt_obj = datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+                else:
+                    dt_obj = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
+                time_sec = int(dt_obj.timestamp())
+                candles.append({
+                    "time": time_sec,
+                    "open": float(item[1]),
+                    "high": float(item[2]),
+                    "low": float(item[3]),
+                    "close": float(item[4]),
+                    "volume": float(item[5])
+                })
+            return jsonify({"status": True, "data": candles})
+        else:
+            return jsonify({"status": False, "message": str(res.get("message", "Fetch failed")), "data": []})
+    except Exception as e:
+        return jsonify({"status": False, "message": str(e), "data": []})
+
+
+# --- HTML TEMPLATE WITH INTEGRATED TRADINGVIEW CHART ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1653,6 +1671,8 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
+    <!-- TradingView Lightweight Charts CDN -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; }
@@ -1665,7 +1685,7 @@ HTML_TEMPLATE = """
 
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
 
-        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 480px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
 
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
 
@@ -1795,6 +1815,11 @@ HTML_TEMPLATE = """
         .hb-reset { border: 1px solid #f26a21; background: #ffffff; color: #f26a21; }
         .hb-submit { border: 1px solid #f26a21; background: #f26a21; color: #ffffff; }
         .hb-submit:disabled { opacity: 0.6; cursor: default; }
+
+        /* CANDLESTICK CHART CONTAINER STYLES */
+        .chart-box { margin-top: 10px; border: 1px solid #ced4da; border-radius: 6px; padding: 8px; background: #ffffff; }
+        .chart-title { font-weight: bold; font-size: 13px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #e9ecef; }
+        #chartContainer { width: 100%; height: 350px; }
     </style>
 </head>
 <body>
@@ -1887,6 +1912,16 @@ HTML_TEMPLATE = """
             </tbody>
         </table>
     </div>
+
+    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER -->
+    <div class="chart-box">
+        <div class="chart-title">
+            <span id="chartSymbolHeader">📈 Candle Chart</span>
+            <span style="font-size:11px; color:#555;">Angel One SmartAPI (OHLCV)</span>
+        </div>
+        <div id="chartContainer"></div>
+    </div>
+
     <script>
         let allExpiriesData = {};
         let isFirstLoad = true;
@@ -1894,6 +1929,41 @@ HTML_TEMPLATE = """
         let fastPoll = false;
         let userInteracted = false;
         let histMode = false, hist = null, histPending = false;
+
+        let tvChart = null, candlestickSeries = null;
+
+        function initCandleChart() {
+            const chartElem = document.getElementById('chartContainer');
+            if (!chartElem) return;
+            tvChart = LightweightCharts.createChart(chartElem, {
+                width: chartElem.clientWidth,
+                height: 350,
+                layout: { backgroundColor: '#ffffff', textColor: '#333' },
+                grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
+            candlestickSeries = tvChart.addCandlestickSeries({
+                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+                wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+            });
+        }
+
+        function loadCandleChartData() {
+            const sym = document.getElementById('symbolSelect').value;
+            if (!sym || !candlestickSeries) return;
+            const dateStr = histMode ? (hist ? hist.date : '') : new Date().toISOString().split('T')[0];
+            if (!dateStr) return;
+
+            document.getElementById('chartSymbolHeader').innerText = '📈 ' + sym + ' Candle Chart (' + dateStr + ')';
+
+            fetch('/api/chart-data?symbol=' + encodeURIComponent(sym) + '&date=' + encodeURIComponent(dateStr))
+                .then(r => r.json())
+                .then(j => {
+                    if (j.status && j.data && j.data.length > 0) {
+                        candlestickSeries.setData(j.data);
+                    }
+                }).catch(() => {});
+        }
 
         function sizeContainer() {
             const c = document.getElementById('tableContainer');
@@ -1914,7 +1984,7 @@ HTML_TEMPLATE = """
                 c.scrollLeft = (cl.left - cr.left + c.scrollLeft) + cl.width / 2 - c.clientWidth / 2;
             }
         }
-        const VIEW_ROWS = 11;               // imaginary line ke upar 11 aur neeche 11 strike screen par
+        const VIEW_ROWS = 11;
         function fitViewport() {
             const c = document.getElementById('tableContainer');
             const rows = document.getElementById('gridBody').children;
@@ -1924,23 +1994,26 @@ HTML_TEMPLATE = """
             const first = rows[Math.max(0, si - VIEW_ROWS)], last = rows[Math.min(rows.length - 1, si + VIEW_ROWS)];
             const headH = c.querySelector('thead').offsetHeight;
             const bodyH = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-            const extra = c.offsetHeight - c.clientHeight;          // border + horizontal scrollbar
+            const extra = c.offsetHeight - c.clientHeight;
             c.style.maxHeight = 'none';
             c.style.height = Math.ceil(headH + bodyH + extra) + 'px';
         }
         function centerNow() { userInteracted = false; sizeContainer(); fitViewport(); centerSpot(); }
-        window.addEventListener('resize', () => { sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); });
+        window.addEventListener('resize', () => { 
+            sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); 
+            if (tvChart) tvChart.resize(document.getElementById('chartContainer').clientWidth, 350);
+        });
         ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
         sizeContainer();
         const LOADING_ROW = '<tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
+            initCandleChart();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
                 allExpiriesData = meta.expiries;
                 window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
                 let symSelect = document.getElementById("symbolSelect");
                 symSelect.innerHTML = "";
-                // 1st Index list, 2nd MCX list, 3rd F&O stocks
                 const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
                 ["INDEX", "MCX", "STOCK"].forEach(k => {
                     let list = (meta.groups && meta.groups[k]) || [];
@@ -1968,6 +2041,7 @@ HTML_TEMPLATE = """
             });
             isFirstLoad = true;
             updateSelectedSymbolSheet();
+            loadCandleChartData();
         }
         function updateSelectedSymbolSheet() {
             if (histMode) return;
@@ -1978,7 +2052,10 @@ HTML_TEMPLATE = """
             fastPoll = true;
             userInteracted = false;
             isFirstLoad = true;
-            fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => fetchData());
+            fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => {
+                fetchData();
+                loadCandleChartData();
+            });
         }
         function createSinglePillBadgeHtml(badgeObj) {
             if (!badgeObj || !badgeObj.show_badge) return "";
@@ -2100,7 +2177,6 @@ HTML_TEMPLATE = """
                 }
             }).catch(() => { busy = false; });
         }
-        // ---- Daily / Weekly range (R1-R3, S1-S3), har value alag se copy ----
         const RANGE_STYLE = {
             'daily-close': ['Daily range', '#212529', '#ffffff'], 'daily-open': ['Daily range', '#7048e8', '#ffffff'],
             'weekly-close': ['Weekly range', '#e03131', '#ffffff'], 'weekly-open': ['Weekly range', '#15d0e0', '#00363d']
@@ -2162,7 +2238,6 @@ HTML_TEMPLATE = """
             document.getElementById('rangeOverlay').style.display = 'flex';
         }
 
-        // ---- Historical replay: Selector, load progress, play / pause ----
         const MONTHS = {JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'};
         const enc = encodeURIComponent;
         const val = id => document.getElementById(id).value;
@@ -2287,6 +2362,7 @@ HTML_TEMPLATE = """
             document.getElementById('gridBody').innerHTML = LOADING_ROW;
             isFirstLoad = true; userInteracted = false;
             histSync(); fetchData();
+            loadCandleChartData();
         }
         function goLive() {
             if (!histMode) return;
@@ -2298,6 +2374,7 @@ HTML_TEMPLATE = """
             document.getElementById('modeLive').classList.remove('rb-off'); document.getElementById('modeHist').classList.add('rb-off');
             const upd = document.getElementById('updDisplay'); upd.innerText = 'Updated: -'; upd.className = 'lot-size-badge upd-badge';
             updateSelectedSymbolSheet();
+            loadCandleChartData();
         }
 
         function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
@@ -2509,12 +2586,10 @@ def do_login(smart_api):
         if res and res.get('status'):
             print("🔐 Session generated")
 
-
             ws_jwt_token[0] = res.get('data', {}).get('jwtToken')
             ws_feed_token[0] = res.get('data', {}).get('feedToken')
             start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
 
-            
             return True
         print(f"❌ Login failed: {str(res)[:150]}")
     except Exception as e:
@@ -2528,7 +2603,6 @@ def system_ready():
 
 
 def active_loop():
-    """Screen par khule saare symbols (kitne bhi viewers / tabs): alag thread, API par priority."""
     counters = {}
     while True:
         t0 = time.time()
@@ -2583,7 +2657,6 @@ def active_loop():
 
 
 def run_bot_lock_loop():
-    """Login, scrip master, state save aur background (light) scanning."""
     global last_session_date, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     time.sleep(3)
@@ -2609,7 +2682,6 @@ def run_bot_lock_loop():
             now_dt = datetime.now()
             today = now_dt.strftime("%Y-%m-%d")
 
-            # LOGIN (backoff ke saath: galat PIN par account lock na ho)
             if last_session_date != today or need_relogin[0]:
                 if do_login(smart_api):
                     last_session_date = today
@@ -2620,7 +2692,6 @@ def run_bot_lock_loop():
                     time.sleep(600 if login_fail >= 5 else 20 * login_fail)
                     continue
 
-            # SCRIP MASTER (roz ek baar, fail ho to har 60s retry)
             if scrip_master_date != today:
                 if time.time() - last_sm_try > 60:
                     last_sm_try = time.time()
@@ -2633,7 +2704,6 @@ def run_bot_lock_loop():
             ui_open = (time.time() - last_ui_poll[0]) < 10
             active = current_active_symbol_ui
 
-            # Background: ek symbol per loop (indices har ~10 symbols baad)
             open_syms = [s for s in options_cache if market_open(symbol_exch_cache.get(s, ""), now_dt)]
             others = sorted(s for s in open_syms if s not in INDICES)
             idx_open = [s for s in INDICES if s in open_syms]
@@ -2644,7 +2714,7 @@ def run_bot_lock_loop():
                     rotation.extend(idx_open)
             if not others:
                 rotation = idx_open
-            # Hot symbol (jo last screen par tha): UI band ho tab bhi taaza rakho, taaki kholte hi data tayyar mile
+
             if (not ui_open) and active in options_cache and market_open(symbol_exch_cache.get(active, ""), now_dt):
                 hv = multi_symbol_runtime_states.get(active, {})
                 hot_mode = None
