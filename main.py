@@ -45,7 +45,7 @@ DASH_PASS = os.getenv("DASH_PASS")
 REDIS_URL = os.getenv("REDIS_URL")          # optional (state save). Nahi ho to file use hogi
 STATE_FILE = os.getenv("STATE_FILE", "/tmp/tracker_state.json")
 STATE_KEY = "option_tracker_state"
-MIN_API_GAP = 0.5                           # Optimized gap for faster fetching
+MIN_API_GAP = 1.0                           # Increased gap to completely avoid rate limits
 INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
 NEAR_STRIKES = 2
 FAR_STRIKES = 10
@@ -430,7 +430,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "OI"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
             ceWinner = "OI"
@@ -717,17 +717,17 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 # --- MARKET DATA ENGINE ---
-api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 5.0}
+api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 10.0}
 
 
 def rate_limited_market_data(smart_api, req, priority=False, retries=3):
     for attempt in range(retries):
         res = None
         while time.time() < api_stats["pause_until"]:
-            time.sleep(0.2)
+            time.sleep(0.5)
         if not priority:
             while active_pending[0] > 0:
-                time.sleep(0.05)
+                time.sleep(0.1)
         with api_lock:
             wait = MIN_API_GAP - (time.time() - _last_call[0])
             if wait > 0:
@@ -751,7 +751,7 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=3):
                     api_stats["backoff"] = min(api_stats["backoff"] * 2, 60.0)
         if res and res.get('status') and res.get('data') is not None:
             fail_streak[0] = 0
-            api_stats["backoff"] = 5.0
+            api_stats["backoff"] = 10.0
             d = res['data']
             if d.get('unfetched'):
                 print(f"⚠ unfetched tokens: {len(d['unfetched'])}")
@@ -764,14 +764,14 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=3):
             if time.time() - last_login_ts[0] > 300:
                 need_relogin[0] = True
             fail_streak[0] = 0
-        time.sleep(1.0 * (attempt + 1))
+        time.sleep(2.0 * (attempt + 1))
     return []
 
 
 def fetch_quotes(smart_api, pairs, priority=False):
     out = {}
-    for i in range(0, len(pairs), 25):
-        chunk = pairs[i:i + 25]
+    for i in range(0, len(pairs), 15):  # Smaller chunks to prevent rate limit
+        chunk = pairs[i:i + 15]
         req = {}
         for e, t in chunk:
             req.setdefault(e, []).append(t)
@@ -1292,7 +1292,7 @@ def range_loop():
                                 active_pending[0] -= 1
         except Exception as e:
             print(f"⚠ Range loop error: {e}")
-        time.sleep(0.5)
+        time.sleep(1.0)
 
 
 # --- HISTORICAL REPLAY ---
@@ -1300,8 +1300,8 @@ HIST_DIR = os.getenv("HIST_DIR", "/tmp/hist_cache")
 HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}
 HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}
 HIST_MAX_DATASETS = 3
-HIST_MIN_GAP = 0.4
-HIST_PER_MIN, HIST_PER_HOUR = 170, 4800
+HIST_MIN_GAP = 0.8
+HIST_PER_MIN, HIST_PER_HOUR = 120, 3600
 hist_datasets = {}
 hist_order = []
 hist_jobs = {}
@@ -1340,9 +1340,9 @@ def hist_call(kind, params, retries=3):
             while hist_hour_calls and now - hist_hour_calls[0] > 3600:
                 hist_hour_calls.popleft()
             if len(hist_hour_calls) >= HIST_PER_HOUR:
-                raise RuntimeError("Angel ka ghante ka historical limit (5000) lagbhag poora ho gaya, thodi der baad try kijiye")
+                raise RuntimeError("Angel ka ghante ka historical limit poora ho gaya, thodi der baad try kijiye")
             if len(hist_call_times) >= HIST_PER_MIN:
-                time.sleep(max(0.0, 60 - (now - hist_call_times[0]) + 0.3))
+                time.sleep(max(0.0, 60 - (now - hist_call_times[0]) + 0.5))
             gap = HIST_MIN_GAP - (time.time() - hist_last_call[0])
             if gap > 0:
                 time.sleep(gap)
@@ -1357,7 +1357,7 @@ def hist_call(kind, params, retries=3):
             return res.get("data") or []
         last_err = str((res or {}).get("message") or (res or {}).get("errorcode") or res)[:160]
         low = last_err.lower()
-        time.sleep(15 * (attempt + 1) if ("access" in low or "rate" in low) else 1.5 * (attempt + 1))
+        time.sleep(20 * (attempt + 1) if ("access" in low or "rate" in low) else 2.0 * (attempt + 1))
     raise RuntimeError("Angel historical API: " + last_err)
 
 
@@ -1614,7 +1614,6 @@ def get_chart_data():
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
     tf = request.args.get("tf", "1")
 
-    # Timeframe mapping for SmartAPI
     tf_map = {
         "1": "ONE_MINUTE", "3": "THREE_MINUTE", "5": "FIVE_MINUTE", "10": "TEN_MINUTE",
         "15": "FIFTEEN_MINUTE", "30": "THIRTY_MINUTE", "60": "ONE_HOUR", "120": "ONE_HOUR",
@@ -1676,7 +1675,7 @@ def get_chart_data():
         return jsonify({"status": False, "message": str(e), "data": []})
 
 
-# --- HTML TEMPLATE WITH ROBUST FALLBACK & AUTO-RETRY ---
+# --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1684,7 +1683,6 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
-    <!-- TradingView Lightweight Charts CDN -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -1695,68 +1693,27 @@ HTML_TEMPLATE = """
         .upd-badge { background: #2b8a3e; }
         .upd-stale { background: #c92a2a; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
-
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
-
         .table-container { margin-top: 6px; overflow-anchor: none; max-height: 480px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
-
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
-
         th { padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
-
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
-
-        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
-        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
-
+        .bg-call-side { background: #81c784 !important; border: none !important; }
+        .bg-put-side { background: #e57373 !important; border: none !important; }
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
-
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
-
-        #row-columns th {
-            position: sticky;
-            top: 50px;
-            z-index: 24;
-            border-bottom: 3px solid #000000 !important;
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
-            background-clip: padding-box;
-        }
-
+        #row-columns th { position: sticky; top: 50px; z-index: 24; border-bottom: 3px solid #000000 !important; background-clip: padding-box; }
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
-        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
-
-        #row-columns th.strike-col {
-            top: 50px;
-            z-index: 26;
-            background: #ff922b !important;
-            color: #ffffff !important;
-            border-bottom: 3px solid #000000 !important;
-            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
-            min-width: 90px !important;
-            width: 90px !important;
-        }
-
+        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
+        #row-columns th.strike-col { top: 50px; z-index: 26; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; min-width: 90px !important; width: 90px !important; }
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
-
-        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
-
-        .yellow-pill-badge {
-            background-color: #ffd43b !important;
-            color: #000000 !important;
-            padding: 2px 10px !important;
-            border-radius: 12px !important;
-            font-size: 10px !important;
-            font-weight: bold !important;
-            display: inline-block !important;
-            margin-top: 2px !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
-        }
-
+        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
+        .yellow-pill-badge { background-color: #ffd43b !important; color: #000000 !important; padding: 2px 10px !important; border-radius: 12px !important; font-size: 10px !important; font-weight: bold !important; display: inline-block !important; margin-top: 2px !important; }
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
-        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; border-top: 1px solid #dee2e6 !important; border-bottom: 1px solid #dee2e6 !important; }
+        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border: 1px solid #dee2e6 !important; }
         .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
         .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
@@ -1772,15 +1729,12 @@ HTML_TEMPLATE = """
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .bg-out { background: #5b636b !important; color: #ffffff !important; font-weight: bold; }
-        .bg-out .pct-sub { color: #ffffff; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
-
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
         .ext-th, .ext-td { min-width: 62px; }
         .eor-val { color: #e00000; font-weight: bold; }
         .eos-val { color: #0000ee; font-weight: bold; }
-
         .range-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
         .rbtn { border: 0; cursor: pointer; font-family: inherit; font-weight: bold; font-size: 12px; padding: 6px 12px; border-radius: 4px; color: #ffffff; }
         .rb-dclose { background: #212529; }
@@ -1797,9 +1751,8 @@ HTML_TEMPLATE = """
         .rv-label { font-weight: bold; width: 28px; }
         .rv-r { color: #c92a2a; }
         .rv-s { color: #2b8a3e; }
-        .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; -webkit-user-select: all; }
+        .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; }
         .rv-copy { border: 1px solid #ced4da; background: #f1f3f5; border-radius: 4px; font-size: 11px; padding: 4px 10px; cursor: pointer; min-width: 62px; }
-
         .range-btns { display: contents; }
         .rb-live { background: #2b8a3e; }
         .rb-hist { background: #f26a21; }
@@ -1828,8 +1781,6 @@ HTML_TEMPLATE = """
         .hb-reset { border: 1px solid #f26a21; background: #ffffff; color: #f26a21; }
         .hb-submit { border: 1px solid #f26a21; background: #f26a21; color: #ffffff; }
         .hb-submit:disabled { opacity: 0.6; cursor: default; }
-
-        /* CANDLESTICK CHART CONTAINER STYLES */
         .chart-box { margin-top: 10px; border: 1px solid #ced4da; border-radius: 6px; padding: 8px; background: #ffffff; }
         .chart-title { font-weight: bold; font-size: 13px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #e9ecef; }
         #chartContainer { width: 100%; height: 350px; }
@@ -1927,7 +1878,6 @@ HTML_TEMPLATE = """
         </table>
     </div>
 
-    <!-- TRADINGVIEW CANDLESTICK CHART CONTAINER WITH TIMEFRAMES -->
     <div class="chart-box">
         <div class="chart-title">
             <span id="chartSymbolHeader">📈 Candle Chart</span>
@@ -1958,7 +1908,6 @@ HTML_TEMPLATE = """
         let fastPoll = false;
         let userInteracted = false;
         let histMode = false, hist = null, histPending = false;
-
         let tvChart = null, candlestickSeries = null;
 
         function initCandleChart() {
@@ -1983,9 +1932,7 @@ HTML_TEMPLATE = """
             if (!sym || !candlestickSeries) return;
             const dateStr = histMode ? (hist ? hist.date : '') : new Date().toISOString().split('T')[0];
             if (!dateStr) return;
-
             document.getElementById('chartSymbolHeader').innerText = '📈 ' + sym + ' Candle Chart (' + dateStr + ')';
-
             fetch('/api/chart-data?symbol=' + encodeURIComponent(sym) + '&date=' + encodeURIComponent(dateStr) + '&tf=' + encodeURIComponent(tf))
                 .then(r => r.json())
                 .then(j => {
@@ -2063,14 +2010,14 @@ HTML_TEMPLATE = """
                 }
                 if (!meta.ready) {
                     document.getElementById('k3Display').innerText = "Scrip master loading from Angel One... Please wait.";
-                    setTimeout(initApp, 3000);
+                    setTimeout(initApp, 4000);
                 } else {
                     document.getElementById('k3Display').innerText = "System Ready - Fetching live quotes...";
                     fetchData();
                 }
             }).catch(() => {
                 document.getElementById('k3Display').innerText = "Connecting to server... retrying...";
-                setTimeout(initApp, 3000);
+                setTimeout(initApp, 4000);
             });
         }
         function onSymbolChange() {
@@ -2257,20 +2204,13 @@ HTML_TEMPLATE = """
             const rec = d ? d[kind] : null;
             let msg = '';
             if (!d) msg = 'Data nahi aa paya, dobara try kijiye.';
-            else if (!rec) msg = kind === 'daily'
-                ? 'Daily range abhi nahi bani. Ye har trading din ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.'
-                : 'Weekly range abhi nahi bani. Ye har Wednesday ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.';
-            else if (!rec.ans2) msg = rec.reason === 'strikes'
-                ? 'Is expiry me itne door (' + rec.k + ' strike) ka CE/PE strike chain me nahi mila, isliye range nahi ban payi (' + rec.date + ').'
-                : 'Option ka LTP nahi mila, isliye range nahi ban payi (' + rec.date + ').';
-            else if (!rec[basis]) msg = basis === 'close' ? 'Pichhle din ka close nahi mila.' : 'Open ka LTP nahi mila.';
+            else if (!rec) msg = kind === 'daily' ? 'Daily range abhi nahi bani.' : 'Weekly range abhi nahi bani.';
+            else if (!rec.ans2) msg = 'Option ka LTP nahi mila, isliye range nahi ban payi.';
             if (msg) {
                 sub.textContent = ''; body.innerHTML = '<div class="rc-msg">' + msg + '</div>';
             } else {
                 const x = rec[basis];
-                sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')  \u2022  '
-                    + (rec.expiry ? 'expiry ' + rec.expiry + ' (' + rec.dte + ' din)  \u2022  ' : '')
-                    + rec.date + (rec.is_today ? '' : ' (aaj ki nahi)') + (basis === 'close' && x.src ? '  \u2022  ' + x.src : '');
+                sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')';
                 body.innerHTML = ['R1', 'R2', 'R3', 'S1', 'S2', 'S3'].map(L => {
                     const v = x.levels[L];
                     return '<div class="rv-row"><span class="rv-label ' + (L[0] === 'R' ? 'rv-r' : 'rv-s') + '">' + L + '</span>'
@@ -2311,7 +2251,7 @@ HTML_TEMPLATE = """
             document.getElementById('hProg').style.display = 'block';
             const pct = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
             document.getElementById('hBar').style.width = pct + '%';
-            document.getElementById('hProgTxt').textContent = (msg || '') + '  \u2022  ' + pct + '%  (Angel ki limit ke kaaran pehli baar 1-3 minute lagte hain)';
+            document.getElementById('hProgTxt').textContent = (msg || '') + '  \u2022  ' + pct + '%';
         }
         function histFail(msg) { histProgHide(); histMsg(msg); }
         function openHist() {
@@ -2341,16 +2281,16 @@ HTML_TEMPLATE = """
             histMsg(''); histProg(0, 1, 'Shuru ho raha hai...');
             document.getElementById('hSubmit').disabled = true;
             fetch('/api/hist/load', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
-                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => histFail('Server se jawab nahi aaya, dobara try kijiye.'));
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => histFail('Server se jawab nahi aaya'));
         }
         function histHandle(j, body) {
             if (j.state === 'ready') { histProgHide(); startHist(body); }
-            else if (j.state === 'loading' || j.state === 'queued') { histProg(j.done, j.total, j.msg); setTimeout(() => histPollStatus(body), 1000); }
+            else if (j.state === 'loading' || j.state === 'queued') { histProg(j.done, j.total, j.msg); setTimeout(() => histPollStatus(body), 1500); }
             else histFail(j.msg || 'Load nahi hua');
         }
         function histPollStatus(body) {
             fetch('/api/hist/status?symbol=' + enc(body.symbol) + '&expiry=' + enc(body.expiry) + '&date=' + body.date)
-                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => setTimeout(() => histPollStatus(body), 2000));
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => setTimeout(() => histPollStatus(body), 2500));
         }
         function histCancel() { fetch('/api/hist/cancel', {method: 'POST'}); }
         function histDataUrl() { return '/api/hist/data?symbol=' + enc(hist.sym) + '&expiry=' + enc(hist.exp) + '&date=' + hist.date + '&time=' + hist.times[hist.idx]; }
@@ -2419,7 +2359,7 @@ HTML_TEMPLATE = """
             loadCandleChartData();
         }
 
-        function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
+        function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 1500 : 3000); }
         window.onload = function() { initApp(); pollLoop(); };
     </script>
 </body>
@@ -2518,7 +2458,7 @@ def hist_load_api():
     if sym not in options_cache or expiry not in (symbol_expiries_cache.get(sym) or []):
         return jsonify({"state": "error", "msg": "Symbol ya expiry galat hai"})
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date) or date > datetime.now().strftime("%Y-%m-%d"):
-        return jsonify({"state": "error", "msg": "Data Date galat hai (aaj tak ki hi chuniye)"})
+        return jsonify({"state": "error", "msg": "Data Date galat hai"})
     key = hist_key(sym, expiry, date)
     if key in hist_datasets:
         return jsonify({"state": "ready", "msg": "Ready"})
@@ -2531,8 +2471,7 @@ def hist_load_api():
         hist_jobs[key] = {"state": "ready", "done": 1, "total": 1, "msg": "Ready (saved data)"}
         return jsonify(hist_jobs[key])
     if not hist_load_lock.acquire(blocking=False):
-        busy = next((k for k, v in hist_jobs.items() if v.get("state") == "loading"), "")
-        return jsonify({"state": "busy", "msg": f"Pehle wala historical load chal raha hai ({busy.replace('|', ' ')}). Wo khatam hone do."})
+        return jsonify({"state": "busy", "msg": "Pehle wala historical load chal raha hai."})
     hist_jobs[key] = {"state": "loading", "done": 0, "total": 1, "msg": "Shuru ho raha hai..."}
     threading.Thread(target=hist_job_run, args=(key, sym, expiry, date), daemon=True).start()
     return jsonify(hist_jobs[key])
@@ -2564,7 +2503,7 @@ def hist_data_api():
         if ds:
             hist_put(key, ds)
     if ds is None:
-        return jsonify({"error": "Historical data load nahi hua. Historical button se dobara Submit kijiye."})
+        return jsonify({"error": "Historical data load nahi hua."})
     try:
         return jsonify(hist_output(ds, hist_time_index(ds, request.args.get("time", ds["times"][0]))))
     except Exception as e:
@@ -2627,11 +2566,9 @@ def do_login(smart_api):
             res = smart_api.generateSession(CLIENT_ID, PIN, totp)
         if res and res.get('status'):
             print("🔐 Session generated")
-
             ws_jwt_token[0] = res.get('data', {}).get('jwtToken')
             ws_feed_token[0] = res.get('data', {}).get('feedToken')
             start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
-
             return True
         print(f"❌ Login failed: {str(res)[:150]}")
     except Exception as e:
@@ -2669,23 +2606,23 @@ def active_loop():
                             chosen = exp_list[0]
                         is_open = market_open(symbol_exch_cache.get(active, ""), datetime.now())
                         chain_ok = bool(v.get("grid_rows")) and v.get("active_expiry") == chosen
-                        extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 20
+                        extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 30
                         core_age = now - v.get("fetched_ts", 0)
                         mode = None
                         if not is_open:
                             if (not chain_ok) or v.get("extra_exp") != chosen or core_age > 60:
                                 mode = "full"
-                        elif (not chain_ok) or (not extra_ok and core_age > 8):
+                        elif (not chain_ok) or (not extra_ok and core_age > 15):
                             mode = "full"; n = 0
                         elif not extra_ok:
-                            mode = "extra"
+                          mode = "extra"
                         else:
                             mode = "core"; n += 1
                         if mode:
                             active_pending[0] += 1
                             try:
                                 fetch_symbol_data(smart_api_global, active, mode, True)
-                                if mode == "core" and n % 3 == 0:
+                                if mode == "core" and n % 5 == 0:
                                     fetch_symbol_data(smart_api_global, active, "extra", True)
                             finally:
                                 active_pending[0] -= 1
@@ -2694,7 +2631,7 @@ def active_loop():
                         lk.release()
         except Exception as e:
             print(f"⚠ Active loop error: {e}")
-        wake_active.wait(timeout=max(0.2, 3.0 - (time.time() - t0)))
+        wake_active.wait(timeout=max(0.5, 5.0 - (time.time() - t0)))
         wake_active.clear()
 
 
@@ -2731,15 +2668,15 @@ def run_bot_lock_loop():
                     login_fail = 0
                 else:
                     login_fail += 1
-                    time.sleep(600 if login_fail >= 5 else 20 * login_fail)
+                    time.sleep(600 if login_fail >= 5 else 30 * login_fail)
                     continue
 
             if scrip_master_date != today:
-                if time.time() - last_sm_try > 60:
+                if time.time() - last_sm_try > 120:
                     last_sm_try = time.time()
                     initialize_scrip_master()
                 if not options_cache:
-                    time.sleep(5)
+                    time.sleep(10)
                     continue
 
             viewed_now = {s_ for s_, ts_ in list(viewed_symbols.items()) if time.time() - ts_ < 10}
@@ -2760,9 +2697,9 @@ def run_bot_lock_loop():
             if (not ui_open) and active in options_cache and market_open(symbol_exch_cache.get(active, ""), now_dt):
                 hv = multi_symbol_runtime_states.get(active, {})
                 hot_mode = None
-                if time.time() - hv.get("extra_ts", 0) > 25:
+                if time.time() - hv.get("extra_ts", 0) > 40:
                     hot_mode = "extra"
-                elif time.time() - hv.get("fetched_ts", 0) > 10:
+                elif time.time() - hv.get("fetched_ts", 0) > 15:
                     hot_mode = "core"
                 if hot_mode and hv.get("grid_rows"):
                     hl = get_sym_lock(active)
@@ -2783,7 +2720,7 @@ def run_bot_lock_loop():
                         finally:
                             lk.release()
             else:
-                time.sleep(5)
+                time.sleep(10)
 
             if time.time() - last_stat > 60:
                 last_stat = time.time()
@@ -2798,8 +2735,8 @@ def run_bot_lock_loop():
                 last_save = time.time()
         except Exception as e:
             print(f"⚠ Loop Error: {e}")
-            time.sleep(3)
-        time.sleep(0.2)
+            time.sleep(5)
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
