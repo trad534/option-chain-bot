@@ -45,10 +45,10 @@ DASH_PASS = os.getenv("DASH_PASS")
 REDIS_URL = os.getenv("REDIS_URL")          # optional (state save). Nahi ho to file use hogi
 STATE_FILE = os.getenv("STATE_FILE", "/tmp/tracker_state.json")
 STATE_KEY = "option_tracker_state"
-MIN_API_GAP = 1.0                           # Increased gap to completely avoid rate limits
+MIN_API_GAP = 1.1                           # getMarketData ke beech minimum seconds
 INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"]
-NEAR_STRIKES = 2
-FAR_STRIKES = 10
+NEAR_STRIKES = 2     # imaginary line ke dusri taraf kitne strike (PE: upar wale strikes, CE: neeche wale strikes)
+FAR_STRIKES = 10     # imaginary line ki apni taraf kitne strike (PE: neeche wale, CE: upar wale)
 
 
 # Global tokens for WebSocket
@@ -96,7 +96,10 @@ def start_live_websocket(api_key, client_code, jwt_token, feed_token):
     threading.Thread(target=sws.connect, daemon=True).start()
 
 
+
 def window_sets(strikes_list, spot):
+    """Imaginary line (spot) ke hisaab se CE / PE ke strike window (indexes). strikes_list ascending hona chahiye.
+    'neeche' = strike <= spot, 'upar' = strike > spot."""
     below = [i for i, st in enumerate(strikes_list) if st <= spot]
     above = [i for i, st in enumerate(strikes_list) if st > spot]
     ce = set(below[-NEAR_STRIKES:]) | set(above[:FAR_STRIKES])
@@ -105,10 +108,11 @@ def window_sets(strikes_list, spot):
 
 
 debug_info = {}
+# Daily / Weekly range engine ka data (din badalne par clear NAHI hota)
 range_state = {"close": {}, "open": {}, "api_close": {}, "daily": {}, "weekly": {}}
 range_flags = {}
 INDEX_NAMES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX", "BANKEX", "SENSEX50"]
-symbol_kind_cache = {}
+symbol_kind_cache = {}            # symbol -> "INDEX" / "MCX" / "STOCK"
 INDEX_MAP = {
     "NIFTY": ("NSE", "99926000"),
     "BANKNIFTY": ("NSE", "99926009"),
@@ -150,7 +154,7 @@ def run_flask():
 # --- GLOBAL STORAGE ---
 global_run_date = ""
 reset_done_date = ""
-persistent_quotes_cache = {}
+persistent_quotes_cache = {}      # "EXCH:token" -> quote
 multi_symbol_runtime_states = {}
 symbol_expiries_cache = {}
 options_cache = {}
@@ -166,7 +170,7 @@ user_selected_expiries = {}
 smart_api_global = None
 symbol_states_memory = {}
 last_ui_poll = [0.0]
-viewed_symbols = {}
+viewed_symbols = {}     # symbol -> last time koi viewer ne is symbol ka data maanga
 need_relogin = [False]
 last_login_ts = [0.0]
 fail_streak = [0]
@@ -215,6 +219,7 @@ def num(v, default=0.0):
         return default
 
 
+# --- STATE SAVE / LOAD (restart par history na jaye) ---
 def save_state():
     try:
         payload = json.dumps({
@@ -265,6 +270,7 @@ def load_state():
 
 
 def maybe_daily_reset(now_dt):
+    """Apps Script jaisa: roz 09:14:50 par saari history saaf (aur date badalne par)."""
     global global_run_date, reset_done_date
     today = now_dt.strftime("%Y-%m-%d")
     hms = now_dt.strftime("%H:%M:%S")
@@ -285,6 +291,7 @@ def maybe_daily_reset(now_dt):
         reset_done_date = today
 
 
+# --- BLACK-SCHOLES GREEKS (aapka original, bina badlav) ---
 def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     if t <= 0 or S <= 0 or K <= 0 or ltp <= 0.05:
         delta = 1.0 if (flag == 'CE' and S > K) else (0.0 if flag == 'CE' else (-1.0 if S < K else 0.0))
@@ -329,6 +336,7 @@ def calculate_iv_and_greeks(flag, S, K, t, r, ltp):
     return {'iv': iv_val, 'delta': round(delta, 3), 'delta_raw': float(delta), 'gamma': round(gamma, 4), 'theta': round(theta, 2), 'vega': round(vega_val, 2)}
 
 
+# --- APPS SCRIPT LOGIC (Python replica) ---
 def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, active_expiry="", symbol_name="NIFTY", now_dt=None):
     global multi_symbol_runtime_states
     try:
@@ -421,10 +429,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         peOiIsStable100 = peOiRawState == "STRONG" or "to strong" in peOiStatusText
         peVolIsStable100 = peVolRawState == "STRONG" or "to strong" in peVolStatusText
 
+        # CALL (CE) SIDE WINNER ENGINE
         ceWinner = "VOL"
         if ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiRawState == "wtb" and ceVolRawState == "wtb":
             ceWinner = "BOTH"
-        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceOiTop['highest']['strike']):
+        elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and not ceOiIsStable100 and not ceVolIsStable100 and (ceOiTop['second']['strike'] > ceOiTop['highest']['strike']) and (ceVolTop['second']['strike'] > ceVolTop['highest']['strike']):
             ceWinner = "BOTH"
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceOiIsStable100 and ceVolIsStable100:
             ceWinner = "BOTH"
@@ -433,7 +442,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         elif ceVolTop['highest']['strike'] == ceOiTop['highest']['strike'] and ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         elif ceOiIsStable100 and not ceVolIsStable100 and (ceVolTop['second'] and ceVolTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceOiTop['highest']['strike'] < ceVolTop['highest']['strike']):
-            ceWinner = "OI"
+            ceWinner = "OI"   # FIX: Apps Script jaisa (ceVolTop.highest)
         elif ceVolIsStable100 and not ceOiIsStable100 and (ceOiTop['second'] and ceOiTop['second']['strike'] > ceVolTop['highest']['strike']) and (ceVolTop['highest']['strike'] < ceOiTop['highest']['strike']):
             ceWinner = "VOL"
         else:
@@ -448,10 +457,11 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             else:
                 ceWinner = "VOL" if ceVolTop['highest']['row'] <= ceOiTop['highest']['row'] else "OI"
 
+        # PUT (PE) SIDE WINNER ENGINE
         peWinner = "VOL"
         if peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiRawState == "wtt" and peVolRawState == "wtt":
             peWinner = "BOTH"
-        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peOiTop['highest']['strike']):
+        elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and not peOiIsStable100 and not peVolIsStable100 and (peOiTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['second']['strike'] < peVolTop['highest']['strike']):
             peWinner = "BOTH"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peOiIsStable100 and peVolIsStable100:
             peWinner = "BOTH"
@@ -459,9 +469,9 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             peWinner = "OI"
         elif peVolTop['highest']['strike'] == peOiTop['highest']['strike'] and peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peOiTop['highest']['strike']):
             peWinner = "VOL"
-        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
+        elif peOiIsStable100 and not peVolIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peVolTop['highest']['strike']) and (peOiTop['highest']['strike'] > peVolTop['highest']['strike']):
             peWinner = "OI"
-        elif peVolIsStable100 and not peOiIsStable100 and (peVolTop['second'] and peVolTop['second']['strike'] < peOiTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
+        elif peVolIsStable100 and not peOiIsStable100 and (peOiTop['second'] and peOiTop['second']['strike'] < peVolTop['highest']['strike']) and (peVolTop['highest']['strike'] > peOiTop['highest']['strike']):
             peWinner = "VOL"
         else:
             peOiActiveRow = peOiTop['highest']['row']
@@ -491,6 +501,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             strike_str = str(int(strike)) if strike == int(strike) else str(strike)
             second_strike_str = str(int(secondStrike)) if secondStrike == int(secondStrike) else str(secondStrike)
 
+            # pichhle refresh ka leader strike (pehli baar = abhi wala)
             prevStrikeStr = get_symbol_memory(symbol_name, "PREV_STRK_" + cacheKey)
             prevStrike = float(prevStrikeStr) if prevStrikeStr else strike
 
@@ -499,12 +510,13 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             isShifting = False
             shiftType = get_symbol_memory(symbol_name, "SHIFT_TYPE_" + cacheKey, "")
             shiftFrom = num(get_symbol_memory(symbol_name, "SHIFT_FROM_" + cacheKey, 0))
-            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText
+            shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "") or finalStatusText   # shift bante waqt ka wtt/wtb
             shifted = get_symbol_memory(symbol_name, "IS_SHIFTED_" + cacheKey) == "true"
             shiftStatus = get_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, "")
             isStrongNow = rawState == "STRONG" or finalStatusText == "stable strong" or "to strong" in finalStatusText
             reverted = False
 
+            # 1) SHIFT TUTNE KE RULES (second strike badalne se shift NAHI tutta, par wtt/wtb ki direction palti to tutta hai)
             if shifted:
                 if isStrongNow:
                     shifted = False
@@ -520,16 +532,19 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                     shifted = False
                     log_event(symbol_name, cacheKey, f"SHIFT CLEARED (weak direction badli: {shiftStatus} -> {finalStatusText}) strike={strike_str} second={second_strike_str}")
 
+            # 2) NAYA SHIFT: leader strike badla aur status weak (wtt/wtb)
             if (not reverted) and strike != prevStrike and prevStrike > 0 and finalStatusText in ("wtb", "wtt"):
                 shiftType = "top to bottom" if strike < prevStrike else "bottom to top"
                 shiftFrom = prevStrike
                 shiftStatus = finalStatusText
                 shifted = True
                 set_symbol_memory(symbol_name, "SHIFT_STATUS_" + cacheKey, finalStatusText)
-                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))
+                set_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, str(secondStrike))   # shift banne ke waqt ka second strike
                 log_event(symbol_name, cacheKey, f"SHIFT SET {shiftType}: {int(prevStrike)} -> {strike_str} second={second_strike_str} status={finalStatusText}")
 
             if shifted:
+                # label tab tak jab tak second strike wahi hai jo shift banne par tha; doosra strike aaye to plain weak dikhe,
+                # second strike wapas wahi aaye to shifted wapas
                 shiftTarget = num(get_symbol_memory(symbol_name, "SHIFT_TARGET_" + cacheKey, 0))
                 isShifting = (shiftTarget <= 0) or (secondStrike == shiftTarget)
                 scenarioStatus = ("wtb" if shiftType == "top to bottom" else "wtt") if isShifting else finalStatusText
@@ -546,6 +561,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
                 displayStatus = "stable strong"
                 scenarioStatus = "stable strong"
 
+            # 3) TIMESTAMP: jo card par dikhta hai wo badle (strike / second strike / status / shift) to naya time lock
             if isShifting:
                 sig = f"S|{shiftType}|{strike_str}|{second_strike_str}|{displayStatus}"
             elif displayStatus in ("wtb", "wtt"):
@@ -595,6 +611,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         checkPe = finalPeState
         SS = "stable strong"
 
+        # K3 SCENARIOS: bilkul Apps Script jaisa (default Neutral, "strong" alag se nahi)
         k3Text = f"{symbol_name} is Neutral"
         if checkCe == "wtt" and checkPe == "wtb": k3Text = f"{symbol_name} is 8th scenario both side Risky"
         elif checkCe == "wtb" and checkPe == "wtt": k3Text = f"{symbol_name} is 9th scenario both side Risky"
@@ -652,6 +669,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
         max_pe_vol = peVolTop['highest']['val'] or 1
         max_pe_oi = peOiTop['highest']['val'] or 1
 
+        # imaginary line se 2 strike se door wale strike: CE me line ke upar (kam strike), PE me line ke neeche (zyada strike)
         ce_out_set = {i for i, stv in enumerate(strikes_list) if stv <= spot_price and i not in ce_idx_set}
         pe_out_set = {i for i, stv in enumerate(strikes_list) if stv > spot_price and i not in pe_idx_set}
 
@@ -692,6 +710,7 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
             r_copy['ce_vol_color'] = 'bg-100' if st == c_vol_1 else ('bg-75' if st == c_vol_2 and ceVolTop['pct'] >= 75.0 else '')
             r_copy['pe_vol_color'] = 'bg-100' if st == p_vol_1 else ('bg-75' if st == p_vol_2 and peVolTop['pct'] >= 75.0 else '')
             r_copy['pe_oi_color'] = 'bg-100' if st == p_oi_1 else ('bg-75' if st == p_oi_2 and peOiTop['pct'] >= 75.0 else '')
+            # window se bahar gaye strike par 75% ya zyada ho to dark-grey highlight (100% / 75% highlight ki tarah)
             for col in ('ce_oi', 'ce_vol'):
                 if not r_copy[col + '_color'] and idx in ce_out_set and r_copy[col + '_pct'] >= 75.0:
                     r_copy[col + '_color'] = 'bg-out'
@@ -717,17 +736,18 @@ def execute_python_scenario_tracker(raw_rows=None, spot_price=0, lot_size=1, act
 
 
 # --- MARKET DATA ENGINE ---
-api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 10.0}
+api_stats = {"req": 0, "fail": 0, "lat": 0.0, "pause_until": 0.0, "backoff": 5.0}
 
 
-def rate_limited_market_data(smart_api, req, priority=False, retries=3):
+def rate_limited_market_data(smart_api, req, priority=False, retries=2):
+    """Saari getMarketData calls yahin se: 1.1s gap, retry, 'access rate' error par backoff."""
     for attempt in range(retries):
         res = None
-        while time.time() < api_stats["pause_until"]:
-            time.sleep(0.5)
-        if not priority:
+        while time.time() < api_stats["pause_until"]:      # Angel ne rok diya to sab ruke
+            time.sleep(0.2)
+        if not priority:                      # background calls screen wale symbol ko aage jaane dete hain
             while active_pending[0] > 0:
-                time.sleep(0.1)
+                time.sleep(0.05)
         with api_lock:
             wait = MIN_API_GAP - (time.time() - _last_call[0])
             if wait > 0:
@@ -751,7 +771,7 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=3):
                     api_stats["backoff"] = min(api_stats["backoff"] * 2, 60.0)
         if res and res.get('status') and res.get('data') is not None:
             fail_streak[0] = 0
-            api_stats["backoff"] = 10.0
+            api_stats["backoff"] = 5.0
             d = res['data']
             if d.get('unfetched'):
                 print(f"⚠ unfetched tokens: {len(d['unfetched'])}")
@@ -764,14 +784,15 @@ def rate_limited_market_data(smart_api, req, priority=False, retries=3):
             if time.time() - last_login_ts[0] > 300:
                 need_relogin[0] = True
             fail_streak[0] = 0
-        time.sleep(2.0 * (attempt + 1))
+        time.sleep(1.0 * (attempt + 1))
     return []
 
 
 def fetch_quotes(smart_api, pairs, priority=False):
+    """pairs = [(exch, token)]. Max 50 tokens per request. Returns {(exch, token): item}"""
     out = {}
-    for i in range(0, len(pairs), 15):  # Smaller chunks to prevent rate limit
-        chunk = pairs[i:i + 15]
+    for i in range(0, len(pairs), 50):
+        chunk = pairs[i:i + 50]
         req = {}
         for e, t in chunk:
             req.setdefault(e, []).append(t)
@@ -824,6 +845,7 @@ def build_chain(sym, expiry_str):
 
 
 def resolve_spot_source(sym, expiry_dt):
+    """(exchange, token) of underlying: index / MCX near future / NSE equity."""
     key = (sym, str(expiry_dt))
     if key in spot_source_cache:
         return spot_source_cache[key]
@@ -875,17 +897,23 @@ def option_quote(tokmap, st, tp, after_open):
     return {'ltp': q['ltp'], 'volume': q['volume'], 'oi': q['oi'], 'oi_chg': calc_oi_chg, 'net_change': q['net_change']}
 
 
-EOR_ABOVE_LINE, EOR_BELOW_LINE = 2, 19
-EOS_ABOVE_LINE, EOS_BELOW_LINE = 18, 2
+EOR_ABOVE_LINE, EOR_BELOW_LINE = 2, 19     # EOR (CE side): imaginary line ke 2 strike upar se, line ke 19 strike neeche tak
+EOS_ABOVE_LINE, EOS_BELOW_LINE = 18, 2     # EOS (PE side): line ke 2 strike neeche se, line ke 18 strike upar tak
+                                           # ("upar" = screen par line ke upar = spot se chhote/barabar strike, "neeche" = spot se bade strike)
 
 
 def compute_extension_levels(rows, spot):
+    """Apps Script dynamicGreeksEngineV5 wala formula.
+    Level(i) = spot - (CE LTP[i] - PE LTP[i-1]) / (CE delta[i] + |PE delta[i-1]|)   (CE = strike i, PE = pichhla strike i-1)
+    EOS (PE side) : level(i) strike i ki row par     -> line ke upar 18 strike + line ke neeche 2 strike
+    EOR (CE side) : level(i) strike i-1 ki row par   -> line ke upar 2 strike + line ke neeche 19 strike
+    Value me point nahi: decimal seedha hata diya jata hai (23515.83 -> 23515). rows ascending strike order me."""
     n = len(rows)
     for r in rows:
         r['ce_eor'] = None
         r['pe_eos'] = None
-    up = [i for i in range(n) if rows[i]['strike'] <= spot]
-    down = [i for i in range(n) if rows[i]['strike'] > spot]
+    up = [i for i in range(n) if rows[i]['strike'] <= spot]       # screen par line ke upar
+    down = [i for i in range(n) if rows[i]['strike'] > spot]      # screen par line ke neeche
 
     def level(i):
         if i < 1 or i >= n:
@@ -903,6 +931,10 @@ def compute_extension_levels(rows, spot):
 
 
 def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
+    """mode: light = tracker tokens, bina greeks (background symbols)
+             core  = tracker tokens + greeks (screen wala symbol, har ~3s)
+             extra = baaki strikes ke tokens (screen wala symbol, har 3rd cycle)
+             full  = poori chain (screen par symbol pehli baar khulne par)"""
     light = (mode == "light")
     locked = False
     try:
@@ -924,7 +956,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
 
         tokmap, all_strikes = chain['tokmap'], chain['strikes']
         spot_ref = num(multi_symbol_runtime_states.get(sym, {}).get('spot_price'))
-        if spot_ref <= 0:
+        if spot_ref <= 0:   # pehli baar: spot alag se (sirf ek baar)
             spot_ref = spot_from(fetch_quotes(smart_api, [spot_src], priority), spot_src)
             if spot_ref <= 0:
                 return
@@ -934,7 +966,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
         pairs = [spot_src]
         for pos in range(lo, hi):
             st = all_strikes[pos]
-            core_ce = (closest - 5) <= pos <= (closest + 14)
+            core_ce = (closest - 5) <= pos <= (closest + 14)     # tracker window + padding
             core_pe = (closest - 14) <= pos <= (closest + 5)
             if mode == "full":
                 need_ce = need_pe = True
@@ -944,7 +976,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 need_ce, need_pe = core_ce, core_pe
             if need_ce and (st, 'CE') in tokmap: pairs.append(tokmap[(st, 'CE')])
             if need_pe and (st, 'PE') in tokmap: pairs.append(tokmap[(st, 'PE')])
-        if mode in ("full", "extra"):
+        if mode in ("full", "extra"):      # EOR / EOS ke liye table ke bahar ka ek-ek edge strike
             if lo >= 1 and (all_strikes[lo - 1], 'PE') in tokmap: pairs.append(tokmap[(all_strikes[lo - 1], 'PE')])
             if hi < len(all_strikes) and (all_strikes[hi], 'CE') in tokmap: pairs.append(tokmap[(all_strikes[hi], 'CE')])
 
@@ -964,7 +996,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             for i in pe_set:
                 pr = tokmap.get((win[i], 'PE'))
                 if pr and pr not in have: topup.append(pr)
-            if topup:
+            if topup:     # spot kaafi hil gaya tha: window ke naye strikes ka taaza data
                 quotes.update(fetch_quotes(smart_api, topup, priority))
                 pairs.extend(topup)
         state_lock.acquire()
@@ -994,7 +1026,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
             print(f"⚠ {sym}: {missing}/{len(pairs) - 1} tokens ka quote nahi aaya (purani value dikh rahi hai)")
 
         closest = nearest_idx(all_strikes, spot_price)
-        below_n = sum(1 for x_ in all_strikes if x_ <= spot_price)
+        below_n = sum(1 for x_ in all_strikes if x_ <= spot_price)       # line ke upar (spot se chhote/barabar) kitne strike
         strikes = all_strikes[max(0, below_n - 19):min(len(all_strikes), below_n + 19)]
         after_open = (now_dt.hour, now_dt.minute) >= (9, 15)
 
@@ -1017,6 +1049,7 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
                 'is_itm_ce': bool(st < spot_price), 'is_itm_pe': bool(st > spot_price),
                 'ce_delta_raw': ce_g['delta_raw'], 'pe_delta_raw': pe_g['delta_raw']
             })
+        # EOR / EOS: table ki pehli aur aakhri row bhi bhare, isliye bahar ka ek-ek strike sirf gine jaane ke liye
         ext_rows = list(raw_grid_payload)
         fpos, lpos = all_strikes.index(strikes[0]), all_strikes.index(strikes[-1])
         def _edge_row(stv):
@@ -1042,7 +1075,6 @@ def fetch_symbol_data(smart_api, sym, mode="light", priority=False):
     finally:
         if locked:
             state_lock.release()
-
 
 # --- SCRIP MASTER ---
 def initialize_scrip_master():
@@ -1092,25 +1124,22 @@ def initialize_scrip_master():
         spot_source_cache.clear()
         scrip_master_date = datetime.now().strftime("%Y-%m-%d")
         print(f"📚 Scrip master loaded: {len(new_opts)} symbols")
-
-        # Initial fast fetch for active symbol (NIFTY) so UI gets immediate data
-        if smart_api_global:
-            fetch_symbol_data(smart_api_global, "NIFTY", "full", True)
-
         return True
     except Exception as e:
         print(f"⚠ Scrip master error: {e}")
         return False
 
 
-# --- DAILY / WEEKLY RANGE ENGINE ---
-RANGE_MAX_K = None
+# --- DAILY / WEEKLY RANGE ENGINE (Apps Script rangeEngine ka Python version) ---
+# Daily range: CE/PE LTP kitne strike door ka liya jaye = us symbol ki APNI nearest expiry me kitne din bache (calendar days).
+# NIFTY (Tuesday expiry) par ye bilkul Apps Script wala hai: Mon 1, Tue 0, Wed 6, Thu 5, Fri 4. Dusre symbols par unki apni expiry se.
+RANGE_MAX_K = None      # None = koi limit nahi. Monthly expiry me din zyada hote hain; limit lagani ho to yahan number likhein (jaise 6)
 RANGE_TASKS = [
-    ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),
-    ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),
-    ("NSE_CLOSE", "NSE", "close", lambda hm: "15:35" <= hm <= "23:59"),
-    ("MCX_CLOSE_A", "MCX", "close", lambda hm: "23:35" <= hm < "23:58"),
-    ("MCX_CLOSE_B", "MCX", "close", lambda hm: "23:58" <= hm <= "23:59"),
+    ("MCX_OPEN", "MCX", "open", lambda hm: hm == "08:59"),                    # MCX: 8:59 ka LTP = open
+    ("NSE_OPEN", "NSE", "open", lambda hm: hm == "09:14"),                    # Index + F&O stocks: 9:14 ka LTP = open
+    ("NSE_CLOSE", "NSE", "close", lambda hm: "15:35" <= hm <= "23:59"),       # 3:30 ke baad ka LTP = close
+    ("MCX_CLOSE_A", "MCX", "close", lambda hm: "23:35" <= hm < "23:58"),      # MCX band hone ke baad (summer 23:30)
+    ("MCX_CLOSE_B", "MCX", "close", lambda hm: "23:58" <= hm <= "23:59"),     # winter me MCX 23:55 par band hota hai, ye wahi final value rakhta hai
 ]
 
 
@@ -1119,6 +1148,7 @@ def range_group_symbols(group):
 
 
 def expiry_divisor(sym):
+    """Weekly expiry wale symbol: /2, monthly expiry wale: /4"""
     exps = symbol_expiries_cache.get(sym) or []
     if len(exps) >= 2:
         try:
@@ -1130,6 +1160,7 @@ def expiry_divisor(sym):
 
 
 def pick_strikes(strikes, spot, k):
+    """(CE strike, PE strike): CE = line ke neeche-screen wala k-th strike (spot se bada), PE = line ke upar-screen wala k-th strike (spot se chhota/barabar)"""
     below = [x for x in strikes if x <= spot]
     above = [x for x in strikes if x > spot]
     if len(above) <= k or len(below) <= k:
@@ -1168,6 +1199,7 @@ def range_fetch_spots(api, targets):
 
 
 def resolve_prev_close(sym, today_str):
+    """Kal ka close: pehle kal 3:35pm (MCX: raat) ka capture, nahi mila to API ka previous close"""
     c = range_state["close"].get(sym)
     if c and c.get("date", "") < today_str and num(c.get("value")) > 0:
         try:
@@ -1183,6 +1215,7 @@ def resolve_prev_close(sym, today_str):
 
 
 def fmt2(x):
+    """JavaScript toFixed(2) jaisa rounding (exact half par upar), taaki sheet ke R1/S1... se value same aaye"""
     return str(Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
@@ -1207,14 +1240,14 @@ def run_range_open(api, group, now):
         if sym not in spots:
             continue
         entry = {}
-        dte = max(0, (chain['expiry_dt'].date() - now.date()).days)
+        dte = max(0, (chain['expiry_dt'].date() - now.date()).days)          # is symbol ki nearest expiry me kitne din bache
         kd = dte if RANGE_MAX_K is None else min(dte, RANGE_MAX_K)
         for name, kk in (("daily", kd),) + ((("weekly", 0),) if wd == 2 else ()):
             pick = pick_strikes(chain['strikes'], spots[sym][0], kk)
             ce = chain['tokmap'].get((pick[0], 'CE')) if pick else None
             pe = chain['tokmap'].get((pick[1], 'PE')) if pick else None
             if not pick or not ce or not pe:
-                entry[name] = (kk, None, None, None, None)
+                entry[name] = (kk, None, None, None, None)           # itne door ke strike chain me nahi
                 continue
             entry[name] = (kk, pick[0], pick[1], ce, pe)
             for pr in (ce, pe):
@@ -1264,13 +1297,14 @@ def run_range_close(api, group, now):
 
 
 def range_loop():
+    """Roz: MCX 8:59 / index+stocks 9:14 par open + daily (Wednesday ko weekly bhi); 3:35pm ke baad aur MCX band hone ke baad close."""
     prepared = None
     retries = {}
     while True:
         try:
             if system_ready() and smart_api_global is not None:
                 now = datetime.now()
-                if prepared != scrip_master_date:
+                if prepared != scrip_master_date:      # chains / spot tokens pehle se taiyaar, taaki 9:14 par der na lage
                     n_ = len(range_targets("NSE")) + len(range_targets("MCX"))
                     print(f"📐 Range engine taiyaar: {n_} symbols")
                     prepared = scrip_master_date
@@ -1292,16 +1326,16 @@ def range_loop():
                                 active_pending[0] -= 1
         except Exception as e:
             print(f"⚠ Range loop error: {e}")
-        time.sleep(1.0)
+        time.sleep(0.5)
 
 
-# --- HISTORICAL REPLAY ---
+# --- HISTORICAL REPLAY (Angel One historical candle + OI data se option chain, kisi bhi din / minute ka) ---
 HIST_DIR = os.getenv("HIST_DIR", "/tmp/hist_cache")
-HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}
-HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}
+HIST_SESSION = {"NSE": ("09:15", "15:29"), "MCX": ("09:00", "23:50")}                   # candle minutes (15:30 chuna jaye to aakhri candle)
+HIST_CHUNKS = {"NSE": [("09:15", "15:30")], "MCX": [("09:00", "15:59"), ("16:00", "23:59")]}   # ek request me 500 candle se kam
 HIST_MAX_DATASETS = 3
-HIST_MIN_GAP = 0.8
-HIST_PER_MIN, HIST_PER_HOUR = 120, 3600
+HIST_MIN_GAP = 0.4        # historical API ke beech minimum seconds (limit 3/sec)
+HIST_PER_MIN, HIST_PER_HOUR = 170, 4800     # Angel limit: 180/min, 5000/ghanta
 hist_datasets = {}
 hist_order = []
 hist_jobs = {}
@@ -1329,6 +1363,7 @@ def hist_minutes(grp):
 
 
 def hist_call(kind, params, retries=3):
+    """Angel historical API: 3 request/sec, 180/min, 5000/ghanta ke andar. kind = candle / oi"""
     last_err = "unknown error"
     for attempt in range(retries):
         if smart_api_global is None:
@@ -1340,9 +1375,9 @@ def hist_call(kind, params, retries=3):
             while hist_hour_calls and now - hist_hour_calls[0] > 3600:
                 hist_hour_calls.popleft()
             if len(hist_hour_calls) >= HIST_PER_HOUR:
-                raise RuntimeError("Angel ka ghante ka historical limit poora ho gaya, thodi der baad try kijiye")
+                raise RuntimeError("Angel ka ghante ka historical limit (5000) lagbhag poora ho gaya, thodi der baad try kijiye")
             if len(hist_call_times) >= HIST_PER_MIN:
-                time.sleep(max(0.0, 60 - (now - hist_call_times[0]) + 0.5))
+                time.sleep(max(0.0, 60 - (now - hist_call_times[0]) + 0.3))
             gap = HIST_MIN_GAP - (time.time() - hist_last_call[0])
             if gap > 0:
                 time.sleep(gap)
@@ -1357,11 +1392,12 @@ def hist_call(kind, params, retries=3):
             return res.get("data") or []
         last_err = str((res or {}).get("message") or (res or {}).get("errorcode") or res)[:160]
         low = last_err.lower()
-        time.sleep(20 * (attempt + 1) if ("access" in low or "rate" in low) else 2.0 * (attempt + 1))
+        time.sleep(15 * (attempt + 1) if ("access" in low or "rate" in low) else 1.5 * (attempt + 1))
     raise RuntimeError("Angel historical API: " + last_err)
 
 
 def hist_series(exch, token, date, grp, with_oi):
+    """{minute: (close, volume)} aur {minute: oi}"""
     candles, oi = {}, {}
     for a, b in HIST_CHUNKS[grp]:
         params = {"exchange": exch, "symboltoken": token, "interval": "ONE_MINUTE", "fromdate": f"{date} {a}", "todate": f"{date} {b}"}
@@ -1424,7 +1460,7 @@ def hist_build(sym, expiry, date, job):
             last = candles[t][0]
         spot.append(last)
     first_pos = next((k for k, v in enumerate(spot) if v > 0), None)
-    for k in range(first_pos):
+    for k in range(first_pos):                       # pehli candle se pehle ka time pehli value se bharo
         spot[k] = spot[first_pos]
     strikes_all = chain['strikes']
     below_min = sum(1 for x in strikes_all if x <= min(spot))
@@ -1498,6 +1534,7 @@ def hist_rows(ds, i, greeks=True):
 
 
 def hist_precompute(ds):
+    """Har minute ke baad tracker ki state (shift lock, time lock...) yaad rakhta hai, taaki kisi bhi minute par seedha jump ho sake"""
     key = "HISTP" + str(threading.get_ident())
     states = []
     try:
@@ -1607,74 +1644,6 @@ def hist_job_run(key, sym, expiry, date):
         hist_load_lock.release()
 
 
-# --- ANGEL ONE getCandleData ROUTE FOR CANDLESTICK CHART ---
-@app.route('/api/chart-data')
-def get_chart_data():
-    sym = request.args.get("symbol", "NIFTY").upper()
-    date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
-    tf = request.args.get("tf", "1")
-
-    tf_map = {
-        "1": "ONE_MINUTE", "3": "THREE_MINUTE", "5": "FIVE_MINUTE", "10": "TEN_MINUTE",
-        "15": "FIFTEEN_MINUTE", "30": "THIRTY_MINUTE", "60": "ONE_HOUR", "120": "ONE_HOUR",
-        "180": "ONE_HOUR", "240": "ONE_HOUR"
-    }
-    interval = tf_map.get(tf, "ONE_MINUTE")
-
-    if not smart_api_global:
-        return jsonify({"status": False, "message": "Angel API Login nahi hua hai", "data": []})
-
-    exp_list = symbol_expiries_cache.get(sym) or []
-    chosen = user_selected_expiries.get(sym, exp_list[0] if exp_list else "")
-    chain = build_chain(sym, chosen) if chosen else None
-    if not chain and exp_list:
-        chain = build_chain(sym, exp_list[0])
-
-    if not chain:
-        return jsonify({"status": False, "message": "Symbol metadata not ready", "data": []})
-
-    src = resolve_spot_source(sym, chain['expiry_dt'])
-    if not src:
-        return jsonify({"status": False, "message": "Spot source not found", "data": []})
-
-    exch, token = src[0], src[1]
-    from_date = f"{date_str} 09:15" if exch != "MCX" else f"{date_str} 09:00"
-    to_date = f"{date_str} 15:30" if exch != "MCX" else f"{date_str} 23:50"
-
-    params = {
-        "exchange": exch,
-        "symboltoken": token,
-        "interval": interval,
-        "fromdate": from_date,
-        "todate": to_date
-    }
-
-    try:
-        res = smart_api_global.getCandleData(params)
-        if res and res.get("status"):
-            candles = []
-            for item in res.get("data", []):
-                ts = str(item[0])
-                if 'T' in ts:
-                    dt_obj = datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-                else:
-                    dt_obj = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
-                time_sec = int(dt_obj.timestamp())
-                candles.append({
-                    "time": time_sec,
-                    "open": float(item[1]),
-                    "high": float(item[2]),
-                    "low": float(item[3]),
-                    "close": float(item[4]),
-                    "volume": float(item[5])
-                })
-            return jsonify({"status": True, "data": candles})
-        else:
-            return jsonify({"status": False, "message": str(res.get("message", "Fetch failed")), "data": []})
-    except Exception as e:
-        return jsonify({"status": False, "message": str(e), "data": []})
-
-
 # --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -1683,7 +1652,6 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arush LTP Calculator</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; color: #000000; margin: 0; padding: 8px; }
@@ -1693,27 +1661,68 @@ HTML_TEMPLATE = """
         .upd-badge { background: #2b8a3e; }
         .upd-stale { background: #c92a2a; }
         select { padding: 6px; font-size: 14px; background: #ffffff; border: 1px solid #ced4da; border-radius: 4px; }
+
         .k3-banner { background: #e6fcf5; padding: 8px; margin-top: 6px; text-align: center; font-size: 14px; font-weight: bold; border-radius: 5px; color: #0ca678; border: 1px solid #20c997; }
-        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 480px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+
+        .table-container { margin-top: 6px; overflow-anchor: none; max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1px solid #dee2e6; border-radius: 6px; position: relative; -webkit-overflow-scrolling: touch; }
+
         table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; background: #ffffff; font-size: 11px; text-align: center; }
+
         th { padding: 4px 5px; white-space: nowrap; color: #212529; font-weight: bold; }
+
         .th-ce { background: #c8e6c9 !important; color: #1b5e20 !important; }
         .th-pe { background: #ffcdd2 !important; color: #b71c1c !important; }
-        .bg-call-side { background: #81c784 !important; border: none !important; }
-        .bg-put-side { background: #e57373 !important; border: none !important; }
+
+        .bg-call-side { background: #81c784 !important; border: none !important; box-shadow: inset -2px 0 0 0 #81c784, inset 2px 0 0 0 #81c784, inset 0 -2px 0 0 #81c784, inset 0 2px 0 0 #81c784; transform: translateZ(0); }
+        .bg-put-side { background: #e57373 !important; border: none !important; box-shadow: inset -2px 0 0 0 #e57373, inset 2px 0 0 0 #e57373, inset 0 -2px 0 0 #e57373, inset 0 2px 0 0 #e57373; transform: translateZ(0); }
+
         td { border: none; border-bottom: 1px solid #f1f3f5; padding: 4px 5px; white-space: nowrap; position: relative; }
+
         #row-winners th { position: sticky; top: 0; z-index: 25; padding: 4px; height: 50px; vertical-align: middle; background-clip: padding-box; }
-        #row-columns th { position: sticky; top: 50px; z-index: 24; border-bottom: 3px solid #000000 !important; background-clip: padding-box; }
+
+        #row-columns th {
+            position: sticky;
+            top: 50px;
+            z-index: 24;
+            border-bottom: 3px solid #000000 !important;
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
+            background-clip: padding-box;
+        }
+
         .strike-col { background: #ff922b !important; color: #ffffff !important; font-weight: bold; font-size: 11px; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
-        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; min-width: 90px !important; width: 90px !important; }
-        #row-columns th.strike-col { top: 50px; z-index: 26; background: #ff922b !important; color: #ffffff !important; border-bottom: 3px solid #000000 !important; min-width: 90px !important; width: 90px !important; }
+        #row-winners th.strike-col { top: 0; z-index: 27; background: #ff922b !important; color: #ffffff !important; border: 1px solid #dee2e6 !important; box-shadow: none !important; min-width: 90px !important; width: 90px !important; }
+
+        #row-columns th.strike-col {
+            top: 50px;
+            z-index: 26;
+            background: #ff922b !important;
+            color: #ffffff !important;
+            border-bottom: 3px solid #000000 !important;
+            box-shadow: inset 0 -3px 0 0 #000000, 0 3px 0 0 #000000 !important;
+            min-width: 90px !important;
+            width: 90px !important;
+        }
+
         .ce-oi-col, .ce-vol-col, .pe-vol-col, .pe-oi-col { min-width: 80px !important; width: 80px !important; }
-        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
-        .yellow-pill-badge { background-color: #ffd43b !important; color: #000000 !important; padding: 2px 10px !important; border-radius: 12px !important; font-size: 10px !important; font-weight: bold !important; display: inline-block !important; margin-top: 2px !important; }
+
+        .winner-card-top { background: #ffffff !important; border: 1px solid #ced4da; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 10px; font-weight: bold; color: #000000; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; height: 42px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; }
+
+        .yellow-pill-badge {
+            background-color: #ffd43b !important;
+            color: #000000 !important;
+            padding: 2px 10px !important;
+            border-radius: 12px !important;
+            font-size: 10px !important;
+            font-weight: bold !important;
+            display: inline-block !important;
+            margin-top: 2px !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+        }
+
         .spot-row td { background: #ffffff !important; padding: 0px !important; height: 2px; border: none !important; }
         .spot-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px; background-color: #f03e3e; z-index: 2; transform: translateY(-50%); }
         .spot-row td.spot-price-cell::after { display: none !important; }
-        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border: 1px solid #dee2e6 !important; }
+        .spot-price-cell { background: #ffffff !important; text-align: center; z-index: 4; padding: 2px 2px !important; border-left: 2px solid #dee2e6 !important; border-right: 2px solid #dee2e6 !important; border-top: 1px solid #dee2e6 !important; border-bottom: 1px solid #dee2e6 !important; }
         .spot-tag-red { background: #e53935; color: #ffffff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 8px; display: inline-block; margin-bottom: 1px; }
         .spot-value-green { color: #2e7d32; font-weight: 800; font-size: 12px; display: block; }
         .spot-badges-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: flex; align-items: center; justify-content: center; gap: 2px; pointer-events: none; width: max-content; }
@@ -1729,12 +1738,15 @@ HTML_TEMPLATE = """
         .pe-oi-col.bg-100 { background: #63e6be !important; color: #000000 !important; font-weight: bold; }
         .bg-75 { background: #ffff00 !important; color: #000000 !important; font-weight: bold; }
         .bg-out { background: #5b636b !important; color: #ffffff !important; font-weight: bold; }
+        .bg-out .pct-sub { color: #ffffff; }
         .pct-sub { font-size: 9px; font-weight: bold; display: block; color: #000000; margin-top: 1px; }
+
         .chg-pos { color: #1c7ed6 !important; font-weight: bold; }
         .chg-neg { color: #c92a2a !important; font-weight: bold; }
         .ext-th, .ext-td { min-width: 62px; }
         .eor-val { color: #e00000; font-weight: bold; }
         .eos-val { color: #0000ee; font-weight: bold; }
+
         .range-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
         .rbtn { border: 0; cursor: pointer; font-family: inherit; font-weight: bold; font-size: 12px; padding: 6px 12px; border-radius: 4px; color: #ffffff; }
         .rb-dclose { background: #212529; }
@@ -1751,8 +1763,9 @@ HTML_TEMPLATE = """
         .rv-label { font-weight: bold; width: 28px; }
         .rv-r { color: #c92a2a; }
         .rv-s { color: #2b8a3e; }
-        .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; }
+        .rv-val { flex: 1; font-size: 17px; font-weight: bold; cursor: pointer; user-select: all; -webkit-user-select: all; }
         .rv-copy { border: 1px solid #ced4da; background: #f1f3f5; border-radius: 4px; font-size: 11px; padding: 4px 10px; cursor: pointer; min-width: 62px; }
+
         .range-btns { display: contents; }
         .rb-live { background: #2b8a3e; }
         .rb-hist { background: #f26a21; }
@@ -1781,10 +1794,6 @@ HTML_TEMPLATE = """
         .hb-reset { border: 1px solid #f26a21; background: #ffffff; color: #f26a21; }
         .hb-submit { border: 1px solid #f26a21; background: #f26a21; color: #ffffff; }
         .hb-submit:disabled { opacity: 0.6; cursor: default; }
-        .chart-box { margin-top: 10px; border: 1px solid #ced4da; border-radius: 6px; padding: 8px; background: #ffffff; }
-        .chart-title { font-weight: bold; font-size: 13px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #e9ecef; }
-        #chartContainer { width: 100%; height: 350px; }
-        .tf-select { font-size: 12px; padding: 2px 6px; font-weight: bold; border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -1846,7 +1855,7 @@ HTML_TEMPLATE = """
             <div id="rcBody"></div>
         </div>
     </div>
-    <div class="k3-banner" id="k3Display">Connecting to Angel One & loading Scrip Master...</div>
+    <div class="k3-banner" id="k3Display">Loading Framework...</div>
 
     <div class="table-container" id="tableContainer">
         <table id="optionChainTable">
@@ -1873,34 +1882,10 @@ HTML_TEMPLATE = """
                 </tr>
             </thead>
             <tbody id="gridBody">
-                <tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Waiting for Scrip Master & Market Data sync...</td></tr>
+                <tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Syncing option chain matrix...</td></tr>
             </tbody>
         </table>
     </div>
-
-    <div class="chart-box">
-        <div class="chart-title">
-            <span id="chartSymbolHeader">📈 Candle Chart</span>
-            <div style="display:flex; gap:8px; align-items:center;">
-                <label style="font-size:11px; font-weight:bold;">TF:</label>
-                <select id="tfSelect" class="tf-select" onchange="loadCandleChartData()">
-                    <option value="1">1m</option>
-                    <option value="3">3m</option>
-                    <option value="5">5m</option>
-                    <option value="10">10m</option>
-                    <option value="15">15m</option>
-                    <option value="30">30m</option>
-                    <option value="60">1hr</option>
-                    <option value="120">2hr</option>
-                    <option value="180">3hr</option>
-                    <option value="240">4hr</option>
-                </select>
-                <span style="font-size:11px; color:#555;">Angel One SmartAPI</span>
-            </div>
-        </div>
-        <div id="chartContainer"></div>
-    </div>
-
     <script>
         let allExpiriesData = {};
         let isFirstLoad = true;
@@ -1908,39 +1893,6 @@ HTML_TEMPLATE = """
         let fastPoll = false;
         let userInteracted = false;
         let histMode = false, hist = null, histPending = false;
-        let tvChart = null, candlestickSeries = null;
-
-        function initCandleChart() {
-            const chartElem = document.getElementById('chartContainer');
-            if (!chartElem) return;
-            tvChart = LightweightCharts.createChart(chartElem, {
-                width: chartElem.clientWidth,
-                height: 350,
-                layout: { backgroundColor: '#ffffff', textColor: '#333' },
-                grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
-                timeScale: { timeVisible: true, secondsVisible: false }
-            });
-            candlestickSeries = tvChart.addCandlestickSeries({
-                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-                wickUpColor: '#26a69a', wickDownColor: '#ef5350'
-            });
-        }
-
-        function loadCandleChartData() {
-            const sym = document.getElementById('symbolSelect').value;
-            const tf = document.getElementById('tfSelect').value;
-            if (!sym || !candlestickSeries) return;
-            const dateStr = histMode ? (hist ? hist.date : '') : new Date().toISOString().split('T')[0];
-            if (!dateStr) return;
-            document.getElementById('chartSymbolHeader').innerText = '📈 ' + sym + ' Candle Chart (' + dateStr + ')';
-            fetch('/api/chart-data?symbol=' + encodeURIComponent(sym) + '&date=' + encodeURIComponent(dateStr) + '&tf=' + encodeURIComponent(tf))
-                .then(r => r.json())
-                .then(j => {
-                    if (j.status && j.data && j.data.length > 0) {
-                        candlestickSeries.setData(j.data);
-                    }
-                }).catch(() => {});
-        }
 
         function sizeContainer() {
             const c = document.getElementById('tableContainer');
@@ -1961,7 +1913,7 @@ HTML_TEMPLATE = """
                 c.scrollLeft = (cl.left - cr.left + c.scrollLeft) + cl.width / 2 - c.clientWidth / 2;
             }
         }
-        const VIEW_ROWS = 11;
+        const VIEW_ROWS = 11;               // imaginary line ke upar 11 aur neeche 11 strike screen par
         function fitViewport() {
             const c = document.getElementById('tableContainer');
             const rows = document.getElementById('gridBody').children;
@@ -1971,81 +1923,61 @@ HTML_TEMPLATE = """
             const first = rows[Math.max(0, si - VIEW_ROWS)], last = rows[Math.min(rows.length - 1, si + VIEW_ROWS)];
             const headH = c.querySelector('thead').offsetHeight;
             const bodyH = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-            const extra = c.offsetHeight - c.clientHeight;
+            const extra = c.offsetHeight - c.clientHeight;          // border + horizontal scrollbar
             c.style.maxHeight = 'none';
             c.style.height = Math.ceil(headH + bodyH + extra) + 'px';
         }
         function centerNow() { userInteracted = false; sizeContainer(); fitViewport(); centerSpot(); }
-        window.addEventListener('resize', () => { 
-            sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); 
-            if (tvChart) tvChart.resize(document.getElementById('chartContainer').clientWidth, 350);
-        });
+        window.addEventListener('resize', () => { sizeContainer(); fitViewport(); if (!userInteracted) centerSpot(); });
         ['touchstart', 'wheel', 'mousedown'].forEach(ev => document.getElementById('tableContainer').addEventListener(ev, () => { userInteracted = true; }, {passive: true}));
         sizeContainer();
         const LOADING_ROW = '<tr><td colspan="23" style="padding: 20px; font-size: 13px; color: #666;">Loading data...</td></tr>';
 
         function initApp() {
-            initCandleChart();
             fetch('/api/init-meta').then(res => res.json()).then(meta => {
-                allExpiriesData = meta.expiries || {};
+                allExpiriesData = meta.expiries;
                 window.mcxSyms = new Set((meta.groups && meta.groups.MCX) || []);
                 let symSelect = document.getElementById("symbolSelect");
-                if (symSelect.children.length === 0) {
-                    const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
-                    ["INDEX", "MCX", "STOCK"].forEach(k => {
-                        let list = (meta.groups && meta.groups[k]) || [];
-                        if (!list.length) return;
-                        let og = document.createElement("optgroup"); og.label = groupLabels[k];
-                        list.forEach(sym => {
-                            let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; og.appendChild(opt);
-                        });
-                        symSelect.appendChild(og);
+                symSelect.innerHTML = "";
+                // 1st Index list, 2nd MCX list, 3rd F&O stocks
+                const groupLabels = {"INDEX": "INDEX", "MCX": "MCX", "STOCK": "F&O STOCKS"};
+                ["INDEX", "MCX", "STOCK"].forEach(k => {
+                    let list = (meta.groups && meta.groups[k]) || [];
+                    if (!list.length) return;
+                    let og = document.createElement("optgroup"); og.label = groupLabels[k];
+                    list.forEach(sym => {
+                        let opt = document.createElement("option"); opt.value = sym; opt.innerText = sym; og.appendChild(opt);
                     });
-                }
-                if (meta.symbols && meta.symbols.length > 0) {
-                    if (!symSelect.value) {
-                        symSelect.value = meta.active_symbol || meta.symbols[0];
-                    }
+                    symSelect.appendChild(og);
+                });
+                if (meta.symbols.length > 0) {
+                    symSelect.value = meta.active_symbol || meta.symbols[0];
                     onSymbolChange();
                 }
-                if (!meta.ready) {
-                    document.getElementById('k3Display').innerText = "Scrip master loading from Angel One... Please wait.";
-                    setTimeout(initApp, 4000);
-                } else {
-                    document.getElementById('k3Display').innerText = "System Ready - Fetching live quotes...";
-                    fetchData();
-                }
-            }).catch(() => {
-                document.getElementById('k3Display').innerText = "Connecting to server... retrying...";
-                setTimeout(initApp, 4000);
-            });
+                if (!meta.ready) setTimeout(initApp, 3000);
+            }).catch(() => setTimeout(initApp, 3000));
         }
         function onSymbolChange() {
             let sym = document.getElementById("symbolSelect").value;
             let expSelect = document.getElementById("expirySelect");
-            let prevExp = expSelect.value;
             expSelect.innerHTML = "";
             let list = allExpiriesData[sym] || [];
             list.forEach(exp => {
                 let opt = document.createElement("option"); opt.value = exp; opt.innerText = exp; expSelect.appendChild(opt);
             });
-            if (list.includes(prevExp)) expSelect.value = prevExp;
             isFirstLoad = true;
             updateSelectedSymbolSheet();
-            loadCandleChartData();
         }
         function updateSelectedSymbolSheet() {
             if (histMode) return;
             let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
             if (!sym) return;
+            document.getElementById("gridBody").innerHTML = LOADING_ROW;
             fastPoll = true;
             userInteracted = false;
             isFirstLoad = true;
-            fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => {
-                fetchData();
-                loadCandleChartData();
-            });
+            fetch('/api/set-symbol/' + encodeURIComponent(sym) + (exp ? '/' + encodeURIComponent(exp) : ''), {method: 'POST'}).then(() => fetchData());
         }
         function createSinglePillBadgeHtml(badgeObj) {
             if (!badgeObj || !badgeObj.show_badge) return "";
@@ -2054,15 +1986,16 @@ HTML_TEMPLATE = """
             return `<div class="state-badge-pill ${cls}"><b>${badgeObj.state}</b> <span style="font-weight:800; color:${pctColor};">${badgeObj.pct}%</span></div>`;
         }
         function fetchData() {
-            let sym = document.getElementById("symbolSelect").value || "NIFTY";
+            let sym = document.getElementById("symbolSelect").value;
             let exp = document.getElementById("expirySelect").value;
+            if (!sym) return;
             if (busy) { if (histMode) histPending = true; return; }
             busy = true;
             const url = histMode ? histDataUrl() : ('/api/data/' + encodeURIComponent(sym) + '?t=' + new Date().getTime());
             fetch(url).then(res => res.json()).then(data => {
                 busy = false;
                 if (histPending) { histPending = false; setTimeout(fetchData, 0); }
-                if (document.getElementById("symbolSelect").value && document.getElementById("symbolSelect").value !== sym) return;
+                if (document.getElementById("symbolSelect").value !== sym) return;
                 if (!!data.hist !== histMode) return;
                 let tbody = document.getElementById("gridBody");
                 if (data.error) {
@@ -2070,12 +2003,12 @@ HTML_TEMPLATE = """
                     return;
                 }
                 if (data.partial || (exp && data.expiry && data.expiry !== exp)) {
-                    if (!tbody.innerHTML.includes("Loading data") && !data.grid_rows) tbody.innerHTML = LOADING_ROW;
+                    if (!tbody.innerHTML.includes("Loading data")) tbody.innerHTML = LOADING_ROW;
                     fastPoll = true;
                     return;
                 }
                 fastPoll = false;
-                document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + (data.lot_size || '-');
+                document.getElementById("lotSizeDisplay").innerText = "Lot Size: " + data.lot_size;
                 let upd = document.getElementById("updDisplay");
                 if (data.hist) {
                     upd.innerText = "Historical: " + data.updated_at;
@@ -2091,11 +2024,11 @@ HTML_TEMPLATE = """
                 if (data.U5) document.getElementById("cell-u5").innerHTML = data.U5;
 
                 let k3Div = document.getElementById("k3Display");
-                k3Div.innerText = data.K3 || "Market matrix synced";
-                let k3TextLower = (data.K3 || "").toLowerCase();
+                k3Div.innerText = data.K3;
+                let k3TextLower = data.K3.toLowerCase();
                 if (k3TextLower.includes("bull")) k3Div.style.color = "#0000FF";
                 else if (k3TextLower.includes("bear") || k3TextLower.includes("bloodbath")) k3Div.style.color = "#FF0000";
-                else k3Div.style.color = "#0ca678";
+                else k3Div.style.color = "#000000";
 
                 if (data.grid_rows && data.grid_rows.length > 0) {
                     const cont = document.getElementById('tableContainer');
@@ -2166,6 +2099,7 @@ HTML_TEMPLATE = """
                 }
             }).catch(() => { busy = false; });
         }
+        // ---- Daily / Weekly range (R1-R3, S1-S3), har value alag se copy ----
         const RANGE_STYLE = {
             'daily-close': ['Daily range', '#212529', '#ffffff'], 'daily-open': ['Daily range', '#7048e8', '#ffffff'],
             'weekly-close': ['Weekly range', '#e03131', '#ffffff'], 'weekly-open': ['Weekly range', '#15d0e0', '#00363d']
@@ -2204,13 +2138,20 @@ HTML_TEMPLATE = """
             const rec = d ? d[kind] : null;
             let msg = '';
             if (!d) msg = 'Data nahi aa paya, dobara try kijiye.';
-            else if (!rec) msg = kind === 'daily' ? 'Daily range abhi nahi bani.' : 'Weekly range abhi nahi bani.';
-            else if (!rec.ans2) msg = 'Option ka LTP nahi mila, isliye range nahi ban payi.';
+            else if (!rec) msg = kind === 'daily'
+                ? 'Daily range abhi nahi bani. Ye har trading din ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.'
+                : 'Weekly range abhi nahi bani. Ye har Wednesday ' + (d.mcx ? '8:59' : '9:14') + ' baje banti hai.';
+            else if (!rec.ans2) msg = rec.reason === 'strikes'
+                ? 'Is expiry me itne door (' + rec.k + ' strike) ka CE/PE strike chain me nahi mila, isliye range nahi ban payi (' + rec.date + ').'
+                : 'Option ka LTP nahi mila, isliye range nahi ban payi (' + rec.date + ').';
+            else if (!rec[basis]) msg = basis === 'close' ? 'Pichhle din ka close nahi mila.' : 'Open ka LTP nahi mila.';
             if (msg) {
                 sub.textContent = ''; body.innerHTML = '<div class="rc-msg">' + msg + '</div>';
             } else {
                 const x = rec[basis];
-                sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')';
+                sub.textContent = (basis === 'close' ? 'Pichhla close ' : 'Open ') + x.ref + '  \u2022  range ' + rec.ans2 + '  \u2022  ' + rec.etype + ' (\u00F7' + rec.div + ')  \u2022  '
+                    + (rec.expiry ? 'expiry ' + rec.expiry + ' (' + rec.dte + ' din)  \u2022  ' : '')
+                    + rec.date + (rec.is_today ? '' : ' (aaj ki nahi)') + (basis === 'close' && x.src ? '  \u2022  ' + x.src : '');
                 body.innerHTML = ['R1', 'R2', 'R3', 'S1', 'S2', 'S3'].map(L => {
                     const v = x.levels[L];
                     return '<div class="rv-row"><span class="rv-label ' + (L[0] === 'R' ? 'rv-r' : 'rv-s') + '">' + L + '</span>'
@@ -2220,6 +2161,7 @@ HTML_TEMPLATE = """
             document.getElementById('rangeOverlay').style.display = 'flex';
         }
 
+        // ---- Historical replay: Selector, load progress, play / pause ----
         const MONTHS = {JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'};
         const enc = encodeURIComponent;
         const val = id => document.getElementById(id).value;
@@ -2251,7 +2193,7 @@ HTML_TEMPLATE = """
             document.getElementById('hProg').style.display = 'block';
             const pct = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
             document.getElementById('hBar').style.width = pct + '%';
-            document.getElementById('hProgTxt').textContent = (msg || '') + '  \u2022  ' + pct + '%';
+            document.getElementById('hProgTxt').textContent = (msg || '') + '  \u2022  ' + pct + '%  (Angel ki limit ke kaaran pehli baar 1-3 minute lagte hain)';
         }
         function histFail(msg) { histProgHide(); histMsg(msg); }
         function openHist() {
@@ -2281,16 +2223,16 @@ HTML_TEMPLATE = """
             histMsg(''); histProg(0, 1, 'Shuru ho raha hai...');
             document.getElementById('hSubmit').disabled = true;
             fetch('/api/hist/load', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
-                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => histFail('Server se jawab nahi aaya'));
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => histFail('Server se jawab nahi aaya, dobara try kijiye.'));
         }
         function histHandle(j, body) {
             if (j.state === 'ready') { histProgHide(); startHist(body); }
-            else if (j.state === 'loading' || j.state === 'queued') { histProg(j.done, j.total, j.msg); setTimeout(() => histPollStatus(body), 1500); }
+            else if (j.state === 'loading' || j.state === 'queued') { histProg(j.done, j.total, j.msg); setTimeout(() => histPollStatus(body), 1000); }
             else histFail(j.msg || 'Load nahi hua');
         }
         function histPollStatus(body) {
             fetch('/api/hist/status?symbol=' + enc(body.symbol) + '&expiry=' + enc(body.expiry) + '&date=' + body.date)
-                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => setTimeout(() => histPollStatus(body), 2500));
+                .then(r => r.json()).then(j => histHandle(j, body)).catch(() => setTimeout(() => histPollStatus(body), 2000));
         }
         function histCancel() { fetch('/api/hist/cancel', {method: 'POST'}); }
         function histDataUrl() { return '/api/hist/data?symbol=' + enc(hist.sym) + '&expiry=' + enc(hist.exp) + '&date=' + hist.date + '&time=' + hist.times[hist.idx]; }
@@ -2344,7 +2286,6 @@ HTML_TEMPLATE = """
             document.getElementById('gridBody').innerHTML = LOADING_ROW;
             isFirstLoad = true; userInteracted = false;
             histSync(); fetchData();
-            loadCandleChartData();
         }
         function goLive() {
             if (!histMode) return;
@@ -2356,10 +2297,9 @@ HTML_TEMPLATE = """
             document.getElementById('modeLive').classList.remove('rb-off'); document.getElementById('modeHist').classList.add('rb-off');
             const upd = document.getElementById('updDisplay'); upd.innerText = 'Updated: -'; upd.className = 'lot-size-badge upd-badge';
             updateSelectedSymbolSheet();
-            loadCandleChartData();
         }
 
-        function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 1500 : 3000); }
+        function pollLoop() { if (!histMode) fetchData(); setTimeout(pollLoop, fastPoll ? 500 : 1500); }
         window.onload = function() { initApp(); pollLoop(); };
     </script>
 </body>
@@ -2458,7 +2398,7 @@ def hist_load_api():
     if sym not in options_cache or expiry not in (symbol_expiries_cache.get(sym) or []):
         return jsonify({"state": "error", "msg": "Symbol ya expiry galat hai"})
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date) or date > datetime.now().strftime("%Y-%m-%d"):
-        return jsonify({"state": "error", "msg": "Data Date galat hai"})
+        return jsonify({"state": "error", "msg": "Data Date galat hai (aaj tak ki hi chuniye)"})
     key = hist_key(sym, expiry, date)
     if key in hist_datasets:
         return jsonify({"state": "ready", "msg": "Ready"})
@@ -2471,7 +2411,8 @@ def hist_load_api():
         hist_jobs[key] = {"state": "ready", "done": 1, "total": 1, "msg": "Ready (saved data)"}
         return jsonify(hist_jobs[key])
     if not hist_load_lock.acquire(blocking=False):
-        return jsonify({"state": "busy", "msg": "Pehle wala historical load chal raha hai."})
+        busy = next((k for k, v in hist_jobs.items() if v.get("state") == "loading"), "")
+        return jsonify({"state": "busy", "msg": f"Pehle wala historical load chal raha hai ({busy.replace('|', ' ')}). Wo khatam hone do."})
     hist_jobs[key] = {"state": "loading", "done": 0, "total": 1, "msg": "Shuru ho raha hai..."}
     threading.Thread(target=hist_job_run, args=(key, sym, expiry, date), daemon=True).start()
     return jsonify(hist_jobs[key])
@@ -2503,7 +2444,7 @@ def hist_data_api():
         if ds:
             hist_put(key, ds)
     if ds is None:
-        return jsonify({"error": "Historical data load nahi hua."})
+        return jsonify({"error": "Historical data load nahi hua. Historical button se dobara Submit kijiye."})
     try:
         return jsonify(hist_output(ds, hist_time_index(ds, request.args.get("time", ds["times"][0]))))
     except Exception as e:
@@ -2566,9 +2507,13 @@ def do_login(smart_api):
             res = smart_api.generateSession(CLIENT_ID, PIN, totp)
         if res and res.get('status'):
             print("🔐 Session generated")
+
+
             ws_jwt_token[0] = res.get('data', {}).get('jwtToken')
             ws_feed_token[0] = res.get('data', {}).get('feedToken')
             start_live_websocket(API_KEY, CLIENT_ID, ws_jwt_token[0], ws_feed_token[0])
+
+            
             return True
         print(f"❌ Login failed: {str(res)[:150]}")
     except Exception as e:
@@ -2582,6 +2527,7 @@ def system_ready():
 
 
 def active_loop():
+    """Screen par khule saare symbols (kitne bhi viewers / tabs): alag thread, API par priority."""
     counters = {}
     while True:
         t0 = time.time()
@@ -2606,23 +2552,23 @@ def active_loop():
                             chosen = exp_list[0]
                         is_open = market_open(symbol_exch_cache.get(active, ""), datetime.now())
                         chain_ok = bool(v.get("grid_rows")) and v.get("active_expiry") == chosen
-                        extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 30
+                        extra_ok = v.get("extra_exp") == chosen and (now - v.get("extra_ts", 0)) < 20
                         core_age = now - v.get("fetched_ts", 0)
                         mode = None
                         if not is_open:
                             if (not chain_ok) or v.get("extra_exp") != chosen or core_age > 60:
                                 mode = "full"
-                        elif (not chain_ok) or (not extra_ok and core_age > 15):
+                        elif (not chain_ok) or (not extra_ok and core_age > 8):
                             mode = "full"; n = 0
                         elif not extra_ok:
-                          mode = "extra"
+                            mode = "extra"
                         else:
                             mode = "core"; n += 1
                         if mode:
                             active_pending[0] += 1
                             try:
                                 fetch_symbol_data(smart_api_global, active, mode, True)
-                                if mode == "core" and n % 5 == 0:
+                                if mode == "core" and n % 3 == 0:
                                     fetch_symbol_data(smart_api_global, active, "extra", True)
                             finally:
                                 active_pending[0] -= 1
@@ -2631,11 +2577,12 @@ def active_loop():
                         lk.release()
         except Exception as e:
             print(f"⚠ Active loop error: {e}")
-        wake_active.wait(timeout=max(0.5, 5.0 - (time.time() - t0)))
+        wake_active.wait(timeout=max(0.2, 3.0 - (time.time() - t0)))
         wake_active.clear()
 
 
 def run_bot_lock_loop():
+    """Login, scrip master, state save aur background (light) scanning."""
     global last_session_date, smart_api_global
     print("🚀 Starting Background Bot Loop...")
     time.sleep(3)
@@ -2661,6 +2608,7 @@ def run_bot_lock_loop():
             now_dt = datetime.now()
             today = now_dt.strftime("%Y-%m-%d")
 
+            # LOGIN (backoff ke saath: galat PIN par account lock na ho)
             if last_session_date != today or need_relogin[0]:
                 if do_login(smart_api):
                     last_session_date = today
@@ -2668,21 +2616,23 @@ def run_bot_lock_loop():
                     login_fail = 0
                 else:
                     login_fail += 1
-                    time.sleep(600 if login_fail >= 5 else 30 * login_fail)
+                    time.sleep(600 if login_fail >= 5 else 20 * login_fail)
                     continue
 
+            # SCRIP MASTER (roz ek baar, fail ho to har 60s retry)
             if scrip_master_date != today:
-                if time.time() - last_sm_try > 120:
+                if time.time() - last_sm_try > 60:
                     last_sm_try = time.time()
                     initialize_scrip_master()
                 if not options_cache:
-                    time.sleep(10)
+                    time.sleep(5)
                     continue
 
             viewed_now = {s_ for s_, ts_ in list(viewed_symbols.items()) if time.time() - ts_ < 10}
             ui_open = (time.time() - last_ui_poll[0]) < 10
             active = current_active_symbol_ui
 
+            # Background: ek symbol per loop (indices har ~10 symbols baad)
             open_syms = [s for s in options_cache if market_open(symbol_exch_cache.get(s, ""), now_dt)]
             others = sorted(s for s in open_syms if s not in INDICES)
             idx_open = [s for s in INDICES if s in open_syms]
@@ -2693,13 +2643,13 @@ def run_bot_lock_loop():
                     rotation.extend(idx_open)
             if not others:
                 rotation = idx_open
-
+            # Hot symbol (jo last screen par tha): UI band ho tab bhi taaza rakho, taaki kholte hi data tayyar mile
             if (not ui_open) and active in options_cache and market_open(symbol_exch_cache.get(active, ""), now_dt):
                 hv = multi_symbol_runtime_states.get(active, {})
                 hot_mode = None
-                if time.time() - hv.get("extra_ts", 0) > 40:
+                if time.time() - hv.get("extra_ts", 0) > 25:
                     hot_mode = "extra"
-                elif time.time() - hv.get("fetched_ts", 0) > 15:
+                elif time.time() - hv.get("fetched_ts", 0) > 10:
                     hot_mode = "core"
                 if hot_mode and hv.get("grid_rows"):
                     hl = get_sym_lock(active)
@@ -2720,7 +2670,7 @@ def run_bot_lock_loop():
                         finally:
                             lk.release()
             else:
-                time.sleep(10)
+                time.sleep(5)
 
             if time.time() - last_stat > 60:
                 last_stat = time.time()
@@ -2735,10 +2685,11 @@ def run_bot_lock_loop():
                 last_save = time.time()
         except Exception as e:
             print(f"⚠ Loop Error: {e}")
-            time.sleep(5)
-        time.sleep(0.5)
+            time.sleep(3)
+        time.sleep(0.2)
 
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     run_bot_lock_loop()
+
